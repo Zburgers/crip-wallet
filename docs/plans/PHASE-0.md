@@ -75,3 +75,15 @@ Phase 0 may hand off to Phase 1 when P0-001 through P0-006 pass locally, the
 governance sources agree, and no real-funds/configuration or critical security
 finding exists. Branch protection and license choice remain explicit external
 gaps and prevent full S0/MVP release claims, but do not block local WS-002 work.
+
+## Verification status
+
+- Tasks P0-1 through P0-5 landed in commits `5a9d80c`, `e6bda04`, `f86fa64`,
+  `da1451c`, and `af932d6` with spec-first and quality/security review.
+- P0-6 local handoff evidence passes at implementation commit `6aa8382`: fresh
+  locked install, 15 repository tests, 41 schema tests, dependency audit, live
+  PostgreSQL 17.10 and Anvil 31337 inspection, permission/log checks, baseline
+  diff check, and digest-pinned Gitleaks history/candidate scans.
+- Full S0 remains open: protected remote CI and branch protection are
+  unevidenced, Dependabot security updates are disabled, and ADR-0013 has no
+  owner-selected license. Local WS-002 work may continue under the exit gate.

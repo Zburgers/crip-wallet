@@ -12,6 +12,18 @@ balanced ledger transitions, idempotency, and transactional audit events.
 
 ---
 
+## Current progress
+
+- Task 1 is committed at `0e19a50`: the exact enforcement-grade enum, exhaustive
+  order table, built package boundary, and 10 schema tests pass.
+- Task 2 is in progress. Commit `6aa8382` adds the strict version-1 read/transfer
+  intent and canonical uint256 money leaves. P1-002 remains open for configured
+  maximum-lifetime validation and canonical idempotency payload hashing before
+  the remaining policy, decision, lifecycle, envelope, adapter, audit, and error
+  contracts.
+- Tasks 3 through 11 have not started. No persistence, authorization, signing,
+  broadcast, or autonomous execution path exists.
+
 ## Ordered tasks
 
 1. Create canonical enforcement-grade schema and strict comparison tests in

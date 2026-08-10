@@ -12,7 +12,7 @@ keep this as the current resume snapshot rather than an activity log.
   manifests, local databases, build output, generated junk, or secret-pattern
   findings in the current tree or two-commit history.
 - Working branch: `phase-0/governance-foundation`
-- Last integrated commit: `af932d6` (local CI and repository security gates)
+- Last integrated implementation commit: `6aa8382` (strict canonical intent contract)
 
 ## Current phase and status
 
@@ -57,12 +57,12 @@ keep this as the current resume snapshot rather than an activity log.
 ## Active workstreams
 
 - WS-001 governance and toolchain — local implementation verified; remote gates open.
-- WS-002 canonical domain contracts — active; enforcement-grade leaf accepted locally.
+- WS-002 canonical domain contracts — active; grade and structural intent/money leaves accepted locally.
 - WS-003 atomic ledger proof — blocked on WS-002 schemas and migrations.
 
 ## Latest test results
 
-- `npm ci`: 131 packages installed; 132 audited; 0 vulnerabilities (2026-08-10).
+- `npm ci`: 133 packages installed; 135 audited; 0 vulnerabilities (2026-08-10).
 - `npm run check`: exit 0; format, ESLint, strict typecheck, 15/15 Node repository
   tests, 41/41 schema Vitest tests, 15 required docs, and repository policy
   checks passed. The Node suite imports `@crip/schemas` through its built package
@@ -77,7 +77,7 @@ keep this as the current resume snapshot rather than an activity log.
   Compose and all Bash files validate.
 - Gitleaks 8.30.1 image digest `sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`
   ran `gitleaks git --config .gitleaks.toml --no-banner --redact --verbose .`
-  at `da1451c`: five revisions, no leaks. The index was exported with
+  at `6aa8382`: eight revisions, no leaks. The final index was exported with
   `git checkout-index --all --prefix=<ignored-snapshot>/` and scanned with the
   same image using `gitleaks dir`: no leaks. Ignored `.local/` runtime state was
   excluded because it contains the generated disposable database password by
