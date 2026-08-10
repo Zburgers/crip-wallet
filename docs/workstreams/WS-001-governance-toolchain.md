@@ -51,4 +51,12 @@ tooling/local environment; CI/security controls; verification/state.
 
 - Baseline and GitHub settings audit recorded 2026-08-10.
 - Canonical rename commit `5a9d80c`.
-- Remaining commands pending scaffold completion.
+- Governance/plan scaffold commit `f86fa64`.
+- 2026-08-10 working tree: `npm ci` installed 131 packages and audited 132 with
+  zero vulnerabilities; `npm run check` passed formatting, lint, strict types,
+  13/13 Node repository tests, empty-bootstrap Vitest, 15 docs, and repo checks.
+- Compose validation, Bash syntax, `npm audit --audit-level=high`, stop/start,
+  PostgreSQL 17.10 readiness, deterministic quiet Anvil chain `0x7a69`, zero
+  Anvil log lines, per-checkout Compose isolation, and race-safe mode `0600`
+  ignored generated state passed.
+- CI/security-control files and external branch protection remain pending.

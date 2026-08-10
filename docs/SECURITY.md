@@ -27,6 +27,10 @@ must never authorize more value or broader authority than active user policy.
 - No seed phrase, production key, public network, unrestricted sign method, raw
   calldata, unlimited approval, `personal_sign`, or typed-data method exists.
 - Startup prints a test-only warning and refuses unsafe environment values.
+- Compose uses a normal bridge because an internal network prevents the required
+  loopback host access on supported Docker setups. This permits container egress;
+  digest pinning, the fake-only service set, loopback publication, public-network
+  refusal, and a per-checkout Compose identity are the MVP compensating controls.
 
 ## Review checklist
 

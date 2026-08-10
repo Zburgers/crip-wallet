@@ -19,9 +19,18 @@ the same integration change.
 - Phase-0 ADRs, architecture, threat/security/testing guidance, roadmap, project
   state, risk register, test matrix, master/phase plans, and workstreams.
 - Repository contribution and vulnerability-reporting guidance.
+- Locked npm workspace tooling for formatting, linting, strict type checking,
+  unit/repository tests, documentation checks, and repository policy checks.
+- Digest-pinned loopback PostgreSQL and deterministic quiet Anvil services with
+  generated ignored credentials, fail-closed local configuration validation,
+  stable public-account verification, per-checkout Compose isolation, and
+  defensive lifecycle commands.
 
 ### Security
 
 - Recorded the real-funds prohibition and fail-closed local-chain boundary as
   release blockers.
 - Recorded missing branch protection as an open S0 external-setting gap.
+- Refuse non-local environment, public chain, non-loopback RPC/database hosts,
+  and invalid port configuration before local services start; generated
+  sensitive files are created at mode `0600` and Anvil key logs are suppressed.

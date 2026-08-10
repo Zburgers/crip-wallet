@@ -57,8 +57,11 @@ approval are rechecked immediately before signing.
 
 MVP is a single developer-machine topology: loopback application processes,
 loopback-published PostgreSQL, and loopback-published Anvil containers on one
-private Compose network. `.local/` holds generated disposable state and is never
-versioned. No public RPC, cloud service, testnet, or mainnet exists in scope.
+private Compose network. Each checkout derives a distinct Compose project and
+database volume identity from its canonical path; host-port conflicts fail
+instead of sharing another checkout's services. `.local/` holds generated
+disposable state and is never versioned. No public RPC, cloud service, testnet,
+or mainnet exists in scope.
 
 ## Shared contracts
 

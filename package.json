@@ -1,0 +1,40 @@
+{
+  "name": "crip-wallet",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider-neutral agent-wallet authorization control plane",
+  "engines": {
+    "node": ">=24 <27",
+    "npm": ">=11 <12"
+  },
+  "packageManager": "npm@11.17.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "adapters/*"
+  ],
+  "scripts": {
+    "check": "npm run check:static && npm run test:unit && npm run docs:check && npm run repo:check",
+    "check:static": "npm run format:check && npm run lint && npm run typecheck",
+    "docs:check": "node tooling/docs-check.mjs",
+    "repo:check": "node tooling/repo-check.mjs",
+    "format:check": "prettier --check \"**/*.{js,mjs,cjs,ts,tsx,json,yml,yaml,css}\"",
+    "format:write": "prettier --write \"**/*.{js,mjs,cjs,ts,tsx,json,yml,yaml,css}\"",
+    "lint": "eslint .",
+    "typecheck": "tsc -b --pretty false",
+    "test:unit": "node --test tests/repository/*.test.mjs && vitest run --passWithNoTests",
+    "dev:up": "bash scripts/dev-up.sh",
+    "dev:status": "bash scripts/dev-status.sh",
+    "dev:down": "bash scripts/dev-down.sh"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "eslint": "10.8.1",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.66.0",
+    "vitest": "4.1.10"
+  }
+}

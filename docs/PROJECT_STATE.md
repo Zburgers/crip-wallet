@@ -12,7 +12,7 @@ keep this as the current resume snapshot rather than an activity log.
   manifests, local databases, build output, generated junk, or secret-pattern
   findings in the current tree or two-commit history.
 - Working branch: `phase-0/governance-foundation`
-- Last integrated commit: `e6bda04` (Phase-0 clarifications and ADRs)
+- Last integrated commit: `f86fa64` (Phase-0 governance scaffold)
 
 ## Current phase and status
 
@@ -29,8 +29,10 @@ keep this as the current resume snapshot rather than an activity log.
   renames.
 - The live baseline, remote, branch, history, file tree, and GitHub safety
   settings were inspected on 2026-08-10.
-- Phase-0 clarification text and ADR/scaffold changes are in the working tree and
-  are not verified or committed yet.
+- Phase-0 tooling is implemented in the working tree: npm lock/config, static
+  checks, repository policy tests, digest-pinned Compose, fail-closed local
+  environment validation, deterministic Anvil fixture, per-checkout container
+  and database isolation, and defensive lifecycle scripts.
 
 ## Active blockers and risks
 
@@ -54,12 +56,20 @@ keep this as the current resume snapshot rather than an activity log.
 
 ## Latest test results
 
-- No pre-existing test suite existed at the verified baseline.
-- Fresh Phase-0 validation is pending after scaffold generation.
+- `npm ci`: 131 packages installed; 132 audited; 0 vulnerabilities (2026-08-10).
+- `npm run check`: exit 0; format, ESLint, strict typecheck, 13/13 Node repository
+  tests, Vitest no-TypeScript-bootstrap suite, 15 required docs, and repository
+  policy checks passed.
+- `npm audit --audit-level=high`: 0 vulnerabilities.
+- `npm run dev:up` and `npm run dev:status`: PostgreSQL 17.10 ready on loopback
+  `55432`; deterministic quiet Anvil ready on loopback `8545`, chain `0x7a69`.
+- Generated runtime/Anvil configs are Git-ignored, mode `0600`; Anvil log output
+  is empty. The Anvil config inode is created at `0600` before container startup.
+  Compose and all Bash files validate.
 
 ## Next integration step
 
-Validate and commit the clarification ADRs, then install/verify the Phase-0
-toolchain and local services. If Phase-0 gates pass, begin WS-002 using TDD.
+Commit the verified toolchain/local environment, then add and validate CI,
+secret scanning, CODEOWNERS, Dependabot configuration, and GitHub templates.
 
-Last updated: 2026-08-10; working tree based on `e6bda04`.
+Last updated: 2026-08-10; verified working tree based on `f86fa64`.
