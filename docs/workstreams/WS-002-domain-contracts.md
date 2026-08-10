@@ -52,3 +52,15 @@ through orchestrator review before WS-003 begins.
   a Node test imports the generated JavaScript through `@crip/schemas` to verify
   the actual workspace package boundary. A clean-artifact `npm run test:unit`
   rebuilt the ignored distribution before executing and passed independently.
+- The next red-first slice adds strict version-1 `wallet.read_state` and
+  `asset.transfer` intent branches plus canonical uint256 atomic strings. The 31
+  targeted cases cover the maximum uint256 boundary, floats/numbers/signs,
+  leading zeros, unknown top/nested fields, malformed CAIP-2, mixed-case EVM
+  addresses, generic calls, UTC form, and time ordering. Configured maximum
+  lifetime and idempotency payload hashing remain open, so P1-002 is not PASS.
+- Full post-slice `npm run check`: 15/15 repository tests and 41/41 schema tests;
+  the malformed-decimal negative cases also prove validation returns failure
+  instead of throwing from uint256 conversion.
+- Oversized atomic strings are rejected by bounded lexical comparison without
+  `BigInt` conversion; the non-authoritative display hint is capped at 160
+  characters and documented as excluded from authorization/math.

@@ -89,6 +89,6 @@ set `PASS`.
 | ID | Check | Status | Evidence |
 |---|---|---|---|
 | P1-001 | Canonical enforcement-grade schema and ordering | PASS | 2026-08-10: Vitest 1 file, 10 tests; all five exact uppercase values, all 25 order pairs, and Node built-package import |
-| P1-002 | Strict versioned intent and atomic money | PLANNED | None |
+| P1-002 | Strict versioned intent and atomic money | PLANNED | Structural schema slice: 31 Vitest cases pass; configured lifetime and idempotency hashing remain |
 | P1-003 | Deterministic policy and lifecycle | PLANNED | None |
 | P1-004 | Atomic PostgreSQL reservation invariant | BLOCKED | Requires frozen WS-002 schemas |

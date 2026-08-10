@@ -222,4 +222,6 @@ test("imports the built schemas workspace through its package boundary", async (
     schemas.meetsMinimumEnforcementGrade("SIGNER", "CONTROL_PLANE"),
     true,
   );
+  assert.equal(schemas.atomicUnitSchema.parse("500000"), "500000");
+  assert.equal(typeof schemas.canonicalIntentSchema.safeParse, "function");
 });

@@ -29,6 +29,9 @@ the same integration change.
   actions, CODEOWNERS, Dependabot configuration, and contribution templates.
 - Canonical Zod enforcement-grade contract with the single uppercase enum and
   exhaustive strongest-to-weakest minimum-grade comparison tests.
+- Strict version-1 MVP intent union and canonical uint256 atomic-unit contract;
+  unknown fields, generic calls, floating values, malformed identifiers,
+  noncanonical addresses, and invalid time ordering are rejected.
 
 ### Security
 

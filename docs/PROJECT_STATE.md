@@ -37,7 +37,8 @@ keep this as the current resume snapshot rather than an activity log.
   implemented locally; protected remote execution remains unevidenced until the
   branch is pushed and reviewed.
 - WS-002 has begun without any signing surface: the canonical enforcement-grade
-  schema and complete minimum-grade order are implemented and unit tested.
+  schema/order plus strict read/transfer intent and uint256 atomic-money leaf
+  contracts are implemented and unit tested.
 
 ## Active blockers and risks
 
@@ -63,7 +64,7 @@ keep this as the current resume snapshot rather than an activity log.
 
 - `npm ci`: 131 packages installed; 132 audited; 0 vulnerabilities (2026-08-10).
 - `npm run check`: exit 0; format, ESLint, strict typecheck, 15/15 Node repository
-  tests, 10/10 schema Vitest tests, 15 required docs, and repository policy
+  tests, 41/41 schema Vitest tests, 15 required docs, and repository policy
   checks passed. The Node suite imports `@crip/schemas` through its built package
   export rather than a source-only test path. `npm run test:unit` recreated the
   removed `packages/schemas/dist/` artifact before passing, proving the documented
@@ -84,7 +85,8 @@ keep this as the current resume snapshot rather than an activity log.
 
 ## Next integration step
 
-Add the strict versioned canonical intent and atomic-money schemas red-first;
-continue to withhold policy/ledger consumers until shared contracts stabilize.
+Add configured maximum-lifetime validation and canonical idempotency payload
+hashing, then continue the remaining policy/decision/lifecycle leaf contracts;
+withhold ledger consumers until shared contracts stabilize.
 
 Last updated: 2026-08-10; verified working tree based on `af932d6`.
