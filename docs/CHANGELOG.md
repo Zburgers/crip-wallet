@@ -25,6 +25,8 @@ the same integration change.
   generated ignored credentials, fail-closed local configuration validation,
   stable public-account verification, per-checkout Compose isolation, and
   defensive lifecycle commands.
+- Least-privilege CI and full-history Gitleaks workflows with commit-pinned
+  actions, CODEOWNERS, Dependabot configuration, and contribution templates.
 
 ### Security
 

@@ -33,6 +33,9 @@ keep this as the current resume snapshot rather than an activity log.
   checks, repository policy tests, digest-pinned Compose, fail-closed local
   environment validation, deterministic Anvil fixture, per-checkout container
   and database isolation, and defensive lifecycle scripts.
+- CI, secret scanning, CODEOWNERS, Dependabot, and contribution templates are
+  implemented locally; protected remote execution remains unevidenced until the
+  branch is pushed and reviewed.
 
 ## Active blockers and risks
 
@@ -50,14 +53,14 @@ keep this as the current resume snapshot rather than an activity log.
 
 ## Active workstreams
 
-- WS-001 governance and toolchain — active.
+- WS-001 governance and toolchain — local implementation verified; remote gates open.
 - WS-002 canonical domain contracts — queued after Phase-0 validation.
 - WS-003 atomic ledger proof — blocked on WS-002 schemas and migrations.
 
 ## Latest test results
 
 - `npm ci`: 131 packages installed; 132 audited; 0 vulnerabilities (2026-08-10).
-- `npm run check`: exit 0; format, ESLint, strict typecheck, 13/13 Node repository
+- `npm run check`: exit 0; format, ESLint, strict typecheck, 14/14 Node repository
   tests, Vitest no-TypeScript-bootstrap suite, 15 required docs, and repository
   policy checks passed.
 - `npm audit --audit-level=high`: 0 vulnerabilities.
@@ -66,10 +69,18 @@ keep this as the current resume snapshot rather than an activity log.
 - Generated runtime/Anvil configs are Git-ignored, mode `0600`; Anvil log output
   is empty. The Anvil config inode is created at `0600` before container startup.
   Compose and all Bash files validate.
+- Gitleaks 8.30.1 image digest `sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`
+  ran `gitleaks git --config .gitleaks.toml --no-banner --redact --verbose .`
+  at `da1451c`: five revisions, no leaks. The index was exported with
+  `git checkout-index --all --prefix=<ignored-snapshot>/` and scanned with the
+  same image using `gitleaks dir`: no leaks. Ignored `.local/` runtime state was
+  excluded because it contains the generated disposable database password by
+  design; no scan result for that directory is claimed.
 
 ## Next integration step
 
-Commit the verified toolchain/local environment, then add and validate CI,
-secret scanning, CODEOWNERS, Dependabot configuration, and GitHub templates.
+Commit the verified CI/security-control slice, close the local Phase-0 review,
+then begin WS-002 canonical domain contracts while remote S0 controls remain
+explicitly open.
 
-Last updated: 2026-08-10; verified working tree based on `f86fa64`.
+Last updated: 2026-08-10; verified working tree based on `da1451c`.

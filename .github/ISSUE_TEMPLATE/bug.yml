@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a reproducible Crip Wallet defect without secrets or wallet material.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include keys, seed phrases, credentials, private transaction data, or real-funds details.
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What happened, including redacted logs and exact commands where safe.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Use only disposable local Anvil accounts and fake assets.
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Commit SHA
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: This report contains no secret, production wallet material, or real-funds instructions.
+          required: true

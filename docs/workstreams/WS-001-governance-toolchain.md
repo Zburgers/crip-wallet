@@ -54,9 +54,14 @@ tooling/local environment; CI/security controls; verification/state.
 - Governance/plan scaffold commit `f86fa64`.
 - 2026-08-10 working tree: `npm ci` installed 131 packages and audited 132 with
   zero vulnerabilities; `npm run check` passed formatting, lint, strict types,
-  13/13 Node repository tests, empty-bootstrap Vitest, 15 docs, and repo checks.
+  14/14 Node repository tests, empty-bootstrap Vitest, 15 docs, and repo checks.
 - Compose validation, Bash syntax, `npm audit --audit-level=high`, stop/start,
   PostgreSQL 17.10 readiness, deterministic quiet Anvil chain `0x7a69`, zero
   Anvil log lines, per-checkout Compose isolation, and race-safe mode `0600`
   ignored generated state passed.
-- CI/security-control files and external branch protection remain pending.
+- Least-privilege CI and full-history Gitleaks workflows use current exact action
+  SHAs; 14/14 repository tests enforce the controls. Gitleaks 8.30.1 scanned all
+  five committed revisions at `da1451c` and the exported staged candidate with
+  no leaks; `docs/PROJECT_STATE.md` records the exact digest and commands.
+- Protected remote workflow execution and external branch protection remain
+  pending; neither is represented as local evidence.

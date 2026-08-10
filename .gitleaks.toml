@@ -1,0 +1,4 @@
+title = "Crip Wallet secret scanning"
+
+[extend]
+useDefault = true

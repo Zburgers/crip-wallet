@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.13.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run static, test, documentation, and repository checks
+        run: npm run check
+
+      - name: Audit production and development dependencies
+        run: npm audit --audit-level=high
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+        env:
+          CRIP_POSTGRES_PASSWORD: ci-configuration-only
+
+      - name: Exercise isolated local fake-money services
+        run: npm run dev:up
+
+      - name: Verify generated-state permissions and quiet signer logs
+        run: |
+          test "$(stat -c %a .local/runtime.env)" = 600
+          test "$(stat -c %a .local/anvil/anvil.json)" = 600
+          readonly REPO_ROOT="$(pwd -P)"
+          source scripts/local-context.sh
+          test "$(docker compose --project-name "$CRIP_COMPOSE_PROJECT" --env-file .local/runtime.env logs --no-color anvil 2>&1 | wc -l)" -eq 0
+
+      - name: Stop local services
+        if: always()
+        run: npm run dev:down

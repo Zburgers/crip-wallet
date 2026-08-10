@@ -1,0 +1,11 @@
+* @Zburgers
+
+/docs/PRODUCT_SPEC.md @Zburgers
+/docs/decisions/ @Zburgers
+/docs/SECURITY.md @Zburgers
+/SECURITY.md @Zburgers
+/.github/workflows/ @Zburgers
+/packages/policy-engine/ @Zburgers
+/packages/budget-ledger/ @Zburgers
+/packages/transaction-pipeline/ @Zburgers
+/adapters/ @Zburgers

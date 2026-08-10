@@ -173,3 +173,37 @@ test("example environment is local-only and contains no assigned secret", () => 
   assert.match(example, /^CRIP_POSTGRES_PORT=55432$/m);
   assert.doesNotMatch(example, /(?:PASSWORD|SECRET|TOKEN|PRIVATE_KEY)=\S+/);
 });
+
+test("defines least-privilege CI and secret-scanning controls", () => {
+  for (const path of [
+    ".github/workflows/ci.yml",
+    ".github/workflows/secret-scan.yml",
+    ".github/CODEOWNERS",
+    ".github/dependabot.yml",
+    ".gitleaks.toml",
+  ]) {
+    assert.equal(
+      existsSync(new URL(`../../${path}`, import.meta.url)),
+      true,
+      `missing ${path}`,
+    );
+  }
+
+  for (const path of [
+    ".github/workflows/ci.yml",
+    ".github/workflows/secret-scan.yml",
+  ]) {
+    const workflow = read(path);
+    assert.match(workflow, /^permissions:\n {2}contents: read$/m);
+    assert.doesNotMatch(workflow, /pull_request_target/);
+    assert.doesNotMatch(
+      workflow,
+      /^\s*uses: [^\n]+@(?![a-f0-9]{40}(?:\s|#|$))/m,
+    );
+    assert.match(workflow, /persist-credentials: false/);
+    assert.match(workflow, /timeout-minutes:/);
+  }
+
+  assert.match(read(".github/workflows/secret-scan.yml"), /fetch-depth: 0/);
+  assert.match(read(".gitleaks.toml"), /useDefault = true/);
+});
