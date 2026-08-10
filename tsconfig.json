@@ -23,5 +23,5 @@
     "tooling/**/*.mjs",
     "tests/**/*.mjs"
   ],
-  "references": []
+  "references": [{ "path": "packages/schemas" }]
 }

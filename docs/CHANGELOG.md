@@ -27,6 +27,8 @@ the same integration change.
   defensive lifecycle commands.
 - Least-privilege CI and full-history Gitleaks workflows with commit-pinned
   actions, CODEOWNERS, Dependabot configuration, and contribution templates.
+- Canonical Zod enforcement-grade contract with the single uppercase enum and
+  exhaustive strongest-to-weakest minimum-grade comparison tests.
 
 ### Security
 

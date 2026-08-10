@@ -83,3 +83,12 @@ set `PASS`.
 | P0-006 | CI and secret-scan workflow | LOCAL PASS | 2026-08-10: action-pin/permission tests and Gitleaks 8.30.1 five-commit scan pass; remote run pending |
 | P0-007 | Protected main branch | FAIL | GitHub API: branch not protected on 2026-08-10 |
 | P0-008 | License decision | BLOCKED | ADR-0013 requires owner decision |
+
+## Phase-1 evidence
+
+| ID | Check | Status | Evidence |
+|---|---|---|---|
+| P1-001 | Canonical enforcement-grade schema and ordering | PASS | 2026-08-10: Vitest 1 file, 10 tests; all five exact uppercase values, all 25 order pairs, and Node built-package import |
+| P1-002 | Strict versioned intent and atomic money | PLANNED | None |
+| P1-003 | Deterministic policy and lifecycle | PLANNED | None |
+| P1-004 | Atomic PostgreSQL reservation invariant | BLOCKED | Requires frozen WS-002 schemas |

@@ -207,3 +207,19 @@ test("defines least-privilege CI and secret-scanning controls", () => {
   assert.match(read(".github/workflows/secret-scan.yml"), /fetch-depth: 0/);
   assert.match(read(".gitleaks.toml"), /useDefault = true/);
 });
+
+test("imports the built schemas workspace through its package boundary", async () => {
+  const schemas = await import("@crip/schemas");
+
+  assert.deepEqual(schemas.ENFORCEMENT_GRADES, [
+    "ONCHAIN",
+    "SIGNER",
+    "CONTROL_PLANE",
+    "ADVISORY",
+    "UNSUPPORTED",
+  ]);
+  assert.equal(
+    schemas.meetsMinimumEnforcementGrade("SIGNER", "CONTROL_PLANE"),
+    true,
+  );
+});

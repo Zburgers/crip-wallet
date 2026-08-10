@@ -12,12 +12,12 @@ keep this as the current resume snapshot rather than an activity log.
   manifests, local databases, build output, generated junk, or secret-pattern
   findings in the current tree or two-commit history.
 - Working branch: `phase-0/governance-foundation`
-- Last integrated commit: `f86fa64` (Phase-0 governance scaffold)
+- Last integrated commit: `af932d6` (local CI and repository security gates)
 
 ## Current phase and status
 
-- Phase: 0 — governance and repository foundation
-- Status: IN PROGRESS
+- Phase: 1 — canonical core and local ledger (WS-002 contracts started)
+- Status: IN PROGRESS; Phase-0 local controls verified, external S0 remains open
 - Gate S0: OPEN; GitHub secret scanning and push protection are enabled, but
   `main` has no branch protection and Dependabot security updates are disabled.
 - Gates S1/S2: BLOCKED because no authorization core or local vertical slice has
@@ -36,6 +36,8 @@ keep this as the current resume snapshot rather than an activity log.
 - CI, secret scanning, CODEOWNERS, Dependabot, and contribution templates are
   implemented locally; protected remote execution remains unevidenced until the
   branch is pushed and reviewed.
+- WS-002 has begun without any signing surface: the canonical enforcement-grade
+  schema and complete minimum-grade order are implemented and unit tested.
 
 ## Active blockers and risks
 
@@ -54,15 +56,18 @@ keep this as the current resume snapshot rather than an activity log.
 ## Active workstreams
 
 - WS-001 governance and toolchain — local implementation verified; remote gates open.
-- WS-002 canonical domain contracts — queued after Phase-0 validation.
+- WS-002 canonical domain contracts — active; enforcement-grade leaf accepted locally.
 - WS-003 atomic ledger proof — blocked on WS-002 schemas and migrations.
 
 ## Latest test results
 
 - `npm ci`: 131 packages installed; 132 audited; 0 vulnerabilities (2026-08-10).
-- `npm run check`: exit 0; format, ESLint, strict typecheck, 14/14 Node repository
-  tests, Vitest no-TypeScript-bootstrap suite, 15 required docs, and repository
-  policy checks passed.
+- `npm run check`: exit 0; format, ESLint, strict typecheck, 15/15 Node repository
+  tests, 10/10 schema Vitest tests, 15 required docs, and repository policy
+  checks passed. The Node suite imports `@crip/schemas` through its built package
+  export rather than a source-only test path. `npm run test:unit` recreated the
+  removed `packages/schemas/dist/` artifact before passing, proving the documented
+  standalone command has its own build prerequisite.
 - `npm audit --audit-level=high`: 0 vulnerabilities.
 - `npm run dev:up` and `npm run dev:status`: PostgreSQL 17.10 ready on loopback
   `55432`; deterministic quiet Anvil ready on loopback `8545`, chain `0x7a69`.
@@ -79,8 +84,7 @@ keep this as the current resume snapshot rather than an activity log.
 
 ## Next integration step
 
-Commit the verified CI/security-control slice, close the local Phase-0 review,
-then begin WS-002 canonical domain contracts while remote S0 controls remain
-explicitly open.
+Add the strict versioned canonical intent and atomic-money schemas red-first;
+continue to withhold policy/ledger consumers until shared contracts stabilize.
 
-Last updated: 2026-08-10; verified working tree based on `da1451c`.
+Last updated: 2026-08-10; verified working tree based on `af932d6`.

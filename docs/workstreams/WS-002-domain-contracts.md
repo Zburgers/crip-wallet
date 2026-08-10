@@ -3,7 +3,7 @@
 ## Objective and status
 
 Publish strict provider-neutral schemas, deterministic policy/lifecycle semantics,
-and envelope hash vectors without persistence or signing. Status: QUEUED.
+and envelope hash vectors without persistence or signing. Status: ACTIVE.
 
 ## Governing sections
 
@@ -44,4 +44,11 @@ through orchestrator review before WS-003 begins.
 
 ## Evidence
 
-None yet; file existence or generated types will not count as acceptance.
+- `packages/schemas/src/enforcement-grade.ts` defines the only accepted enum and
+  minimum-grade comparison; no coercion or alias path exists.
+- 2026-08-10 targeted Vitest: 1 file, 10 tests passed, covering all five exact
+  values, eight invalid representations, and all 25 actual/required order pairs.
+- Full `npm run check` passed with 15 repository tests plus the 10 schema tests;
+  a Node test imports the generated JavaScript through `@crip/schemas` to verify
+  the actual workspace package boundary. A clean-artifact `npm run test:unit`
+  rebuilt the ignored distribution before executing and passed independently.
