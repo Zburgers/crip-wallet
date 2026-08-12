@@ -18,6 +18,21 @@ export const evmAddressSchema = z.string().regex(/^0x[a-f0-9]{40}$/);
 
 const utcSecondSchema = z.iso.datetime({ offset: false, precision: 0 });
 
+/** Positive whole-second lifetime supplied by the local policy configuration. */
+export const maximumLifetimeSecondsSchema = z.number().int().positive().safe();
+
+/** Configuration required to validate the maximum lifetime of an intent. */
+export const intentValidationConfigSchema = z.strictObject({
+  maximumLifetimeSeconds: maximumLifetimeSecondsSchema,
+});
+
+export type IntentValidationConfig = z.infer<
+  typeof intentValidationConfigSchema
+>;
+
+/** Conservative local default; callers should provide their active policy limit. */
+export const DEFAULT_MAXIMUM_INTENT_LIFETIME_SECONDS = 900;
+
 const metadataSchema = z.strictObject({
   externalReference: z.string().min(1).max(256).optional(),
 });
@@ -65,8 +80,7 @@ const transferIntentSchema = z.strictObject({
   }),
 });
 
-/** Strict versioned MVP intent union; no raw calldata or generic call branch exists. */
-export const canonicalIntentSchema = z
+const canonicalIntentBaseSchema = z
   .discriminatedUnion("action", [readStateIntentSchema, transferIntentSchema])
   .superRefine((intent, context) => {
     if (Date.parse(intent.notBefore) >= Date.parse(intent.expiresAt)) {
@@ -77,6 +91,29 @@ export const canonicalIntentSchema = z
       });
     }
   });
+
+/** Strict versioned MVP intent schema with a configured lifetime ceiling. */
+export const createCanonicalIntentSchema = (config: IntentValidationConfig) => {
+  const { maximumLifetimeSeconds } = intentValidationConfigSchema.parse(config);
+
+  return canonicalIntentBaseSchema.superRefine((intent, context) => {
+    const lifetimeSeconds =
+      (Date.parse(intent.expiresAt) - Date.parse(intent.notBefore)) / 1000;
+
+    if (lifetimeSeconds > maximumLifetimeSeconds) {
+      context.addIssue({
+        code: "custom",
+        message: `intent lifetime must not exceed ${maximumLifetimeSeconds} seconds`,
+        path: ["expiresAt"],
+      });
+    }
+  });
+};
+
+/** Strict MVP intent schema using the conservative local default lifetime. */
+export const canonicalIntentSchema = createCanonicalIntentSchema({
+  maximumLifetimeSeconds: DEFAULT_MAXIMUM_INTENT_LIFETIME_SECONDS,
+});
 
 /** A validated provider-neutral MVP intent. */
 export type CanonicalIntent = z.infer<typeof canonicalIntentSchema>;

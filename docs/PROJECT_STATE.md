@@ -12,7 +12,8 @@ keep this as the current resume snapshot rather than an activity log.
   manifests, local databases, build output, generated junk, or secret-pattern
   findings in the current tree or two-commit history.
 - Working branch: `phase-0/governance-foundation`
-- Last integrated implementation commit: `6aa8382` (strict canonical intent contract)
+- Last integrated implementation: focused P1-002 schema contract change
+  (strict canonical intent, configured lifetime, and idempotency hashing)
 
 ## Current phase and status
 
@@ -38,7 +39,8 @@ keep this as the current resume snapshot rather than an activity log.
   branch is pushed and reviewed.
 - WS-002 has begun without any signing surface: the canonical enforcement-grade
   schema/order plus strict read/transfer intent and uint256 atomic-money leaf
-  contracts are implemented and unit tested.
+  contracts are implemented and unit tested. P1-002 now also validates the
+  configured lifetime ceiling and exports canonical idempotency payload hashing.
 
 ## Active blockers and risks
 
@@ -57,18 +59,23 @@ keep this as the current resume snapshot rather than an activity log.
 ## Active workstreams
 
 - WS-001 governance and toolchain — local implementation verified; remote gates open.
-- WS-002 canonical domain contracts — active; grade and structural intent/money leaves accepted locally.
+- WS-002 canonical domain contracts — active; P1-001 and P1-002 accepted locally.
 - WS-003 atomic ledger proof — blocked on WS-002 schemas and migrations.
 
 ## Latest test results
 
 - `npm ci`: 133 packages installed; 135 audited; 0 vulnerabilities (2026-08-10).
-- `npm run check`: exit 0; format, ESLint, strict typecheck, 15/15 Node repository
-  tests, 41/41 schema Vitest tests, 15 required docs, and repository policy
-  checks passed. The Node suite imports `@crip/schemas` through its built package
-  export rather than a source-only test path. `npm run test:unit` recreated the
-  removed `packages/schemas/dist/` artifact before passing, proving the documented
-  standalone command has its own build prerequisite.
+- Prior `npm run check`: exit 0; format, ESLint, strict typecheck, 15/15 Node
+  repository tests, 41/41 schema Vitest tests, 15 required docs, and repository
+  policy checks passed. The Node suite imports `@crip/schemas` through its built
+  package export rather than a source-only test path. `npm run test:unit`
+  recreated the removed `packages/schemas/dist/` artifact before passing,
+  proving the documented standalone command has its own build prerequisite.
+- 2026-08-13 focused verification: schema build, strict typecheck, formatting,
+  and the two targeted schema files passed (37 tests). Full `npm run check`
+  passed with 15 repository tests and 47 schema tests; documentation checks,
+  repository policy checks, and `npm audit --audit-level=high` also passed with
+  zero vulnerabilities.
 - `npm audit --audit-level=high`: 0 vulnerabilities.
 - `npm run dev:up` and `npm run dev:status`: PostgreSQL 17.10 ready on loopback
   `55432`; deterministic quiet Anvil ready on loopback `8545`, chain `0x7a69`.
@@ -85,8 +92,7 @@ keep this as the current resume snapshot rather than an activity log.
 
 ## Next integration step
 
-Add configured maximum-lifetime validation and canonical idempotency payload
-hashing, then continue the remaining policy/decision/lifecycle leaf contracts;
-withhold ledger consumers until shared contracts stabilize.
+Continue the remaining policy/decision/lifecycle leaf contracts; withhold ledger
+consumers until the complete WS-002 shared contract set stabilizes.
 
-Last updated: 2026-08-10; verified working tree based on `af932d6`.
+Last updated: 2026-08-13; verified working tree for the focused P1-002 change.

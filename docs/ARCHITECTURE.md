@@ -34,7 +34,7 @@ Cross-cutting: OpenTelemetry, structured redacted logs, pause/revocation fences
 | Component | Responsibility | Must not do |
 |---|---|---|
 | Interface adapters | Authenticate, validate public schemas, rate-limit, map errors | Decide policy or expose raw signing |
-| Intent service | Canonicalize typed, idempotent provider-neutral intent | Trust hints as asset identity |
+| Intent service | Validate configured lifetime, canonicalize typed provider-neutral intent, and derive its versioned idempotency payload hash | Trust hints as asset identity |
 | Policy engine | Deterministic immutable-policy evaluation | Call LLMs or silently coerce unknown values |
 | Budget ledger | Atomic reservations and balanced reconciliation | Use floating point or infer timeout failure |
 | Transaction pipeline | Construct, decode, verify, simulate, finalize candidates | Accept raw calldata for MVP transfers |
@@ -67,8 +67,11 @@ or mainnet exists in scope.
 
 Intent, policy, decisions, enforcement grades, lifecycle, envelope, adapter
 manifest, audit event, telemetry names, errors, database IDs, MCP schemas, and
-CLI JSON are shared. Changes require affected-workstream review, schema tests,
-compatibility notes, and an ADR when security-relevant.
+CLI JSON are shared. Intent lifetime configuration is expressed in positive
+whole seconds. Idempotency records use the `@crip/schemas` versioned canonical
+payload hash; this is distinct from the later envelope Keccak hash and does not
+authorize, sign, or broadcast anything. Changes require affected-workstream
+review, schema tests, compatibility notes, and an ADR when security-relevant.
 
 ## Decision map
 

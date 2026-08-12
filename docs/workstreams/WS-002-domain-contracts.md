@@ -64,3 +64,14 @@ through orchestrator review before WS-003 begins.
 - Oversized atomic strings are rejected by bounded lexical comparison without
   `BigInt` conversion; the non-authoritative display hint is capped at 160
   characters and documented as excluded from authorization/math.
+- 2026-08-13 P1-002 targeted Vitest: 2 files, 37 tests passed. The new cases
+  prove a configured `maximumLifetimeSeconds` bound (including the exact
+  boundary), recursive canonical key ordering, stable hash-vector output,
+  insertion-order independence, and payload-change sensitivity. The exported
+  `hashIdempotencyPayload` uses SHA-256 over a versioned domain separator plus
+  canonical JSON; it is an idempotency identity helper, not an envelope or
+  signing hash.
+- The default schema remains bounded to a conservative 900-second local intent
+  lifetime, while consumers can create a strict schema with their configured
+  positive whole-second limit. No persistence, authorization, signing, RPC, or
+  real-money path was added.

@@ -32,6 +32,9 @@ the same integration change.
 - Strict version-1 MVP intent union and canonical uint256 atomic-unit contract;
   unknown fields, generic calls, floating values, malformed identifiers,
   noncanonical addresses, and invalid time ordering are rejected.
+- Configured maximum intent-lifetime validation and versioned canonical
+  idempotency payload hashing for the strict Phase-1 schema contract. The hash
+  is local/provider-neutral identity metadata and is not a signing primitive.
 
 ### Security
 

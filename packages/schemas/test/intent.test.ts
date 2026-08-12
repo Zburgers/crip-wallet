@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   atomicUnitSchema,
   canonicalIntentSchema,
+  createCanonicalIntentSchema,
   positiveAtomicUnitSchema,
 } from "../src/index.js";
 
@@ -147,5 +148,31 @@ describe("canonicalIntentSchema", () => {
     ],
   ])("rejects %s", (_name, candidate) => {
     expect(canonicalIntentSchema.safeParse(candidate).success).toBe(false);
+  });
+
+  it("rejects an intent whose lifetime exceeds the configured maximum", () => {
+    const configuredSchema = createCanonicalIntentSchema({
+      maximumLifetimeSeconds: 600,
+    });
+
+    expect(
+      configuredSchema.safeParse({
+        ...transferIntent,
+        expiresAt: "2026-08-10T12:10:01Z",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts an intent at the configured maximum lifetime", () => {
+    const configuredSchema = createCanonicalIntentSchema({
+      maximumLifetimeSeconds: 600,
+    });
+
+    expect(
+      configuredSchema.parse({
+        ...transferIntent,
+        expiresAt: "2026-08-10T12:10:00Z",
+      }),
+    ).toEqual(transferIntent);
   });
 });

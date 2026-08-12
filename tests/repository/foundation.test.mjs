@@ -224,4 +224,10 @@ test("imports the built schemas workspace through its package boundary", async (
   );
   assert.equal(schemas.atomicUnitSchema.parse("500000"), "500000");
   assert.equal(typeof schemas.canonicalIntentSchema.safeParse, "function");
+  assert.equal(typeof schemas.createCanonicalIntentSchema, "function");
+  assert.equal(typeof schemas.hashIdempotencyPayload, "function");
+  assert.equal(
+    schemas.canonicalizeIdempotencyPayload({ b: 2, a: 1 }),
+    '{"a":1,"b":2}',
+  );
 });
