@@ -64,6 +64,16 @@ the same integration change.
   pinned `fast-check` 4.9.0, and canonical seed/worker/barrier parameters.
   Missing database or concurrency suites fail closed instead of reporting empty
   passes.
+- Completed the local Phase-1 concurrency/idempotency proof: request-bound
+  replay/conflict fencing, concurrent worker retry coalescing, response-loss
+  replay, real PostgreSQL serialization retry, typed full-event audit hashes,
+  authorization/broadcast evidence fencing, operation-to-budget binding,
+  migration runner recovery, generated accounting/event sequences, and
+  ambiguous-funds retention. Shared contracts are frozen locally; Gate S1 remains
+  blocked and Phase 2 has not started.
+- Added explicit pending-to-verified broadcast evidence reconciliation, immutable
+  evidence rows, row-bound database audit hashing, legacy-audit fail-closed
+  migration handling, and immutable operation/budget ownership bindings.
 
 ### Security
 

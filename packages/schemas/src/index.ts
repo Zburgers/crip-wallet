@@ -71,7 +71,9 @@ export {
 } from "./adapter.js";
 export {
   AUDIT_EVENT_TYPES,
+  auditDataSchema,
   auditEventSchema,
+  type AuditData,
   type AuditEvent,
 } from "./audit.js";
 export {

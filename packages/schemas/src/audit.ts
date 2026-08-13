@@ -17,6 +17,8 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "policy.indeterminate",
   "budget.reservation.created",
   "budget.reservation.authorized",
+  "budget.reservation.broadcast",
+  "budget.reservation.evidence.verified",
   "budget.reservation.released",
   "budget.reservation.expired",
   "budget.reservation.finalized",
@@ -41,10 +43,12 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "adapter.error",
 ] as const);
 
-const auditDataSchema = z.strictObject({
+export const auditDataSchema = z.strictObject({
   reservationId: canonicalIdentifierSchema.optional(),
   assetAddress: evmAddressSchema.optional(),
   amountAtomic: atomicUnitSchema.optional(),
+  nonce: atomicUnitSchema.optional(),
+  verificationStatus: z.enum(["PENDING", "VERIFIED"]).optional(),
   state: lifecycleStateSchema.optional(),
   previousState: lifecycleStateSchema.optional(),
   reasonCode: canonicalIdentifierSchema.optional(),
@@ -62,6 +66,8 @@ const auditDataSchema = z.strictObject({
     .optional(),
   adapterId: canonicalIdentifierSchema.optional(),
   chainId: chainIdSchema.optional(),
+  proofReference: z.string().min(1).max(256).optional(),
+  reason: z.string().min(1).max(512).optional(),
 });
 
 /** Correlated, typed, append-only audit event payload. */
@@ -69,6 +75,7 @@ export const auditEventSchema = z.strictObject({
   eventId: canonicalIdentifierSchema,
   eventType: z.enum(AUDIT_EVENT_TYPES),
   occurredAt: utcSecondSchema,
+  sequence: z.number().int().positive().safe(),
   actorType: z.enum([
     "owner",
     "agent",
@@ -92,3 +99,4 @@ export const auditEventSchema = z.strictObject({
 });
 
 export type AuditEvent = z.infer<typeof auditEventSchema>;
+export type AuditData = z.infer<typeof auditDataSchema>;

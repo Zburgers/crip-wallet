@@ -37,7 +37,8 @@ The commands are wired through `tooling/phase1-test-gate.mjs` and use the
 canonical values in `tooling/phase1-test-parameters.mjs`:
 
 - `npm run test:invariants`: fast-check lifecycle seed `2026081301`, malformed
-  input seed `2026081302`, and `512` runs per property.
+  input seed `2026081302`, event-sequence seed `2026081303`, and `512` runs per
+  property.
 - `npm run test:concurrency`: `4` workers, `32` rounds, a
   `ready/start/release` barrier, and a `5000 ms` barrier timeout.
 - `npm run test:db`: loopback PostgreSQL at `127.0.0.1:55432`, database

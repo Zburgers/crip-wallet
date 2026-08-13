@@ -50,6 +50,12 @@ export interface ReservationSnapshot {
   proofReference: string | null;
 }
 
+export interface BroadcastEvidence {
+  transactionHash: string;
+  nonce: string;
+  receiptReference: string;
+}
+
 export interface ReserveRequest {
   reservationId: string;
   budgetId: string;
@@ -94,6 +100,16 @@ type BudgetRow = {
   version: string;
 };
 
+type BroadcastEvidenceRow = {
+  transaction_hash: string;
+  nonce: string;
+  receipt_reference: string;
+  verification_source: string;
+  verification_status: "PENDING" | "VERIFIED";
+  verified_at: Date | string | null;
+  verified_by: string | null;
+};
+
 const validDate = (value: string | Date): Date => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.valueOf()))
@@ -111,6 +127,23 @@ const parseAtomic = (value: string, positive = false): string => {
       "amount must be a canonical uint256 decimal string",
     );
   return parsed.data;
+};
+
+const parseBroadcastEvidence = (
+  evidence: BroadcastEvidence,
+): BroadcastEvidence => {
+  if (!/^0x[0-9a-f]{64}$/.test(evidence.transactionHash))
+    throw new LedgerError(
+      "INVALID_BROADCAST_EVIDENCE",
+      "broadcast evidence requires a canonical transaction hash",
+    );
+  const nonce = parseAtomic(evidence.nonce);
+  if (!/^receipt:[A-Za-z0-9._:/-]+$/.test(evidence.receiptReference))
+    throw new LedgerError(
+      "INVALID_BROADCAST_EVIDENCE",
+      "broadcast evidence requires a canonical receipt reference",
+    );
+  return { ...evidence, nonce };
 };
 
 const toIso = (value: Date | string): string =>
@@ -187,6 +220,25 @@ const getReservation = async (
   return mapReservation(row);
 };
 
+const getBroadcastEvidence = async (
+  client: PoolClient,
+  reservationId: string,
+): Promise<BroadcastEvidenceRow> => {
+  const result = await client.query<BroadcastEvidenceRow>(
+    `SELECT transaction_hash, nonce, receipt_reference, verification_source,
+            verification_status, verified_at, verified_by
+     FROM reservation_broadcast_evidence WHERE reservation_id = $1`,
+    [reservationId],
+  );
+  const row = result.rows[0];
+  if (!row)
+    throw new LedgerError(
+      "INVALID_BROADCAST_EVIDENCE",
+      `verified broadcast evidence is missing: ${reservationId}`,
+    );
+  return row;
+};
+
 export const getBudget = async (
   pool: Pool,
   budgetId: string,
@@ -211,10 +263,25 @@ export const reserveBudget = async (
 ): Promise<ReservationSnapshot> => {
   const amount = parseAtomic(request.amountAtomic, true);
   const expiresAt = validDate(request.expiresAt);
-  const payloadHash = hashIdempotencyPayload(request.idempotencyPayload);
+  const payloadHash = hashIdempotencyPayload({
+    request: {
+      amountAtomic: amount,
+      budgetId: request.budgetId,
+      expiresAt: expiresAt.toISOString(),
+      operationId: request.operationId,
+    },
+    payload: request.idempotencyPayload,
+  });
   return withSerializableTransaction(pool, async (client) => {
-    const operation = await client.query<{ intent_id: string }>(
-      "SELECT intent_id FROM operations WHERE operation_id = $1",
+    const operation = await client.query<{
+      intent_id: string;
+      agent_id: string;
+      wallet_id: string;
+      policy_id: string;
+      policy_version: number;
+    }>(
+      `SELECT intent_id, agent_id, wallet_id, policy_id, policy_version
+       FROM operations WHERE operation_id = $1`,
       [request.operationId],
     );
     const operationRow = operation.rows[0];
@@ -222,6 +289,33 @@ export const reserveBudget = async (
       throw new LedgerError(
         "RESERVATION_NOT_FOUND",
         `operation not found: ${request.operationId}`,
+      );
+
+    const budgetBinding = await client.query<{
+      agent_id: string;
+      wallet_id: string;
+      policy_id: string;
+      policy_version: number;
+    }>(
+      `SELECT agent_id, wallet_id, policy_id, policy_version
+       FROM budget_accounts WHERE budget_id = $1`,
+      [request.budgetId],
+    );
+    const budgetBindingRow = budgetBinding.rows[0];
+    if (!budgetBindingRow)
+      throw new LedgerError(
+        "RESERVATION_NOT_FOUND",
+        `budget not found: ${request.budgetId}`,
+      );
+    if (
+      operationRow.agent_id !== budgetBindingRow.agent_id ||
+      operationRow.wallet_id !== budgetBindingRow.wallet_id ||
+      operationRow.policy_id !== budgetBindingRow.policy_id ||
+      operationRow.policy_version !== budgetBindingRow.policy_version
+    )
+      throw new LedgerError(
+        "BUDGET_BINDING_MISMATCH",
+        `operation and budget do not share the same owner, wallet, policy, and version`,
       );
 
     const insertedIdempotency = await client.query<{
@@ -334,6 +428,126 @@ const writeTransitionAudit = async (
     data: eventData(reservation, data),
   });
 
+export const authorizeReservation = (
+  pool: Pool,
+  input: TransitionInput,
+): Promise<ReservationSnapshot> =>
+  transitionReservation(pool, input, async (client, reservation) => {
+    if (reservation.status === "AUTHORIZED") return reservation;
+    if (reservation.status !== "HELD")
+      throw new LedgerError(
+        "INVALID_RESERVATION_TRANSITION",
+        `cannot authorize ${reservation.status} reservation`,
+      );
+    await client.query(
+      "UPDATE budget_reservations SET status = 'AUTHORIZED', updated_at = now() WHERE reservation_id = $1",
+      [reservation.reservationId],
+    );
+    const next = { ...reservation, status: "AUTHORIZED" as const };
+    await writeTransitionAudit(
+      client,
+      input.audit,
+      "budget.reservation.authorized",
+      next,
+    );
+    return next;
+  });
+
+export const markReservationBroadcast = (
+  pool: Pool,
+  input: TransitionInput & { evidence: BroadcastEvidence },
+): Promise<ReservationSnapshot> =>
+  transitionReservation(pool, input, async (client, reservation) => {
+    if (reservation.status === "BROADCAST") {
+      await getBroadcastEvidence(client, reservation.reservationId);
+      return reservation;
+    }
+    if (reservation.status !== "AUTHORIZED")
+      throw new LedgerError(
+        "INVALID_RESERVATION_TRANSITION",
+        `cannot mark ${reservation.status} reservation as broadcast`,
+      );
+    if (input.audit.actorType !== "adapter")
+      throw new LedgerError(
+        "INVALID_BROADCAST_EVIDENCE",
+        "only an adapter actor may record verified broadcast evidence",
+      );
+    const evidence = parseBroadcastEvidence(input.evidence);
+    await client.query(
+      `INSERT INTO reservation_broadcast_evidence
+       (reservation_id, transaction_hash, nonce, receipt_reference, verification_source)
+       VALUES ($1, $2, $3::numeric, $4, $5)`,
+      [
+        reservation.reservationId,
+        evidence.transactionHash,
+        evidence.nonce,
+        evidence.receiptReference,
+        input.audit.actorId,
+      ],
+    );
+    await client.query(
+      "UPDATE budget_reservations SET status = 'BROADCAST', updated_at = now() WHERE reservation_id = $1",
+      [reservation.reservationId],
+    );
+    const next = { ...reservation, status: "BROADCAST" as const };
+    await writeTransitionAudit(
+      client,
+      input.audit,
+      "budget.reservation.broadcast",
+      next,
+      {
+        transactionHash: evidence.transactionHash,
+        nonce: evidence.nonce,
+        proofReference: evidence.receiptReference,
+      },
+    );
+    return next;
+  });
+
+export const verifyBroadcastEvidence = (
+  pool: Pool,
+  input: TransitionInput,
+): Promise<ReservationSnapshot> =>
+  transitionReservation(pool, input, async (client, reservation) => {
+    if (reservation.status !== "BROADCAST")
+      throw new LedgerError(
+        "INVALID_RESERVATION_TRANSITION",
+        `cannot verify evidence for ${reservation.status} reservation`,
+      );
+    if (
+      input.audit.actorType !== "worker" ||
+      !input.audit.actorId.startsWith("reconciler:")
+    )
+      throw new LedgerError(
+        "INVALID_BROADCAST_EVIDENCE",
+        "only a reconciler worker may verify broadcast evidence",
+      );
+    const evidence = await getBroadcastEvidence(
+      client,
+      reservation.reservationId,
+    );
+    if (evidence.verification_status === "VERIFIED") return reservation;
+    await client.query(
+      `UPDATE reservation_broadcast_evidence
+       SET verification_status = 'VERIFIED', verified_at = now(), verified_by = $1
+       WHERE reservation_id = $2`,
+      [input.audit.actorId, reservation.reservationId],
+    );
+    await writeTransitionAudit(
+      client,
+      input.audit,
+      "budget.reservation.evidence.verified",
+      reservation,
+      {
+        transactionHash: evidence.transaction_hash,
+        nonce: String(evidence.nonce),
+        proofReference: evidence.receipt_reference,
+        verificationStatus: "VERIFIED",
+      },
+    );
+    return reservation;
+  });
+
 export const releaseReservation = (
   pool: Pool,
   input: TransitionInput,
@@ -410,14 +624,24 @@ export const finalizeReservation = (
   const actualSpend = parseAtomic(input.actualSpendAtomic);
   return transitionReservation(pool, input, async (client, reservation) => {
     if (reservation.status === "FINALIZED") return reservation;
-    if (
-      !["HELD", "AUTHORIZED", "BROADCAST", "DISPUTED"].includes(
-        reservation.status,
-      )
-    )
+    if (reservation.status !== "BROADCAST")
       throw new LedgerError(
         "INVALID_RESERVATION_TRANSITION",
         `cannot finalize ${reservation.status} reservation`,
+      );
+    const evidence = await getBroadcastEvidence(
+      client,
+      reservation.reservationId,
+    );
+    if (evidence.verification_status !== "VERIFIED")
+      throw new LedgerError(
+        "INVALID_BROADCAST_EVIDENCE",
+        "finalization requires independently verified broadcast evidence",
+      );
+    if (input.proofReference !== evidence.receipt_reference)
+      throw new LedgerError(
+        "INVALID_BROADCAST_EVIDENCE",
+        "finalization proof must match the verified broadcast receipt",
       );
     if (BigInt(actualSpend) > BigInt(reservation.amountAtomic))
       throw new LedgerError(
@@ -447,7 +671,11 @@ export const finalizeReservation = (
       input.audit,
       "budget.reservation.finalized",
       next,
-      { proofReference: input.proofReference },
+      {
+        proofReference: input.proofReference,
+        transactionHash: evidence.transaction_hash,
+        nonce: String(evidence.nonce),
+      },
     );
     return next;
   });

@@ -1,12 +1,16 @@
 export { applyMigrations } from "./migrate.js";
 export {
+  authorizeReservation,
   disputeReservation,
   expireReservation,
   finalizeReservation,
   getBudget,
+  markReservationBroadcast,
+  verifyBroadcastEvidence,
   releaseReservation,
   reserveBudget,
   type BudgetResult,
+  type BroadcastEvidence,
   type BudgetSnapshot,
   type ReservationSnapshot,
   type ReservationStatus,
@@ -14,6 +18,8 @@ export {
 } from "./ledger.js";
 export {
   appendAuditEvent,
+  computeAuditEventHash,
+  verifyAuditEvent,
   type AuditContext,
   type AuditEventInput,
   type AuditEventType,

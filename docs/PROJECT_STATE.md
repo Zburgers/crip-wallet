@@ -12,14 +12,13 @@ keep this as the current resume snapshot rather than an activity log.
   manifests, local databases, build output, generated junk, or secret-pattern
   findings in the current tree or two-commit history.
 - Working branch: `phase-0/governance-foundation`
-- Last integrated implementation: WS-002 canonical contract slice
-  (policy/decision, lifecycle, envelope serialization/hash, adapter, audit,
-  telemetry, errors, and deterministic policy evaluation)
+- Last integrated implementation: local WS-003 ledger proof and WS-002 contract
+  freeze (pending remote CI/protected-review acceptance)
 
 ## Current phase and status
 
-- Phase: 1 — canonical core and local ledger (WS-002 contracts started)
-- Status: IN PROGRESS; Phase-0 local controls verified, external S0 remains open
+- Phase: 1 — canonical core and local ledger (WS-002/WS-003 locally frozen)
+- Status: LOCAL IMPLEMENTATION COMPLETE; Phase-0 external controls and Gate S1 remain open
 - Gate S0: OPEN; GitHub secret scanning and push protection are enabled, but
   `main` has no branch protection and Dependabot security updates are disabled.
 - Gate S1: BLOCKED pending approval replay, revocation/pause fencing, integrated
@@ -40,7 +39,7 @@ keep this as the current resume snapshot rather than an activity log.
 - CI, secret scanning, CODEOWNERS, Dependabot, and contribution templates are
   implemented locally; protected remote execution remains unevidenced until the
   branch is pushed and reviewed.
-- WS-002 has begun without any signing surface: the canonical enforcement-grade
+- WS-002 is locally frozen without any signing surface: the canonical enforcement-grade
   schema/order plus strict read/transfer intent and uint256 atomic-money leaf
   contracts are implemented and unit tested. P1-002 now also validates the
   configured lifetime ceiling and exports canonical idempotency payload hashing;
@@ -49,15 +48,20 @@ keep this as the current resume snapshot rather than an activity log.
   is deterministic, combination-tested, and fail-closed.
 - WS-003 now has forward PostgreSQL migrations, immutable/append-only tables,
   one-client serializable transactions with bounded 40001 retry, balanced
-  reservation lifecycle methods, idempotency conflict protection, and a
-  transactional audit package. No signing or broadcast surface was added.
+  reservation lifecycle methods including evidence-gated authorization and
+  broadcast fencing, request-bound idempotency conflict protection, typed full-
+  event audit verification with a database hash guard, and local proofs for
+  worker response-loss retry, real serialization retry, migration recovery,
+  ambiguous-funds retention, generated event sequences, and binding guards. No
+  signing or autonomous execution surface was added.
 
 ## Active blockers and risks
 
 - External: protect `main` with required CI/review rules and enable Dependabot
   security updates after CI lands.
 - Product decision: license selection (ADR-0013).
-- Security: all implementation proof gates remain open; no autonomous execution
+- Security: local implementation proof gates are green, but external security
+  acceptance and execution-boundary gates remain open; no autonomous execution
   or signing surface may be exposed.
 
 ## Open decisions
@@ -69,10 +73,11 @@ keep this as the current resume snapshot rather than an activity log.
 ## Active workstreams
 
 - WS-001 governance and toolchain — local implementation verified; remote gates open.
-- WS-002 canonical domain contracts — active; P1-001, P1-002, and P1-003
-  accepted locally.
+- WS-002 canonical domain contracts — locally frozen; P1-001, P1-002, and
+  P1-003 accepted locally pending Gate S1/protected review.
 - WS-003 atomic ledger proof — local implementation/evidence complete; Gate S1
-  remains blocked on the wider authorization proof and independent review.
+  remains blocked on approval/revocation/pause fencing, integrated execution
+  recovery, protected CI, and external acceptance of the review.
 
 ## Latest test results
 
@@ -83,19 +88,19 @@ keep this as the current resume snapshot rather than an activity log.
   package export rather than a source-only test path. `npm run test:unit`
   recreated the removed `packages/schemas/dist/` artifact before passing,
   proving the documented standalone command has its own build prerequisite.
-- 2026-08-13 focused verification: schema build, strict typecheck, formatting,
-  and the targeted contract files passed (64 WS-002 contract/hash/evaluation
-  tests plus the existing schema tests). Full `npm run check`
-  passed with 16 repository tests and 111 Vitest tests; documentation checks,
-  repository policy checks, and `npm audit --audit-level=high` also passed with
-  zero vulnerabilities.
-- `npm audit --audit-level=high`: 0 vulnerabilities.
-- 2026-08-13 WS-003 verification: `npm run test:db` passed 11/11,
-  `npm run test:concurrency` passed 1/1 across 32 rounds and 4 workers, and
-  `npm run test:invariants` passed 6/6. Static format, lint, and strict
-  typecheck passed; full unit/repository suite passed 117 Vitest + 16 Node
-  tests. Final concurrency rows were allocated=100, available=10, reserved=90,
-  finalized_spend=0 with three audit rows.
+- 2026-08-13 local Phase-1 verification: schema build, strict typecheck,
+  formatting, and the focused contract files passed. `npm run test:db` passed
+  25/25, including pending/verified evidence-gated broadcast/finalization, full
+  row-bound audit hash verification, request-bound idempotency, worker
+  response-loss replay, real serialization retry, concurrent migration runners,
+  legacy-audit fail-closed recovery, DDL rollback, and budget binding. `npm run
+  test:concurrency` passed 1/1 across 32 rounds and 4 workers;
+  `npm run test:invariants` passed 7/7 with seeds 2026081301, 2026081302, and
+  2026081303 (512 generated runs). Final concurrency rows were allocated=100,
+  available=10, reserved=90, finalized_spend=0 with three audit rows.
+- The full unit/repository suite passed 118 Vitest tests across 8 files plus 16
+  Node tests. `npm audit --audit-level=high` reported 0 vulnerabilities on the
+  current lockfile.
 - `npm run dev:up` and `npm run dev:status`: PostgreSQL 17.10 ready on loopback
   `55432`; deterministic quiet Anvil ready on loopback `8545`, chain `0x7a69`.
 - Generated runtime/Anvil configs are Git-ignored, mode `0600`; Anvil log output
@@ -111,8 +116,9 @@ keep this as the current resume snapshot rather than an activity log.
 
 ## Next integration step
 
-Withhold transaction/authorization consumers until WS-002 review completes and
-Gate S1's approval, revocation/pause, integrated, and independent-review
-evidence exists.
+Keep shared WS-002 contracts frozen and withhold Phase-2 transaction,
+authorization, signing, and provider consumers until Gate S1's approval,
+revocation/pause, integrated recovery, protected-CI, and independent-review
+evidence is accepted.
 
-Last updated: 2026-08-13; verified working tree for the WS-002 contract slice.
+Last updated: 2026-08-13; verified working tree for the local Phase-1 review and freeze.

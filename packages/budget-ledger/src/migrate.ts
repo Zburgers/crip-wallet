@@ -17,7 +17,11 @@ if (!migrationDirectory)
 const migrationFiles = (): string[] =>
   readdirSync(migrationDirectory)
     .filter((file) => /^\d+_[a-z0-9_-]+\.sql$/.test(file))
-    .sort();
+    .sort((left, right) => {
+      const leftNumber = Number(left.split("_", 1)[0]);
+      const rightNumber = Number(right.split("_", 1)[0]);
+      return leftNumber - rightNumber || left.localeCompare(right);
+    });
 
 const checksum = (sql: string): string =>
   `sha256:${createHash("sha256").update(sql, "utf8").digest("hex")}`;
@@ -25,7 +29,12 @@ const checksum = (sql: string): string =>
 /** Apply ordered SQL migrations; there is intentionally no down-migration API. */
 export const applyMigrations = async (pool: Pool): Promise<void> => {
   const client = await pool.connect();
+  let migrationLockAcquired = false;
   try {
+    await client.query(
+      "SELECT pg_advisory_lock(hashtext('crip-wallet-forward-migrations'))",
+    );
+    migrationLockAcquired = true;
     await client.query("BEGIN");
     await client.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -34,9 +43,6 @@ export const applyMigrations = async (pool: Pool): Promise<void> => {
         applied_at timestamptz NOT NULL DEFAULT now()
       )
     `);
-    await client.query(
-      "SELECT pg_advisory_xact_lock(hashtext('crip-wallet-forward-migrations'))",
-    );
     await client.query("COMMIT");
 
     for (const filename of migrationFiles()) {
@@ -68,6 +74,15 @@ export const applyMigrations = async (pool: Pool): Promise<void> => {
     }
     throw error;
   } finally {
+    if (migrationLockAcquired) {
+      try {
+        await client.query(
+          "SELECT pg_advisory_unlock(hashtext('crip-wallet-forward-migrations'))",
+        );
+      } catch {
+        // Preserve the migration result; the client is released immediately.
+      }
+    }
     client.release();
   }
 };

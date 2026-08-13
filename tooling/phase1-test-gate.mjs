@@ -83,7 +83,7 @@ const relativeFiles = files.map((file) => relative(repoRoot, file));
 log(`Phase-1 ${definition.label} gate: ${relativeFiles.join(", ")}`);
 if (gate === "invariants") {
   log(
-    `Property parameters: lifecycleSeed=${PHASE1_TEST_PARAMETERS.invariants.lifecycleSeed} malformedInputSeed=${PHASE1_TEST_PARAMETERS.invariants.malformedInputSeed} numRuns=${PHASE1_TEST_PARAMETERS.invariants.numRuns}`,
+    `Property parameters: lifecycleSeed=${PHASE1_TEST_PARAMETERS.invariants.lifecycleSeed} malformedInputSeed=${PHASE1_TEST_PARAMETERS.invariants.malformedInputSeed} eventSequenceSeed=${PHASE1_TEST_PARAMETERS.invariants.eventSequenceSeed} numRuns=${PHASE1_TEST_PARAMETERS.invariants.numRuns}`,
   );
 }
 if (gate === "concurrency") {

@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 
+import {
+  auditDataSchema,
+  auditEventSchema,
+  canonicalizeIdempotencyPayload,
+  type AuditEvent,
+} from "@crip/schemas";
 import type { PoolClient } from "pg";
 
 export type AuditActorType =
@@ -7,6 +13,8 @@ export type AuditActorType =
 export type AuditEventType =
   | "budget.reservation.created"
   | "budget.reservation.authorized"
+  | "budget.reservation.broadcast"
+  | "budget.reservation.evidence.verified"
   | "budget.reservation.released"
   | "budget.reservation.expired"
   | "budget.reservation.finalized"
@@ -31,11 +39,58 @@ export interface AuditEventInput extends AuditContext {
   data: Record<string, unknown>;
 }
 
+const AUDIT_EVENT_HASH_DOMAIN = "crip/audit-event/v1\u0000";
+
+const canonicalizeAuditEvent = (event: AuditEvent): string =>
+  canonicalizeIdempotencyPayload(
+    JSON.parse(
+      JSON.stringify({
+        eventId: event.eventId,
+        eventType: event.eventType,
+        occurredAt: event.occurredAt,
+        sequence: event.sequence,
+        actorType: event.actorType,
+        actorId: event.actorId,
+        ownerId: event.ownerId,
+        agentId: event.agentId,
+        walletId: event.walletId,
+        intentId: event.intentId,
+        operationId: event.operationId,
+        policyId: event.policyId,
+        policyVersion: event.policyVersion,
+        traceId: event.traceId,
+        data: event.data,
+        previousEventHash: event.previousEventHash,
+      }),
+    ) as Parameters<typeof canonicalizeIdempotencyPayload>[0],
+  );
+
+const hashAuditEvent = (event: AuditEvent): string => {
+  const canonicalPayload = canonicalizeAuditEvent(event);
+  return `0x${createHash("sha256")
+    .update(AUDIT_EVENT_HASH_DOMAIN, "utf8")
+    .update(canonicalPayload, "utf8")
+    .digest("hex")}`;
+};
+
+export const computeAuditEventHash = (event: AuditEvent): string =>
+  hashAuditEvent(auditEventSchema.parse(event));
+
+/** Parse and verify one persisted event, including its timestamp and chain link. */
+export const verifyAuditEvent = (value: unknown): AuditEvent => {
+  const event = auditEventSchema.parse(value);
+  const expectedHash = hashAuditEvent(event);
+  if (event.eventHash !== expectedHash)
+    throw new Error(`audit event hash mismatch: ${event.eventId}`);
+  return event;
+};
+
 /** Append one audit event on the caller's transaction client. */
 export const appendAuditEvent = async (
   client: PoolClient,
   input: AuditEventInput,
 ): Promise<void> => {
+  const data = auditDataSchema.parse(input.data);
   const previous = await client.query<{
     sequence_no: string;
     event_hash: string;
@@ -47,9 +102,11 @@ export const appendAuditEvent = async (
   const sequence =
     (previous.rows[0] ? Number(previous.rows[0].sequence_no) : 0) + 1;
   const previousEventHash = previous.rows[0]?.event_hash ?? null;
-  const canonical = JSON.stringify({
+  const occurredAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const unverifiedEvent = auditEventSchema.parse({
     eventId: input.eventId,
     eventType: input.eventType,
+    occurredAt,
     sequence,
     actorType: input.actorType,
     actorId: input.actorId,
@@ -61,15 +118,17 @@ export const appendAuditEvent = async (
     policyId: input.policyId,
     policyVersion: input.policyVersion,
     traceId: input.traceId,
-    data: input.data,
+    data,
     previousEventHash,
+    eventHash: `0x${"0".repeat(64)}`,
   });
-  const eventHash = `0x${createHash("sha256").update(canonical).digest("hex")}`;
+  const canonicalPayload = canonicalizeAuditEvent(unverifiedEvent);
+  const eventHash = computeAuditEventHash(unverifiedEvent);
   await client.query(
     `INSERT INTO audit_events
       (event_id, event_type, sequence_no, actor_type, actor_id, owner_id, agent_id, wallet_id,
-       intent_id, operation_id, policy_id, policy_version, trace_id, data, previous_event_hash, event_hash)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16)`,
+       intent_id, operation_id, policy_id, policy_version, trace_id, data, previous_event_hash, event_hash, occurred_at, canonical_payload)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, $18)`,
     [
       input.eventId,
       input.eventType,
@@ -84,9 +143,11 @@ export const appendAuditEvent = async (
       input.policyId,
       input.policyVersion,
       input.traceId,
-      JSON.stringify(input.data),
+      JSON.stringify(data),
       previousEventHash,
       eventHash,
+      occurredAt,
+      canonicalPayload,
     ],
   );
 };

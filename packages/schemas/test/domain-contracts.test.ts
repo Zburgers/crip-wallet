@@ -177,6 +177,7 @@ const auditEvent = {
   eventId: "evt_local_001",
   eventType: "budget.reservation.created",
   occurredAt: "2026-08-06T15:01:05Z",
+  sequence: 1,
   actorType: "system",
   actorId: "policy-engine",
   ownerId: "owner_local_01",
@@ -429,6 +430,12 @@ describe("adapter manifest contract", () => {
 describe("audit, telemetry, and stable error contracts", () => {
   it("accepts a correlated append-only audit event", () => {
     expect(auditEventSchema.parse(auditEvent)).toEqual(auditEvent);
+    expect(
+      auditEventSchema.parse({
+        ...auditEvent,
+        eventType: "budget.reservation.broadcast",
+      }).eventType,
+    ).toBe("budget.reservation.broadcast");
   });
 
   it.each([

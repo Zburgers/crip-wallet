@@ -45,7 +45,7 @@ claims. Database queries are parameterized and transactions use one client.
 | Gate | Current evidence | Status |
 |---|---|---|
 | S0 repository safety | GitHub secret scanning and push protection enabled; lockfile and locally validated CI/Gitleaks controls present; protected remote execution and branch protection absent | OPEN |
-| S1 core invariant proof | No implementation or proof suite at verified baseline | BLOCKED |
+| S1 core invariant proof | WS-002/WS-003 local implementation and proof suites pass; approval replay, revocation/pause fencing, authenticated adapter/reconciler integration, protected CI, and external review acceptance remain | BLOCKED |
 | S2 local E2E | No vertical slice yet | BLOCKED |
 | S3 testnet readiness | Out of MVP; requires stronger adapter/auth and review | NOT STARTED |
 | S4 real-value canary | Prohibited without explicit owner approval | OUT OF SCOPE |

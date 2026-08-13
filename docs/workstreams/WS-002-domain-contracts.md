@@ -3,9 +3,9 @@
 ## Objective and status
 
 Publish strict provider-neutral schemas, deterministic lifecycle semantics, and
-envelope hash vectors without persistence or signing. Status: ACTIVE — canonical
-contract and hash-vector slice implemented; policy-rule evaluation remains
-implemented and tested.
+envelope hash vectors without persistence or signing. Status: FROZEN LOCALLY —
+canonical contracts, policy evaluation, lifecycle properties, and hash vectors
+reviewed; no Phase-2 consumer may alter them without an additive contract review.
 
 ## Governing sections
 
@@ -102,3 +102,8 @@ through orchestrator review before WS-003 begins.
   passed. The immutable adjacency table is checked over every canonical state
   pair, malformed state inputs fail closed, terminal/exceptional recovery edges
   remain explicit, and invalid transitions raise the stable transition error.
+- The audit contract now includes the explicit
+  `budget.reservation.broadcast` event and typed `reason`, `proofReference`, and
+  `nonce` data fields required by the WS-003 reservation lifecycle. Shared
+  contracts are frozen locally pending Gate S1 and protected review; additive
+  changes require a new contract review.
