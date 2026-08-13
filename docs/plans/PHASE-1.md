@@ -19,9 +19,15 @@ balanced ledger transitions, idempotency, and transactional audit events.
 - P1-002 is complete in the focused schema change: strict version-1 read/transfer
   intents and canonical uint256 money now have configured maximum-lifetime
   validation plus a versioned, domain-separated canonical idempotency payload
-  hash. The remaining policy, decision, lifecycle, envelope, adapter, audit, and
-  error contracts are still open.
-- Tasks 3 through 11 have not started. No persistence, authorization, signing,
+  hash. The remaining WS-002 contract groups are now implemented and covered by
+  strict schema and transition tests; policy-rule evaluation remains a separate
+  follow-up task.
+- Task 3 is complete: execution envelopes now have deterministic versioned
+  serialization, Keccak hash vectors, and approval-binding tests. Task 4 is
+  complete: deterministic policy evaluation covers all allowlists, budgets,
+  validity, fee ceilings, enforcement grades, modes, combinations, and
+  fail-closed indeterminate input. Tasks 5 through 11 have not started. No
+  persistence, authorization, signing,
   broadcast, or autonomous execution path exists.
 
 ## Ordered tasks

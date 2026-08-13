@@ -35,6 +35,17 @@ the same integration change.
 - Configured maximum intent-lifetime validation and versioned canonical
   idempotency payload hashing for the strict Phase-1 schema contract. The hash
   is local/provider-neutral identity metadata and is not a signing primitive.
+- Strict WS-002 policy, policy-decision, lifecycle transition, execution-envelope,
+  adapter capability, audit-event, telemetry identifier, and stable-error
+  contracts. Unknown fields, floating values, unsupported enum values, and
+  invalid lifecycle transitions are rejected at the schema boundary.
+- Added canonical execution-envelope UTF-8 serialization and versioned,
+  domain-separated Keccak-256 hashing with a golden vector and approval-binding
+  checks. Added the pinned `@noble/hashes` 2.3.0 dependency for Keccak-256.
+- Added deterministic policy evaluation for allowlists, budgets, fee ceilings,
+  validity, enforcement grades, execution modes, combined failures, and
+  fail-closed indeterminate input through the built `@crip/policy-engine`
+  package boundary.
 
 ### Security
 

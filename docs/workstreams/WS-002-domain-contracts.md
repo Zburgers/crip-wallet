@@ -2,8 +2,10 @@
 
 ## Objective and status
 
-Publish strict provider-neutral schemas, deterministic policy/lifecycle semantics,
-and envelope hash vectors without persistence or signing. Status: ACTIVE.
+Publish strict provider-neutral schemas, deterministic lifecycle semantics, and
+envelope hash vectors without persistence or signing. Status: ACTIVE — canonical
+contract and hash-vector slice implemented; policy-rule evaluation remains
+implemented and tested.
 
 ## Governing sections
 
@@ -75,3 +77,24 @@ through orchestrator review before WS-003 begins.
   lifetime, while consumers can create a strict schema with their configured
   positive whole-second limit. No persistence, authorization, signing, RPC, or
   real-money path was added.
+- 2026-08-13 WS-002 contract slice targeted Vitest: 1 file, 39 tests passed.
+  Policy, policy-decision, lifecycle state/transition, execution-envelope,
+  adapter capability, audit-event, telemetry identifier, and stable-error
+  contracts reject unknown fields, floats, unsupported values, and invalid
+  lifecycle transitions. The focused implementation builds through the real
+  `@crip/schemas` package boundary and adds no persistence, signing, RPC, or
+  real-money path.
+- 2026-08-13 envelope serialization targeted Vitest: 1 file, 8 tests passed.
+  Canonical UTF-8 bytes sort object keys recursively, the hash preimage uses
+  `crip/execution-envelope` plus `v1`, and the Keccak-256 vector is
+  `0xc3ff8d861b4122480cd59825b1d772816597bbc7219bf67ba2a43a4ba0e59e5f`.
+  Bound-field changes diverge and an approval bound to the old derived hash is
+  rejected. `@noble/hashes` is pinned at 2.3.0; no persistence, signing, RPC,
+  or real-money path was added.
+- 2026-08-13 deterministic policy evaluation targeted Vitest: 1 file, 17
+  tests passed. The evaluator covers chain, asset, recipient, action, per-
+  transaction and total budgets, native fee ceilings, policy/intent validity,
+  enforcement-grade minimums, read-only/review-required/autonomous modes,
+  multi-rule combinations, and malformed/indeterminate input. Any
+  indeterminate input returns `DENY` with an explicit `input.contract` rule;
+  the evaluator never returns an indeterminate final decision.

@@ -231,3 +231,13 @@ test("imports the built schemas workspace through its package boundary", async (
     '{"a":1,"b":2}',
   );
 });
+
+test("imports the built policy engine workspace through its package boundary", async () => {
+  const policyEngine = await import("@crip/policy-engine");
+
+  assert.equal(typeof policyEngine.evaluatePolicy, "function");
+  assert.equal(
+    typeof policyEngine.policyEvaluationContextSchema.safeParse,
+    "function",
+  );
+});

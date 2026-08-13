@@ -12,8 +12,9 @@ keep this as the current resume snapshot rather than an activity log.
   manifests, local databases, build output, generated junk, or secret-pattern
   findings in the current tree or two-commit history.
 - Working branch: `phase-0/governance-foundation`
-- Last integrated implementation: focused P1-002 schema contract change
-  (strict canonical intent, configured lifetime, and idempotency hashing)
+- Last integrated implementation: WS-002 canonical contract slice
+  (policy/decision, lifecycle, envelope serialization/hash, adapter, audit,
+  telemetry, errors, and deterministic policy evaluation)
 
 ## Current phase and status
 
@@ -40,7 +41,10 @@ keep this as the current resume snapshot rather than an activity log.
 - WS-002 has begun without any signing surface: the canonical enforcement-grade
   schema/order plus strict read/transfer intent and uint256 atomic-money leaf
   contracts are implemented and unit tested. P1-002 now also validates the
-  configured lifetime ceiling and exports canonical idempotency payload hashing.
+  configured lifetime ceiling and exports canonical idempotency payload hashing;
+  the remaining WS-002 contract groups are strict, transition-tested, and the
+  envelope hash vector is deterministic and approval-bound. Policy evaluation
+  is deterministic, combination-tested, and fail-closed.
 
 ## Active blockers and risks
 
@@ -59,7 +63,8 @@ keep this as the current resume snapshot rather than an activity log.
 ## Active workstreams
 
 - WS-001 governance and toolchain — local implementation verified; remote gates open.
-- WS-002 canonical domain contracts — active; P1-001 and P1-002 accepted locally.
+- WS-002 canonical domain contracts — active; P1-001, P1-002, and P1-003
+  accepted locally.
 - WS-003 atomic ledger proof — blocked on WS-002 schemas and migrations.
 
 ## Latest test results
@@ -72,8 +77,9 @@ keep this as the current resume snapshot rather than an activity log.
   recreated the removed `packages/schemas/dist/` artifact before passing,
   proving the documented standalone command has its own build prerequisite.
 - 2026-08-13 focused verification: schema build, strict typecheck, formatting,
-  and the two targeted schema files passed (37 tests). Full `npm run check`
-  passed with 15 repository tests and 47 schema tests; documentation checks,
+  and the targeted contract files passed (64 WS-002 contract/hash/evaluation
+  tests plus the existing schema tests). Full `npm run check`
+  passed with 16 repository tests and 111 Vitest tests; documentation checks,
   repository policy checks, and `npm audit --audit-level=high` also passed with
   zero vulnerabilities.
 - `npm audit --audit-level=high`: 0 vulnerabilities.
@@ -92,7 +98,7 @@ keep this as the current resume snapshot rather than an activity log.
 
 ## Next integration step
 
-Continue the remaining policy/decision/lifecycle leaf contracts; withhold ledger
-consumers until the complete WS-002 shared contract set stabilizes.
+Withhold ledger consumers until the complete WS-002 shared contract set
+stabilizes and receives orchestrator review.
 
-Last updated: 2026-08-13; verified working tree for the focused P1-002 change.
+Last updated: 2026-08-13; verified working tree for the WS-002 contract slice.
