@@ -46,6 +46,9 @@ the same integration change.
   validity, enforcement grades, execution modes, combined failures, and
   fail-closed indeterminate input through the built `@crip/policy-engine`
   package boundary.
+- Added a deeply immutable lifecycle adjacency table with exhaustive canonical
+  state-pair and malformed-input property tests covering terminal and exceptional
+  recovery states.
 
 ### Security
 

@@ -36,7 +36,7 @@ No consumer may independently change them.
 
 Golden JSON/hash fixtures, positive/negative schema tests, deterministic policy
 tables, grade comparison, all invalid transitions, no-float tests, idempotency
-payload hashing, and fast-check transition properties pass with exact seeds.
+payload hashing, and exhaustive lifecycle transition properties pass.
 
 ## Deliverables, integration, documentation, commits
 
@@ -98,3 +98,7 @@ through orchestrator review before WS-003 begins.
   multi-rule combinations, and malformed/indeterminate input. Any
   indeterminate input returns `DENY` with an explicit `input.contract` rule;
   the evaluator never returns an indeterminate final decision.
+- 2026-08-13 lifecycle transition properties targeted Vitest: 1 file, 4 tests
+  passed. The immutable adjacency table is checked over every canonical state
+  pair, malformed state inputs fail closed, terminal/exceptional recovery edges
+  remain explicit, and invalid transitions raise the stable transition error.

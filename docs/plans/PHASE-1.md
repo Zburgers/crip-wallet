@@ -26,7 +26,8 @@ balanced ledger transitions, idempotency, and transactional audit events.
   serialization, Keccak hash vectors, and approval-binding tests. Task 4 is
   complete: deterministic policy evaluation covers all allowlists, budgets,
   validity, fee ceilings, enforcement grades, modes, combinations, and
-  fail-closed indeterminate input. Tasks 5 through 11 have not started. No
+  fail-closed indeterminate input. Tasks 1 through 5 are complete; Tasks 6
+  through 11 have not started. No
   persistence, authorization, signing,
   broadcast, or autonomous execution path exists.
 
@@ -39,7 +40,7 @@ balanced ledger transitions, idempotency, and transactional audit events.
    and error schemas one TDD commit each; reject unknown fields and floats.
 3. Add canonical serialization and Keccak hash-vector fixtures for ADR-0003.
 4. Add deterministic policy rule table and combination tests; unknown is deny.
-5. Add explicit lifecycle transition table with invalid-transition property tests.
+5. Add explicit lifecycle transition table with invalid-transition property tests. **COMPLETE**
 6. Add forward SQL migration for policies, intents, operations, budget accounts,
    reservations, idempotency, decisions, envelopes, and audit events.
 7. Add one-client serializable transaction helper with bounded `40001` retry.

@@ -119,8 +119,15 @@ const transitionTable: Readonly<
   REVALIDATION_REQUIRED: ["VALIDATED", "EXPIRED", "DENIED", "REVOKED"],
 };
 
+const immutableTransitionTable = Object.fromEntries(
+  Object.entries(transitionTable).map(([state, nextStates]) => [
+    state,
+    Object.freeze([...nextStates]),
+  ]),
+) as Record<LifecycleState, readonly LifecycleState[]>;
+
 /** Explicit state adjacency table; consumers must not invent transitions. */
-export const LIFECYCLE_TRANSITIONS = Object.freeze(transitionTable);
+export const LIFECYCLE_TRANSITIONS = Object.freeze(immutableTransitionTable);
 
 /** Strict transition contract that only accepts entries from the table. */
 export const lifecycleTransitionSchema = z
@@ -128,7 +135,7 @@ export const lifecycleTransitionSchema = z
     from: lifecycleStateSchema,
     to: lifecycleStateSchema,
   })
-  .refine(({ from, to }) => transitionTable[from].includes(to), {
+  .refine(({ from, to }) => LIFECYCLE_TRANSITIONS[from].includes(to), {
     message: "transition is not allowed by the lifecycle table",
   });
 
@@ -155,7 +162,7 @@ export const isValidLifecycleTransition = (
   return (
     parsedFrom.success &&
     parsedTo.success &&
-    transitionTable[parsedFrom.data].includes(parsedTo.data)
+    LIFECYCLE_TRANSITIONS[parsedFrom.data].includes(parsedTo.data)
   );
 };
 
@@ -169,7 +176,7 @@ export const transitionLifecycleState = (
   if (!parsedFrom.success || !parsedTo.success) {
     throw new TypeError("lifecycle states must be canonical values");
   }
-  if (!transitionTable[parsedFrom.data].includes(parsedTo.data)) {
+  if (!LIFECYCLE_TRANSITIONS[parsedFrom.data].includes(parsedTo.data)) {
     throw new LifecycleTransitionError(parsedFrom.data, parsedTo.data);
   }
   return parsedTo.data;
