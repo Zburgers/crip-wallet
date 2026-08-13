@@ -49,6 +49,22 @@ export {
   type LifecycleState,
 } from "./lifecycle.js";
 export {
+  ENVELOPE_HASH_DOMAIN,
+  ENVELOPE_HASH_VERSION,
+  attachEnvelopeHash,
+  buildEnvelopeHashPreimage,
+  canonicalExecutionEnvelopeSchema,
+  canonicalizeExecutionEnvelope,
+  createEnvelopeApprovalBinding,
+  executionEnvelopeSchema,
+  envelopeApprovalBindingSchema,
+  hashExecutionEnvelope,
+  isEnvelopeApprovalBound,
+  serializeExecutionEnvelope,
+  type EnvelopeApprovalBinding,
+  type ExecutionEnvelope,
+} from "./envelope.js";
+export {
   adapterCapabilityManifestSchema,
   capabilityManifestSchema,
   type AdapterCapabilityManifest,

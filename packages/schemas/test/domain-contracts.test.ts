@@ -6,6 +6,7 @@ import {
   LIFECYCLE_TRANSITIONS,
   adapterCapabilityManifestSchema,
   auditEventSchema,
+  canonicalExecutionEnvelopeSchema,
   errorCodeSchema,
   stableErrorSchema,
   isValidLifecycleTransition,
@@ -92,6 +93,59 @@ const policyDecision = {
   requiredEnforcement: { budget: "CONTROL_PLANE" },
   decisionHash:
     "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+} as const;
+
+const envelope = {
+  schemaVersion: "1.0",
+  envelopeId: "env_local_001",
+  revision: 1,
+  intentId: "int_local_001",
+  intentHash:
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  agentId: "agent_local_01",
+  walletId: "wallet_local_01",
+  adapterId: "local-anvil",
+  adapterVersion: "0.1.0",
+  chainId: "eip155:31337",
+  from: "0x3333333333333333333333333333333333333333",
+  to: "0x1111111111111111111111111111111111111111",
+  value: "0",
+  calldata: "0xa9059cbb",
+  decodedFunction: "erc20.transfer",
+  decodedArguments: {
+    assetAddress: "0x1111111111111111111111111111111111111111",
+    recipient: "0x2222222222222222222222222222222222222222",
+    amountAtomic: "500000",
+  },
+  expectedAssetDeltas: [
+    {
+      assetAddress: "0x1111111111111111111111111111111111111111",
+      from: "0x3333333333333333333333333333333333333333",
+      to: "0x2222222222222222222222222222222222222222",
+      amountAtomic: "500000",
+    },
+  ],
+  simulationBlockReference: "0x10",
+  simulationResultHash:
+    "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  nonceStrategy: "pending",
+  gasLimit: "100000",
+  maximumFeeConstraints: {
+    asset: "native",
+    maxFeePerGas: "1000000000",
+    maximumNetworkFeeAtomic: "1000000000000000",
+  },
+  policyId: "policy_local_agent_01",
+  policyVersion: 1,
+  policyDecisionHash:
+    "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  budgetReservationId: "res_local_001",
+  createdAt: "2026-08-06T15:02:00Z",
+  expiresAt: "2026-08-06T15:10:00Z",
+  riskDecision: "ALLOW",
+  approvalRequirement: "none",
+  envelopeHash:
+    "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
 } as const;
 
 const adapterManifest = {
@@ -283,6 +337,31 @@ describe("lifecycle state and transition contracts", () => {
     expect(lifecycleStateSchema.safeParse("authorized").success).toBe(false);
     expect(() => transitionLifecycleState("DRAFT", "AUTHORIZED")).toThrow();
     expect(() => transitionLifecycleState("DRAFT", 1.5 as never)).toThrow();
+  });
+});
+
+describe("execution envelope contract", () => {
+  it("accepts the complete immutable envelope shape", () => {
+    expect(canonicalExecutionEnvelopeSchema.parse(envelope)).toEqual(envelope);
+  });
+
+  it.each([
+    ["unknown top-level field", { ...envelope, calldataHash: "0x" }],
+    [
+      "unknown nested decoded argument",
+      {
+        ...envelope,
+        decodedArguments: { ...envelope.decodedArguments, selector: "0x" },
+      },
+    ],
+    ["float revision", { ...envelope, revision: 1.5 }],
+    ["float gas limit", { ...envelope, gasLimit: 100000.5 }],
+    ["invalid calldata", { ...envelope, calldata: "0xGG" }],
+    ["unsupported risk decision", { ...envelope, riskDecision: "MAYBE" }],
+  ])("rejects %s", (_name, candidate) => {
+    expect(canonicalExecutionEnvelopeSchema.safeParse(candidate).success).toBe(
+      false,
+    );
   });
 });
 
