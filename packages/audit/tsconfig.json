@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false,
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "tsBuildInfoFile": "../../.local/tsbuild/audit.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"]
+}

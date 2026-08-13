@@ -1,0 +1,24 @@
+{
+  "name": "@crip/budget-ledger",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist",
+    "migrations"
+  ],
+  "scripts": {
+    "build": "tsc -b --force"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "dependencies": {
+    "@crip/audit": "0.0.0",
+    "@crip/schemas": "0.0.0",
+    "pg": "8.23.0"
+  }
+}

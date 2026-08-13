@@ -22,8 +22,10 @@ keep this as the current resume snapshot rather than an activity log.
 - Status: IN PROGRESS; Phase-0 local controls verified, external S0 remains open
 - Gate S0: OPEN; GitHub secret scanning and push protection are enabled, but
   `main` has no branch protection and Dependabot security updates are disabled.
-- Gates S1/S2: BLOCKED because no authorization core or local vertical slice has
-  yet been proven.
+- Gate S1: BLOCKED pending approval replay, revocation/pause fencing, integrated
+  authorization proof, independent security review, and protected CI. The WS-003
+  budget-ledger slice is now locally evidenced.
+- Gate S2: BLOCKED; no local end-to-end transaction vertical slice exists.
 
 ## Implemented and verified
 
@@ -45,6 +47,10 @@ keep this as the current resume snapshot rather than an activity log.
   the remaining WS-002 contract groups are strict, transition-tested, and the
   envelope hash vector is deterministic and approval-bound. Policy evaluation
   is deterministic, combination-tested, and fail-closed.
+- WS-003 now has forward PostgreSQL migrations, immutable/append-only tables,
+  one-client serializable transactions with bounded 40001 retry, balanced
+  reservation lifecycle methods, idempotency conflict protection, and a
+  transactional audit package. No signing or broadcast surface was added.
 
 ## Active blockers and risks
 
@@ -65,7 +71,8 @@ keep this as the current resume snapshot rather than an activity log.
 - WS-001 governance and toolchain — local implementation verified; remote gates open.
 - WS-002 canonical domain contracts — active; P1-001, P1-002, and P1-003
   accepted locally.
-- WS-003 atomic ledger proof — blocked on WS-002 schemas and migrations.
+- WS-003 atomic ledger proof — local implementation/evidence complete; Gate S1
+  remains blocked on the wider authorization proof and independent review.
 
 ## Latest test results
 
@@ -83,6 +90,12 @@ keep this as the current resume snapshot rather than an activity log.
   repository policy checks, and `npm audit --audit-level=high` also passed with
   zero vulnerabilities.
 - `npm audit --audit-level=high`: 0 vulnerabilities.
+- 2026-08-13 WS-003 verification: `npm run test:db` passed 11/11,
+  `npm run test:concurrency` passed 1/1 across 32 rounds and 4 workers, and
+  `npm run test:invariants` passed 6/6. Static format, lint, and strict
+  typecheck passed; full unit/repository suite passed 117 Vitest + 16 Node
+  tests. Final concurrency rows were allocated=100, available=10, reserved=90,
+  finalized_spend=0 with three audit rows.
 - `npm run dev:up` and `npm run dev:status`: PostgreSQL 17.10 ready on loopback
   `55432`; deterministic quiet Anvil ready on loopback `8545`, chain `0x7a69`.
 - Generated runtime/Anvil configs are Git-ignored, mode `0600`; Anvil log output
@@ -98,7 +111,8 @@ keep this as the current resume snapshot rather than an activity log.
 
 ## Next integration step
 
-Withhold ledger consumers until the complete WS-002 shared contract set
-stabilizes and receives orchestrator review.
+Withhold transaction/authorization consumers until WS-002 review completes and
+Gate S1's approval, revocation/pause, integrated, and independent-review
+evidence exists.
 
 Last updated: 2026-08-13; verified working tree for the WS-002 contract slice.

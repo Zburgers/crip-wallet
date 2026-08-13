@@ -3,8 +3,9 @@
 ## Objective and status
 
 Prove the balanced budget invariant, idempotency, reservations, reconciliation
-state, and transactional audit under real PostgreSQL concurrency. Status: BLOCKED
-on accepted WS-002 contracts.
+state, and transactional audit under real PostgreSQL concurrency. Status:
+IN PROGRESS — local implementation and reproducible evidence complete; Gate S1
+remains blocked on the wider authorization proof and independent review.
 
 ## Governing sections
 
@@ -48,4 +49,27 @@ closed until independent security review and full integrated rerun.
 
 ## Evidence
 
-None yet; no ledger implementation existed at the verified baseline.
+Local evidence, 2026-08-13, exact checkout
+`/home/naki/Desktop/itsthatnewshit/isthisreal/crip-wallet`, branch
+`phase-0/governance-foundation`, loopback PostgreSQL 17 on port 55432:
+
+- `npm run test:db`: 11/11 tests passed. Covers forward migration checksum and
+  required tables, reservation success, insufficient budget, release, expiry,
+  finalization with unused release, dispute retention, bounded SQLSTATE 40001
+  retry, idempotency replay/conflict, immutable policy versions/append-only
+  audit, and audit rollback.
+- `npm run test:concurrency`: 1/1 test passed across 32 rounds, four workers,
+  ready/start/release barrier, 30-unit requests against 100 allocated. Every
+  round committed exactly three reservations; final inspected state was
+  `allocated=100, available=10, reserved=90, finalized_spend=0`, with three
+  audit rows.
+- `npm run test:invariants`: 6/6 tests passed, including the exact invariant
+  across reservation, release, expiry, finalization, and dispute transitions.
+- The migration lineage is forward-only: `0001_ws003_budget_ledger.sql`
+  establishes the schema and `0002_ws003_idempotency_binding_guard.sql`
+  permits only the transactional null-to-result binding while keeping
+  idempotency identity fields immutable.
+
+This is local technical evidence, not Gate S1 closure: approval replay,
+revocation/pause fencing, integrated authorization, independent security review,
+and protected CI remain outstanding.

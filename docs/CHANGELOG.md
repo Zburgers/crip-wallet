@@ -49,6 +49,17 @@ the same integration change.
 - Added a deeply immutable lifecycle adjacency table with exhaustive canonical
   state-pair and malformed-input property tests covering terminal and exceptional
   recovery states.
+- Added the WS-003 forward-only PostgreSQL ledger migrations and
+  @crip/audit and @crip/budget-ledger packages. The schema covers policies,
+  intents, operations, envelopes, decisions, budget accounts, reservations,
+  idempotency, and append-only audit events with foreign keys, status checks,
+  immutable records, balanced numeric accounting, and corrective migration
+  checksums.
+- Added one-client serializable transaction execution with bounded SQLSTATE
+  40001 retry plus reserve/release/expire/finalize/dispute transitions,
+  idempotency replay/conflict handling, transactional audit hash chaining, and
+  real PostgreSQL invariant/concurrency evidence (11 DB tests, 32 concurrency
+  rounds, and 6 invariant tests).
 - Added real Phase-1 `test:db`, `test:concurrency`, and `test:invariants` gates,
   pinned `fast-check` 4.9.0, and canonical seed/worker/barrier parameters.
   Missing database or concurrency suites fail closed instead of reporting empty

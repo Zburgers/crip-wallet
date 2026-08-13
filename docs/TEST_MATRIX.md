@@ -13,10 +13,10 @@ set `PASS`.
 | PR-002 | Anvil 31337 and fake assets only | config + chain + adversarial | PLANNED | None | WS-001/004 |
 | PR-003 | One owner/agent/wallet/policy/chain/token fixture | DB + E2E | PLANNED | None | WS-002 |
 | PR-004 | Read-only, review, autonomous modes | unit + E2E | PLANNED | None | WS-002/005 |
-| PR-005 | Total and per-transaction budget under concurrency | DB + concurrency + property | PLANNED | None | WS-003 |
+| PR-005 | Total and per-transaction budget under concurrency | DB + concurrency + property | PASS | 2026-08-13: PostgreSQL DB 11/11, concurrency 32 rounds x 4 workers, invariant 6/6; final row allocated=100 available=10 reserved=90 finalized_spend=0 | WS-003 |
 | PR-006 | Chain/asset/recipient/action restrictions | policy + E2E | PLANNED | None | WS-002 |
-| PR-007 | Atomic reservation before authorization | DB + transition | PLANNED | None | WS-003 |
-| PR-008 | Retry/idempotency cannot duplicate spend | DB + concurrency + E2E | PLANNED | None | WS-003 |
+| PR-007 | Atomic reservation before authorization | DB + transition | PASS | 2026-08-13: reservation success, insufficient budget, release, expiry, finalization, dispute, and rollback tests passed | WS-003 |
+| PR-008 | Retry/idempotency cannot duplicate spend | DB + concurrency + E2E | PLANNED | 2026-08-13: WS-003 DB retry/replay/conflict and 32-round concurrency proof passed; E2E remains for WS-004/005 | WS-003 |
 | PR-009 | Canonical intent constructs transaction | unit + chain | PLANNED | None | WS-002/004 |
 | PR-010 | Independent decode and verification | unit + chain + adversarial | PLANNED | None | WS-004 |
 | PR-011 | Every state-changing operation simulated | chain + E2E | PLANNED | None | WS-004 |
@@ -28,7 +28,7 @@ set `PASS`.
 | PR-017 | MCP, CLI, dashboard share core | contract + E2E + browser | PLANNED | None | WS-006 |
 | PR-018 | Minimal interfaces expose no raw signing | schema + adversarial | PLANNED | None | WS-006 |
 | PR-019 | OpenTelemetry lifecycle correlation | integration + E2E | PLANNED | None | WS-007 |
-| PR-020 | Append-only correlated audit history | DB + E2E | PLANNED | None | WS-003/007 |
+| PR-020 | Append-only correlated audit history | DB + E2E | PLANNED | 2026-08-13: transactional append, rollback, hash-chain sequence, and append-only trigger proof passed; integrated E2E remains | WS-003/007 |
 | PR-021 | Adapter manifest and conformance | contract + adapter | PLANNED | None | WS-004 |
 | PR-022 | Invalid lifecycle transitions rejected | unit + property | PASS | 2026-08-13: exhaustive canonical-pair and malformed-input lifecycle properties | WS-002 |
 | PR-023 | Failures/retries reconcile safely | DB + chain + fault | PLANNED | None | WS-004/005 |
@@ -40,9 +40,9 @@ set `PASS`.
 
 | ID | Threat coverage | Layer / planned location | Status | Last evidence | Gap owner |
 |---|---|---|---|---|---|
-| TM-001 | Total overspend | `tests/invariants/ledger.spec.ts` | PLANNED | None | WS-003 |
-| TM-002 | Split/concurrent overspend | `tests/concurrency/reservations.spec.ts` | PLANNED | None | WS-003 |
-| TM-003 | Duplicate/idempotency conflict | `tests/integration/idempotency.spec.ts` | PLANNED | None | WS-003 |
+| TM-001 | Total overspend | `tests/db/ledger.test.ts` + `packages/budget-ledger/test/ledger-invariant.test.ts` | PASS | 2026-08-13: DB invariant and atomic constraints passed | WS-003 |
+| TM-002 | Split/concurrent overspend | `tests/concurrency/reservations.test.ts` | PASS | 2026-08-13: 32 rounds, 4 workers, exactly 3 x 30 reservations per 100-unit budget | WS-003 |
+| TM-003 | Duplicate/idempotency conflict | `tests/db/ledger.test.ts` | PASS | 2026-08-13: same payload replay returned original reservation; changed payload made no mutation | WS-003 |
 | TM-004 | Duplicate broadcast | `tests/fault/broadcast-recovery.spec.ts` | PLANNED | None | WS-004 |
 | TM-005 | Approval replay | `tests/adversarial/approval-replay.spec.ts` | PLANNED | None | WS-005 |
 | TM-006 | Chain substitution/public RPC | `tests/adversarial/chain-substitution.spec.ts` | PLANNED | None | WS-001/004 |
@@ -91,4 +91,4 @@ set `PASS`.
 | P1-001 | Canonical enforcement-grade schema and ordering | PASS | 2026-08-10: Vitest 1 file, 10 tests; all five exact uppercase values, all 25 order pairs, and Node built-package import |
 | P1-002 | Strict versioned intent and atomic money | PASS | 2026-08-13: 2 targeted Vitest files, 37 tests; strict intent/money cases plus configured lifetime boundary and canonical SHA-256 idempotency hash vector |
 | P1-003 | Strict policy, decision, lifecycle, envelope, adapter, audit, telemetry, error, hash, and deterministic evaluation contracts | PASS | 2026-08-13: 4 targeted Vitest files; 68 tests; strictness/exhaustive transitions, lifecycle invalid-transition properties, canonical Keccak vectors, all policy rule families, mode combinations, multi-failure denial, and fail-closed indeterminate input |
-| P1-004 | Atomic PostgreSQL reservation invariant | BLOCKED | `npm run test:db` is present and fail-closed, but `tests/db` and the WS-003 migration/reservation suite do not exist yet |
+| P1-004 | Atomic PostgreSQL reservation invariant | PASS | 2026-08-13: `npm run test:db` 11/11, `npm run test:concurrency` 1/1 across 32 rounds, `npm run test:invariants` 6/6; loopback PostgreSQL 17 on 127.0.0.1:55432 |

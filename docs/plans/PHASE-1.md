@@ -26,10 +26,9 @@ balanced ledger transitions, idempotency, and transactional audit events.
   serialization, Keccak hash vectors, and approval-binding tests. Task 4 is
   complete: deterministic policy evaluation covers all allowlists, budgets,
   validity, fee ceilings, enforcement grades, modes, combinations, and
-  fail-closed indeterminate input. Tasks 1 through 5 are complete; Tasks 6
-  through 11 have not started. No
-  persistence, authorization, signing,
-  broadcast, or autonomous execution path exists.
+  fail-closed indeterminate input. Tasks 1 through 10 are complete locally;
+  Task 11 is the documentation/review integration step. No authorization,
+  signing, broadcast, or autonomous execution path exists.
 
 ## Ordered tasks
 
@@ -42,13 +41,13 @@ balanced ledger transitions, idempotency, and transactional audit events.
 4. Add deterministic policy rule table and combination tests; unknown is deny.
 5. Add explicit lifecycle transition table with invalid-transition property tests. **COMPLETE**
 6. Add forward SQL migration for policies, intents, operations, budget accounts,
-   reservations, idempotency, decisions, envelopes, and audit events.
-7. Add one-client serializable transaction helper with bounded `40001` retry.
+   reservations, idempotency, decisions, envelopes, and audit events. **COMPLETE**
+7. Add one-client serializable transaction helper with bounded `40001` retry. **COMPLETE**
 8. Implement reserve/release/expire/finalize/dispute TDD cycles and database
-   constraints for `allocated = available + reserved + finalized_spend`.
-9. Add deterministic concurrency barriers proving only available value reserves.
+   constraints for `allocated = available + reserved + finalized_spend`. **COMPLETE**
+9. Add deterministic concurrency barriers proving only available value reserves. **COMPLETE**
 10. Add idempotency payload-conflict, retry, transactional audit, and generated
-    event-sequence invariant tests.
+    event-sequence invariant tests. **COMPLETE**
 11. Reconcile the test matrix, risk register, workstreams, changelog, and project
     state; independently review security and the complete Phase-1 diff.
 
