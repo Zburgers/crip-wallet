@@ -31,6 +31,22 @@ Until a suite exists, its command must fail clearly or be absent from the full
 gate; it may not report a false pass. `docs/TEST_MATRIX.md` is authoritative for
 planned versus evidenced coverage.
 
+## Phase-1 gate parameters
+
+The commands are wired through `tooling/phase1-test-gate.mjs` and use the
+canonical values in `tooling/phase1-test-parameters.mjs`:
+
+- `npm run test:invariants`: fast-check lifecycle seed `2026081301`, malformed
+  input seed `2026081302`, and `512` runs per property.
+- `npm run test:concurrency`: `4` workers, `32` rounds, a
+  `ready/start/release` barrier, and a `5000 ms` barrier timeout.
+- `npm run test:db`: loopback PostgreSQL at `127.0.0.1:55432`, database
+  `crip_wallet`, user `crip`.
+
+Database and concurrency gates fail closed when their required test directories
+are absent. This preserves a visible `BLOCKED` result until real migrations,
+reservation, and race tests are added; empty suites cannot report a pass.
+
 ## Required environment
 
 `npm run dev:up` starts digest-pinned PostgreSQL and Foundry/Anvil containers on

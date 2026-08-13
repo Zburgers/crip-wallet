@@ -25,6 +25,9 @@
     "typecheck": "tsc -b --pretty false",
     "pretest:unit": "npm run build --workspaces --if-present",
     "test:unit": "node --test tests/repository/*.test.mjs && vitest run --passWithNoTests",
+    "test:db": "node tooling/phase1-test-gate.mjs db",
+    "test:concurrency": "node tooling/phase1-test-gate.mjs concurrency",
+    "test:invariants": "node tooling/phase1-test-gate.mjs invariants",
     "dev:up": "bash scripts/dev-up.sh",
     "dev:status": "bash scripts/dev-status.sh",
     "dev:down": "bash scripts/dev-down.sh"
@@ -33,6 +36,7 @@
     "@eslint/js": "10.0.1",
     "@types/node": "24.13.3",
     "eslint": "10.8.1",
+    "fast-check": "4.9.0",
     "prettier": "3.9.6",
     "typescript": "6.0.3",
     "typescript-eslint": "8.66.0",

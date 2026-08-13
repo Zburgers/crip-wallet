@@ -70,6 +70,9 @@ test("root scripts expose reproducible validation and safe local lifecycle comma
     "docs:check",
     "repo:check",
     "test:unit",
+    "test:db",
+    "test:concurrency",
+    "test:invariants",
     "dev:up",
     "dev:status",
     "dev:down",
@@ -81,6 +84,9 @@ test("root scripts expose reproducible validation and safe local lifecycle comma
     );
   }
   assert.match(manifest.packageManager, /^npm@\d+\.\d+\.\d+$/);
+  assert.equal(manifest.devDependencies["fast-check"], "4.9.0");
+  assert.match(read("tooling/phase1-test-gate.mjs"), /fail-closed/);
+  assert.match(read("tooling/phase1-test-parameters.mjs"), /workers: 4/);
 });
 
 test("local lifecycle scripts use defensive Bash and never embed wallet material", () => {

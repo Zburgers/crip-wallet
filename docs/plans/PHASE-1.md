@@ -67,3 +67,10 @@ Exact test names/counts, PostgreSQL image digest, concurrency worker count and
 barrier parameters, generated property seeds, migration state, and inspected
 ledger rows must be recorded. Phase 2 remains blocked until Gate S1 evidence is
 reproducible and no signing surface exists.
+
+Current reproducibility parameters: fast-check lifecycle seed `2026081301`,
+malformed-input seed `2026081302`, `512` property runs, concurrency workers `4`,
+concurrency rounds `32`, `ready/start/release` barrier, `5000 ms` barrier
+timeout, and loopback PostgreSQL `127.0.0.1:55432` (`crip_wallet`, user `crip`).
+`test:db` and `test:concurrency` are fail-closed until their required suites are
+implemented; `test:invariants` is active through the lifecycle property suite.

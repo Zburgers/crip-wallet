@@ -91,4 +91,4 @@ set `PASS`.
 | P1-001 | Canonical enforcement-grade schema and ordering | PASS | 2026-08-10: Vitest 1 file, 10 tests; all five exact uppercase values, all 25 order pairs, and Node built-package import |
 | P1-002 | Strict versioned intent and atomic money | PASS | 2026-08-13: 2 targeted Vitest files, 37 tests; strict intent/money cases plus configured lifetime boundary and canonical SHA-256 idempotency hash vector |
 | P1-003 | Strict policy, decision, lifecycle, envelope, adapter, audit, telemetry, error, hash, and deterministic evaluation contracts | PASS | 2026-08-13: 4 targeted Vitest files; 68 tests; strictness/exhaustive transitions, lifecycle invalid-transition properties, canonical Keccak vectors, all policy rule families, mode combinations, multi-failure denial, and fail-closed indeterminate input |
-| P1-004 | Atomic PostgreSQL reservation invariant | BLOCKED | Requires frozen WS-002 schemas |
+| P1-004 | Atomic PostgreSQL reservation invariant | BLOCKED | `npm run test:db` is present and fail-closed, but `tests/db` and the WS-003 migration/reservation suite do not exist yet |

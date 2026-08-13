@@ -49,6 +49,10 @@ the same integration change.
 - Added a deeply immutable lifecycle adjacency table with exhaustive canonical
   state-pair and malformed-input property tests covering terminal and exceptional
   recovery states.
+- Added real Phase-1 `test:db`, `test:concurrency`, and `test:invariants` gates,
+  pinned `fast-check` 4.9.0, and canonical seed/worker/barrier parameters.
+  Missing database or concurrency suites fail closed instead of reporting empty
+  passes.
 
 ### Security
 
