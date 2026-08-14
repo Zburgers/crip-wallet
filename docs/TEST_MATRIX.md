@@ -7,6 +7,20 @@ set `PASS`.
 
 ## Product and release requirements
 
+## WP-03 local evidence addendum
+
+The full product rows remain `PLANNED` where their broader E2E, browser, adapter,
+or Phase-3 control scope is not implemented. The focused authorization slice is
+locally evidenced by `tests/db/approval.test.ts` (21 tests) and
+`tests/concurrency/approval-consumption.test.ts` (one race test): persisted
+approval/decision/evidence binding, expiry, rejection, revocation, replay,
+wrong-operation/envelope/revision/hash/policy inputs, schema-valid envelope
+hashing, atomic envelope replacement invalidation, retry behavior, exact audit
+correlation, impossible-state rejection, and one-winner atomic consumption all
+pass on PostgreSQL. This evidence does not mark Gate S1 passed and does not
+cover ADR-0008 owner-session/signature authentication, pause races, adapter
+execution, or integrated recovery.
+
 | ID     | Requirement                                        | Layer / planned location     | Status  | Last evidence                                                                                                                                                                | Gap owner  |
 | ------ | -------------------------------------------------- | ---------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | PR-001 | Clean clone installs and baseline checks           | CI + `tests/repository/`     | PLANNED | None                                                                                                                                                                         | WS-001     |

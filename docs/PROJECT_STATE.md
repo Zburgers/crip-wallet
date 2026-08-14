@@ -25,7 +25,7 @@ keep this as the current resume snapshot rather than an activity log.
   active, requires one approval and `validate`, and the remote CI/security
   checks for PR #1 are green. Secret scanning, push protection, and Dependabot
   security fixes are enabled.
-- Gate S1: BLOCKED pending approval replay, revocation/pause fencing, integrated
+- Gate S1: BLOCKED pending independent acceptance of approval/revocation/pause fencing and integrated
   authorization proof, authenticated adapter/chain reconciliation, integrated
   execution recovery, independent security review, and required human
   acceptance. The WS-003 budget-ledger slice is now locally evidenced.
@@ -66,6 +66,13 @@ keep this as the current resume snapshot rather than an activity log.
   tests use the same loader and reject conflicting overrides or copied runtime
   state. The audit ledger derives correlation from locked database rows and
   rejects mismatches in application and PostgreSQL guards.
+- WP-03 adds a focused local authorization proof in `@crip/approvals` with
+  persisted approval requests, append-only decisions, exact operation/envelope
+  revision/hash/policy-decision bindings, database Keccak envelope verification,
+  schema validation, atomic envelope replacement invalidation/revalidation,
+  expiry/rejection/revocation handling, unique authorization evidence, deferred
+  operation/reservation consistency guards, and serializable one-time
+  consumption. It intentionally adds no owner-key or provider signing.
 
 ## Active blockers and risks
 
@@ -74,6 +81,11 @@ keep this as the current resume snapshot rather than an activity log.
 - Security: local implementation proof gates are green, but external security
   acceptance and execution-boundary gates remain open; no autonomous execution
   or signing surface may be exposed.
+- Contract boundary: ADR-0008 specifies a loopback owner session and local test
+  signing key, while WP-03 explicitly prohibits signing. The persisted
+  approver/authorization evidence is therefore not owner authentication; that
+  contradiction must be resolved before claiming the complete owner-approval
+  control or Gate S1.
 
 ## Open decisions
 
@@ -142,13 +154,19 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   override failed closed; the two-checkout Docker proof used distinct projects
   and effective ports; failed startup removed only the second checkout's
   project resources while preserving its volume.
+- 2026-08-15 WP-03 focused verification: approval DB proof passed 21/21 and
+  concurrent consumption passed 1/1; the full DB gate passed 57/57, concurrency
+  passed 2/2 including the 32-round reservation suite, invariants passed 7/7,
+  and static/unit/repository/docs checks remained green. The local runtime was
+  recreated from the current forward migration set; no Gate S1 pass is claimed.
 
 ## Next integration step
 
-Keep shared WS-002 contracts frozen and withhold Phase-2 transaction,
-authorization, signing, and provider consumers until Gate S1's approval,
+Keep shared WS-002 contracts frozen and withhold Phase-2 transaction execution,
+signing, and provider consumers until Gate S1's approval,
 revocation/pause, authenticated reconciliation, integrated recovery, and
 independent-review evidence is accepted.
 
-Last updated: 2026-08-15; verified WP-02 local isolation, Phase-1 ledger review,
-CI, S0 ruleset, and MIT license state. S0/S1 are not marked passed.
+Last updated: 2026-08-15; verified WP-03 authorization evidence, WP-02 local
+isolation, Phase-1 ledger review, CI, S0 ruleset, and MIT license state. S0/S1
+are not marked passed.

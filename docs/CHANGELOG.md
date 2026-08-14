@@ -31,6 +31,16 @@ the same integration change.
 
 ### Added
 
+- WP-03 adds the `@crip/approvals` Phase-1 authorization slice: PostgreSQL
+  approval requests, append-only decisions, canonical Keccak envelope
+  verification and schema validation, immutable operation/envelope/hash/policy-
+  decision bindings, atomic envelope replacement invalidation, one-time
+  authorization evidence, expiry/rejection/revocation handling, deferred
+  operation/reservation consistency guards, and serializable concurrent-
+  consumption proof. No owner-key or provider signing was added; Gate S1
+  remains blocked on ADR-0008 authentication/signature
+  resolution, pause/revocation fencing, integrated recovery, and review.
+
 - Phase-0 ADRs, architecture, threat/security/testing guidance, roadmap, project
   state, risk register, test matrix, master/phase plans, and workstreams.
 - Repository contribution and vulnerability-reporting guidance.
