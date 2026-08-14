@@ -56,7 +56,7 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
-      start_period: 5s
+      start_period: 15s
     restart: unless-stopped
     read_only: true
     tmpfs:
