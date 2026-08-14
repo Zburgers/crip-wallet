@@ -18,7 +18,14 @@ export type AuditEventType =
   | "budget.reservation.released"
   | "budget.reservation.expired"
   | "budget.reservation.finalized"
-  | "budget.reservation.disputed";
+  | "budget.reservation.disputed"
+  | "approval.requested"
+  | "approval.approved"
+  | "approval.consumed"
+  | "approval.rejected"
+  | "approval.expired"
+  | "approval.revoked"
+  | "operation.state.changed";
 
 export interface AuditCorrelation {
   reservationId: string;

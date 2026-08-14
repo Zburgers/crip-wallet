@@ -26,6 +26,7 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "operation.state.changed",
   "approval.requested",
   "approval.approved",
+  "approval.consumed",
   "approval.rejected",
   "approval.expired",
   "approval.revoked",
@@ -45,6 +46,20 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
 
 export const auditDataSchema = z.strictObject({
   reservationId: canonicalIdentifierSchema.optional(),
+  approvalId: canonicalIdentifierSchema.optional(),
+  authorizationId: canonicalIdentifierSchema.optional(),
+  envelopeId: canonicalIdentifierSchema.optional(),
+  envelopeRevision: z.number().int().positive().safe().optional(),
+  policyDecisionId: canonicalIdentifierSchema.optional(),
+  policyDecisionHash: evmHashSchema.optional(),
+  policyVersion: z.number().int().positive().safe().optional(),
+  approverId: canonicalIdentifierSchema.optional(),
+  issuedAt: utcSecondSchema.optional(),
+  expiresAt: utcSecondSchema.optional(),
+  authorizedAt: utcSecondSchema.optional(),
+  consumedAt: utcSecondSchema.optional(),
+  consumptionNonce: canonicalIdentifierSchema.optional(),
+  consumerId: canonicalIdentifierSchema.optional(),
   assetAddress: evmAddressSchema.optional(),
   amountAtomic: atomicUnitSchema.optional(),
   nonce: atomicUnitSchema.optional(),
@@ -55,6 +70,9 @@ export const auditDataSchema = z.strictObject({
   failureCode: canonicalIdentifierSchema.optional(),
   transactionHash: evmHashSchema.optional(),
   envelopeHash: evmHashSchema.optional(),
+  replacementEnvelopeId: canonicalIdentifierSchema.optional(),
+  replacementEnvelopeRevision: z.number().int().positive().safe().optional(),
+  replacementEnvelopeHash: evmHashSchema.optional(),
   decision: z
     .enum([
       "ALLOW_READ",

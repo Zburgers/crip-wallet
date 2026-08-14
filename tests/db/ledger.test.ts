@@ -175,7 +175,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     const migration = await pool.query<{ filename: string; checksum: string }>(
       "SELECT filename, checksum FROM schema_migrations ORDER BY filename",
     );
-    expect(migration.rows).toHaveLength(14);
+    expect(migration.rows).toHaveLength(15);
     expect(migration.rows.map((row) => row.filename)).toEqual([
       "0001_ws003_budget_ledger.sql",
       "0002_ws003_idempotency_binding_guard.sql",
@@ -191,6 +191,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       "0012_ws003_evidence_guard_column_fix.sql",
       "0013_ws003_audit_reservation_correlation.sql",
       "0014_ws003_audit_correlation_hardening.sql",
+      "0015_wp03_approval_authorization.sql",
     ]);
     expect(
       migration.rows.every((row) => /^sha256:[0-9a-f]{64}$/.test(row.checksum)),
@@ -204,6 +205,9 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
           "operations",
           "execution_envelopes",
           "policy_decisions",
+          "approval_requests",
+          "approval_decisions",
+          "authorization_evidence",
           "budget_accounts",
           "budget_reservations",
           "idempotency_records",
@@ -212,7 +216,10 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       ],
     );
     expect(tables.rows.map((row) => row.table_name)).toEqual([
+      "approval_decisions",
+      "approval_requests",
       "audit_events",
+      "authorization_evidence",
       "budget_accounts",
       "budget_reservations",
       "execution_envelopes",
