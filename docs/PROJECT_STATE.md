@@ -13,7 +13,7 @@ keep this as the current resume snapshot rather than an activity log.
   findings in the current tree or two-commit history.
 - Working branch: `phase-0/governance-foundation`
 - Last integrated implementation: Phase-1 local proof, Anvil CI startup
-  hardening, and MIT license closeout at `006a314`; remote CI and the active
+  hardening, and MIT license closeout at `cd88c1a`; remote CI and the active
   main ruleset are verified, while required human review remains open.
 
 ## Current phase and status
