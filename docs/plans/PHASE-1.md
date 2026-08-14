@@ -89,4 +89,6 @@ down-migration or destructive migration API exists.
 WP-02 closes the PR #1 concurrency isolation finding: the DB and concurrency
 suites use the same runtime loader, while ledger audit correlation is derived
 from locked reservation/operation/intent/identity/policy rows. This is local
-implementation evidence only; Gate S1 remains blocked and Phase 2 is not open.
+implementation evidence only. The final local run passed DB 36/36,
+concurrency 1/1 across 32 rounds, and invariants 7/7 against the persisted
+loopback runtime; Gate S1 remains blocked and Phase 2 is not open.

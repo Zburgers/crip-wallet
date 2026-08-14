@@ -116,8 +116,8 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   Node tests. `npm audit --audit-level=high` reported 0 vulnerabilities on the
   current lockfile.
 - `npm run dev:up` and `npm run dev:status`: PostgreSQL 17.10 ready on loopback
-  `127.0.0.1:32769`; deterministic quiet Anvil ready on loopback
-  `127.0.0.1:32768`, chain `0x7a69`; effective values are persisted in
+  `127.0.0.1:32777`; deterministic quiet Anvil ready on loopback
+  `127.0.0.1:32776`, chain `0x7a69`; effective values are persisted in
   `.local/runtime.env`.
 - Generated runtime/Anvil configs are Git-ignored, mode `0600`; Anvil log output
   is empty. The Anvil config inode is created at `0600` before container startup.
@@ -137,9 +137,11 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
 - PR #1 remediation work starts from current head `a200e84`; no post-remediation
   merge or S0/S1 acceptance is claimed here.
 - 2026-08-15 WP-02 focused verification: 20 Node repository tests and 118
-  package tests passed; DB 35/35 and concurrency 1/1 across 32 rounds passed
-  against the persisted 32769 runtime; a wrong-port override failed closed;
-  the two-checkout Docker proof used distinct projects and effective ports.
+  package tests passed; DB 36/36 and concurrency 1/1 across 32 rounds passed
+  against the persisted 32777 runtime; invariants passed 7/7; a wrong-port
+  override failed closed; the two-checkout Docker proof used distinct projects
+  and effective ports; failed startup removed only the second checkout's
+  project resources while preserving its volume.
 
 ## Next integration step
 

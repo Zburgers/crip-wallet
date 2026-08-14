@@ -79,6 +79,8 @@ checks, and traps partial-start failures with project-scoped `down
 concurrency gate consume that state; conflicting environment overrides and
 copied/stale runtime files fail closed. This strengthens P0-005's local proof;
 it does not close S0, which still requires independent human review/acceptance.
+The final local proof used loopback PostgreSQL `127.0.0.1:32777` and Anvil
+`127.0.0.1:32776`; the values are evidence only and are not fixed defaults.
 
 ## Exit gate
 
