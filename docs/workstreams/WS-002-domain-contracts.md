@@ -5,7 +5,8 @@
 Publish strict provider-neutral schemas, deterministic lifecycle semantics, and
 envelope hash vectors without persistence or signing. Status: FROZEN LOCALLY —
 canonical contracts, policy evaluation, lifecycle properties, and hash vectors
-reviewed; no Phase-2 consumer may alter them without an additive contract review.
+reviewed; remote CI is green, and no Phase-2 consumer may alter them without an
+additive contract review and Gate S1 acceptance.
 
 ## Governing sections
 
@@ -105,5 +106,5 @@ through orchestrator review before WS-003 begins.
 - The audit contract now includes the explicit
   `budget.reservation.broadcast` event and typed `reason`, `proofReference`, and
   `nonce` data fields required by the WS-003 reservation lifecycle. Shared
-  contracts are frozen locally pending Gate S1 and protected review; additive
-  changes require a new contract review.
+  contracts are frozen locally pending Gate S1 and required review acceptance;
+  additive changes require a new contract review.

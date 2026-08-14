@@ -8,6 +8,12 @@ the same integration change.
 
 ### Changed
 
+- Reconciled Phase-0/Phase-1 plans, project state, workstreams, risk register,
+  and test matrix with the verified remote state as of 2026-08-14. PR #1 head
+  `081fe78` passed `validate` and Gitleaks; the active main protection ruleset
+  and Dependabot security fixes are recorded. Phase 2 remains intentionally
+  unopened while Gate S1 stays blocked on authorization/control and review
+  evidence.
 - Normalized governing document paths to `docs/PRODUCT_SPEC.md` and
   `docs/LEAD_ORCHESTRATOR_PROMPT.md` without duplicate authorities.
 - Clarified the budget invariant, envelope finalization order, enforcement-grade
@@ -77,9 +83,13 @@ the same integration change.
 
 ### Security
 
+- Moved transient Anvil signer/config generation into the container's writable
+  `/tmp` and copied the result back with host mode `0600`, removing the
+  Linux-runner UID mismatch from the local-only fake-money service path.
 - Recorded the real-funds prohibition and fail-closed local-chain boundary as
   release blockers.
-- Recorded missing branch protection as an open S0 external-setting gap.
+- Recorded the initial branch-protection gap; the active `S0 main protection`
+  ruleset now mitigates it, pending required review/merge acceptance.
 - Refuse non-local environment, public chain, non-loopback RPC/database hosts,
   and invalid port configuration before local services start; generated
   sensitive files are created at mode `0600` and Anvil key logs are suppressed.

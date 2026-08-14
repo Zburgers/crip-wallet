@@ -73,8 +73,10 @@ Status: COMPLETE at commit `5a9d80c`.
 
 Phase 0 may hand off to Phase 1 when P0-001 through P0-006 pass locally, the
 governance sources agree, and no real-funds/configuration or critical security
-finding exists. Branch protection and license choice remain explicit external
-gaps and prevent full S0/MVP release claims, but do not block local WS-002 work.
+finding exists. The active `S0 main protection` ruleset and protected remote
+CI now provide the previously missing remote evidence. License choice and
+required human review remain explicit external closeout items and do not
+authorize Phase 2.
 
 ## Verification status
 
@@ -84,6 +86,9 @@ gaps and prevent full S0/MVP release claims, but do not block local WS-002 work.
   locked install, 15 repository tests, 41 schema tests, dependency audit, live
   PostgreSQL 17.10 and Anvil 31337 inspection, permission/log checks, baseline
   diff check, and digest-pinned Gitleaks history/candidate scans.
-- Full S0 remains open: protected remote CI and branch protection are
-  unevidenced, Dependabot security updates are disabled, and ADR-0013 has no
-  owner-selected license. Local WS-002 work may continue under the exit gate.
+- 2026-08-14 remote closeout: PR #1 head `081fe78` passed CI run
+  `31812303081` and Gitleaks run `31812303011`; ruleset `20791659` is active
+  on `main` with one required approval and the registered `validate` check;
+  Dependabot security fixes are enabled. The remaining S0 closeout items are
+  the ADR-0013 license decision and required independent human review/
+  acceptance of PR #1. Phase 2 remains intentionally unopened.

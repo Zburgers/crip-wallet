@@ -5,8 +5,9 @@
 Prove the balanced budget invariant, idempotency, reservations, reconciliation
 state, and transactional audit under real PostgreSQL concurrency. Status:
 COMPLETE LOCALLY — the Phase-1 ledger proof and integration review are complete;
-Gate S1 remains blocked on the wider authorization proof, protected CI, and
-independent review acceptance.
+Gate S1 remains blocked on the wider authorization proof, authenticated
+reconciliation, integrated recovery, independent security review, and external
+review acceptance.
 
 ## Governing sections
 
@@ -123,5 +124,7 @@ Local evidence, 2026-08-13, exact checkout
   `sha256:15cde144d905ae28cca6b686d9af99e7d21e8c402146f03fd4b73306826d4dd8`.
 
 This is local technical evidence, not Gate S1 closure: approval replay,
-revocation/pause fencing, integrated authorization, independent security review,
-and protected CI remain outstanding.
+revocation/pause fencing, integrated authorization, authenticated chain
+reconciliation, integrated recovery, and independent security review remain
+outstanding. Protected CI is now evidenced by the active main ruleset and green
+PR checks.

@@ -25,9 +25,10 @@ balanced ledger transitions, idempotency, and transactional audit events.
   validity, fee ceilings, enforcement grades, modes, combinations, and
   fail-closed indeterminate input. Tasks 1 through 10 and the local Task 11
   integration review are complete. The independent review's implementation
-  blockers were remediated and rerun locally; Gate S1 remains blocked on the
-  wider approval/revocation authorization proof, protected CI, and external
-  acceptance.
+  blockers were remediated and rerun locally; remote CI and the active main
+  protection ruleset are now verified. Gate S1 remains blocked on the wider
+  approval/revocation authorization proof, authenticated reconciliation,
+  integrated recovery, independent security review, and external acceptance.
   No autonomous authorization, signing, or real execution path exists.
 
 ## Ordered tasks
@@ -68,6 +69,8 @@ Exact test names/counts, PostgreSQL image digest, concurrency worker count and
 barrier parameters, generated property seeds, migration state, and inspected
 ledger rows must be recorded. Phase 2 remains blocked until Gate S1 evidence is
 reproducible, independent review is accepted, and no signing surface exists.
+This branch intentionally does not open WS-004 or add transaction, signing, or
+provider consumers.
 
 Current reproducibility parameters: fast-check lifecycle seed `2026081301`,
 malformed-input seed `2026081302`, event-sequence seed `2026081303`, `512`

@@ -3,7 +3,8 @@
 ## Objective and status
 
 Establish a reproducible, auditable, local-only repository foundation. Status:
-ACTIVE on `phase-0/governance-foundation` from baseline `3a044ee`.
+LOCAL COMPLETE / REMOTE CONTROLS VERIFIED on `phase-0/governance-foundation` from
+baseline `3a044ee`; license and required review remain open.
 
 ## Governing sections
 
@@ -63,5 +64,8 @@ tooling/local environment; CI/security controls; verification/state.
   SHAs; 14/14 repository tests enforce the controls. Gitleaks 8.30.1 scanned all
   five committed revisions at `da1451c` and the exported staged candidate with
   no leaks; `docs/PROJECT_STATE.md` records the exact digest and commands.
-- Protected remote workflow execution and external branch protection remain
-  pending; neither is represented as local evidence.
+- 2026-08-14 remote evidence: PR #1 head `081fe78` passed CI `validate` run
+  `31812303081` and Gitleaks run `31812303011`. Ruleset `20791659` is active on
+  `main`, requiring one approval and the registered `validate` check; Dependabot
+  security fixes are enabled. The only Phase-0 closeout items still external
+  are the ADR-0013 license decision and required independent review/acceptance.
