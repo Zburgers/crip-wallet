@@ -78,10 +78,12 @@ property runs, concurrency workers `4`, concurrency rounds `32`,
 `ready/start/release` barrier, `5000 ms` barrier timeout, and loopback PostgreSQL
 loaded from the checkout's `.local/runtime.env` (`crip_wallet`, user `crip`).
 The effective port is persisted after `dev:up`; mismatches fail closed. Migration
-state is thirteen applied forward migrations with checksums recorded in
-`schema_migrations`; migration
+state is fourteen applied forward migrations with checksums recorded in
+`schema_migrations`; migrations
 `0013_ws003_audit_reservation_correlation.sql` binds each audit row to its
-persisted reservation and operation relationship; no
+persisted reservation and operation relationship, and
+`0014_ws003_audit_correlation_hardening.sql` validates legacy rows and guards
+the complete relation including policy agent/wallet bindings; no
 down-migration or destructive migration API exists.
 
 WP-02 closes the PR #1 concurrency isolation finding: the DB and concurrency

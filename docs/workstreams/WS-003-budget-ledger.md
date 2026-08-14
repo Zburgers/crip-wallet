@@ -59,11 +59,12 @@ closed until independent security review and full integrated rerun.
 WP-01 remediation evidence, 2026-08-15, PR #1 head
 `a200e84be553f99112bec614b8fc5d28202b70b5`:
 
-- Forward migration `0013_ws003_audit_reservation_correlation.sql` adds a
-  required relational reservation reference and a database trigger that checks
-  reservation-to-operation-to-intent-to-owner/agent/wallet/policy/version
-  correlation before an audit row can be inserted.
-- `npm run test:db`: 35/35 passed against the effective loopback PostgreSQL
+- Forward migrations `0013_ws003_audit_reservation_correlation.sql` and
+  `0014_ws003_audit_correlation_hardening.sql` add the relational reservation
+  reference, validate existing rows before hardening, and install a database
+  trigger that checks reservation-to-operation-to-intent-to-owner/agent/wallet/
+  policy/version correlation before an audit row can be inserted.
+- `npm run test:db`: 36/36 passed against the effective loopback PostgreSQL
   runtime. Focused coverage rejects alternate valid-operation assertions,
   intent/owner/agent/wallet/policy/version mismatches, every reservation
   mutation helper, alternate idempotent retries, and a direct audit insert;
@@ -116,9 +117,10 @@ Local evidence, 2026-08-13, exact checkout
   compatibility backfill, `0010_ws003_parent_binding_guards.sql` protects
   operation/budget ownership fields, and `0011_ws003_pending_evidence_default_fix.sql`
   plus `0012_ws003_evidence_guard_column_fix.sql` harden the evidence migration
-  path. The applied migration ledger contains all thirteen `sha256:` checksums;
-  migration `0013_ws003_audit_reservation_correlation.sql` adds the
-  row-level reservation and authoritative relationship guard described above.
+  path. The applied migration ledger contains all fourteen `sha256:` checksums;
+  migrations `0013_ws003_audit_reservation_correlation.sql` and
+  `0014_ws003_audit_correlation_hardening.sql` add the row-level reservation
+  and authoritative relationship guards described above.
 - The final inspected `budget_1` row was
   `allocated=100, available=10, reserved=90, finalized_spend=0, version=3`,
   with three held 30-unit reservations, three reservation audit rows, and no
