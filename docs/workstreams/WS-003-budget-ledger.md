@@ -57,7 +57,7 @@ closed until independent security review and full integrated rerun.
 ## Evidence
 
 WP-01 remediation evidence, 2026-08-15, PR #1 head
-`a200e84be553f99112bec614b8fc5d28202b70b5`:
+`3bebd79955642f65be0dafa0268b321a890c65a5`:
 
 - Forward migrations `0013_ws003_audit_reservation_correlation.sql` and
   `0014_ws003_audit_correlation_hardening.sql` add the relational reservation
@@ -69,6 +69,8 @@ WP-01 remediation evidence, 2026-08-15, PR #1 head
   intent/owner/agent/wallet/policy/version mismatches, every reservation
   mutation helper, alternate idempotent retries, and a direct audit insert;
   existing audit hash verification and accounting assertions remain passing.
+  These DB results, plus the 32-round concurrency and invariant runs, are local
+  evidence; current remote CI and Secret scan evidence is recorded separately.
 - Gate S1 remains blocked; this remediation does not accept the independent
   review, close S1, open Phase 2, or expose WS-004.
 

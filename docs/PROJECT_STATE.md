@@ -134,8 +134,8 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   service step now succeeds on the GitHub Linux runner after Anvil moved its
   transient config write into container `/tmp`; the host copy is restored to
   mode `0600` and Anvil remains chain `0x7a69`.
-- PR #1 remediation work starts from current head `a200e84`; no post-remediation
-  merge or S0/S1 acceptance is claimed here.
+- PR #1 remediation work started from head `a200e84` and is now at
+  `3bebd799`; no post-remediation merge or S0/S1 acceptance is claimed here.
 - 2026-08-15 WP-02 focused verification: 20 Node repository tests and 118
   package tests passed; DB 36/36 and concurrency 1/1 across 32 rounds passed
   against the persisted 32777 runtime; invariants passed 7/7; a wrong-port
