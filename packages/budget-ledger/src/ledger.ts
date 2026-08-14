@@ -1,6 +1,7 @@
 import {
   appendAuditEvent,
   type AuditContext,
+  type AuditCorrelation,
   type AuditEventType,
 } from "@crip/audit";
 import {
@@ -78,18 +79,77 @@ const reservationColumns = [
   "expires_at",
   "proof_reference",
 ].join(", ");
+const qualifiedReservationColumns = [
+  "r.reservation_id",
+  "r.budget_id",
+  "r.operation_id",
+  "r.idempotency_key",
+  "r.amount_atomic",
+  "r.finalized_spend_atomic",
+  "r.status",
+  "r.expires_at",
+  "r.proof_reference",
+].join(", ");
 
 type ReservationRow = {
   reservation_id: string;
   budget_id: string;
   operation_id: string;
+  agent_id: string;
+  wallet_id: string;
+  policy_id: string;
+  policy_version: number;
   idempotency_key: string;
   amount_atomic: string;
   finalized_spend_atomic: string;
   status: ReservationStatus;
   expires_at: Date | string;
   proof_reference: string | null;
+  intent_row_id: string;
+  intent_agent_id: string;
+  intent_wallet_id: string;
+  intent_policy_id: string;
+  intent_policy_version: number;
+  budget_agent_id: string;
+  budget_wallet_id: string;
+  budget_policy_id: string;
+  budget_policy_version: number;
+  owner_id: string;
+  wallet_owner_id: string;
+  policy_owner_id: string;
+  policy_agent_id: string;
+  policy_wallet_id: string;
 };
+
+type ReservationBinding = {
+  reservation: ReservationSnapshot;
+  correlation: AuditCorrelation;
+};
+
+type BindingRow = Pick<
+  ReservationRow,
+  | "reservation_id"
+  | "budget_id"
+  | "operation_id"
+  | "intent_row_id"
+  | "agent_id"
+  | "wallet_id"
+  | "policy_id"
+  | "policy_version"
+  | "intent_agent_id"
+  | "intent_wallet_id"
+  | "intent_policy_id"
+  | "intent_policy_version"
+  | "budget_agent_id"
+  | "budget_wallet_id"
+  | "budget_policy_id"
+  | "budget_policy_version"
+  | "owner_id"
+  | "wallet_owner_id"
+  | "policy_owner_id"
+  | "policy_agent_id"
+  | "policy_wallet_id"
+>;
 
 type BudgetRow = {
   budget_id: string;
@@ -177,6 +237,57 @@ const transitionEventId = (
   eventType: AuditEventType,
 ): string => `${audit.eventId}:${eventType.replaceAll(".", ":")}`;
 
+const assertAuditCorrelation = (
+  audit: AuditContext,
+  correlation: AuditCorrelation,
+): void => {
+  for (const [field, assertedValue] of Object.entries(
+    audit.assertedCorrelation ?? {},
+  )) {
+    if (
+      assertedValue !== undefined &&
+      assertedValue !== correlation[field as keyof AuditCorrelation]
+    )
+      throw new LedgerError(
+        "AUDIT_CORRELATION_MISMATCH",
+        `audit correlation assertion does not match persisted ${field}`,
+      );
+  }
+};
+
+const mapAuditCorrelation = (row: BindingRow): AuditCorrelation => ({
+  reservationId: row.reservation_id,
+  budgetId: row.budget_id,
+  ownerId: row.owner_id,
+  agentId: row.agent_id,
+  walletId: row.wallet_id,
+  intentId: row.intent_row_id,
+  operationId: row.operation_id,
+  policyId: row.policy_id,
+  policyVersion: row.policy_version,
+});
+
+const assertBindingConsistency = (row: BindingRow): void => {
+  if (
+    row.intent_agent_id !== row.agent_id ||
+    row.intent_wallet_id !== row.wallet_id ||
+    row.intent_policy_id !== row.policy_id ||
+    row.intent_policy_version !== row.policy_version ||
+    row.budget_agent_id !== row.agent_id ||
+    row.budget_wallet_id !== row.wallet_id ||
+    row.budget_policy_id !== row.policy_id ||
+    row.budget_policy_version !== row.policy_version ||
+    row.owner_id !== row.wallet_owner_id ||
+    row.owner_id !== row.policy_owner_id ||
+    row.policy_agent_id !== row.agent_id ||
+    row.policy_wallet_id !== row.wallet_id
+  )
+    throw new LedgerError(
+      "BUDGET_BINDING_MISMATCH",
+      "reservation, budget, operation, intent, and policy bindings differ",
+    );
+};
+
 const eventData = (
   reservation: ReservationSnapshot,
   extra: Record<string, unknown> = {},
@@ -189,9 +300,36 @@ const eventData = (
 const getReservationForUpdate = async (
   client: PoolClient,
   reservationId: string,
-): Promise<ReservationSnapshot> => {
+): Promise<ReservationBinding> => {
   const result = await client.query<ReservationRow>(
-    `SELECT ${reservationColumns} FROM budget_reservations WHERE reservation_id = $1 FOR UPDATE`,
+    `SELECT ${qualifiedReservationColumns},
+            o.agent_id,
+            o.wallet_id,
+            o.policy_id,
+            o.policy_version,
+            i.intent_id AS intent_row_id,
+            i.agent_id AS intent_agent_id,
+            i.wallet_id AS intent_wallet_id,
+            i.policy_id AS intent_policy_id,
+            i.policy_version AS intent_policy_version,
+            b.agent_id AS budget_agent_id,
+            b.wallet_id AS budget_wallet_id,
+            b.policy_id AS budget_policy_id,
+            b.policy_version AS budget_policy_version,
+            a.owner_id,
+            w.owner_id AS wallet_owner_id,
+            p.owner_id AS policy_owner_id,
+            p.agent_id AS policy_agent_id,
+            p.wallet_id AS policy_wallet_id
+     FROM budget_reservations r
+     JOIN budget_accounts b ON b.budget_id = r.budget_id
+     JOIN operations o ON o.operation_id = r.operation_id
+     JOIN intents i ON i.intent_id = o.intent_id
+     JOIN agents a ON a.agent_id = o.agent_id
+     JOIN wallets w ON w.wallet_id = o.wallet_id
+     JOIN policies p ON p.policy_id = o.policy_id
+     WHERE r.reservation_id = $1
+     FOR UPDATE OF r, b, o, i, a, w, p`,
     [reservationId],
   );
   const row = result.rows[0];
@@ -200,7 +338,51 @@ const getReservationForUpdate = async (
       "RESERVATION_NOT_FOUND",
       `reservation not found: ${reservationId}`,
     );
-  return mapReservation(row);
+  assertBindingConsistency(row);
+  const reservation = mapReservation(row);
+  return { reservation, correlation: mapAuditCorrelation(row) };
+};
+
+const getReservationBindingForReserve = async (
+  client: PoolClient,
+  budgetId: string,
+  operationId: string,
+): Promise<AuditCorrelation> => {
+  const result = await client.query<BindingRow>(
+    `SELECT $3::text AS reservation_id, b.budget_id, o.operation_id,
+            o.intent_id AS intent_row_id, o.agent_id, o.wallet_id,
+            o.policy_id, o.policy_version,
+            i.agent_id AS intent_agent_id,
+            i.wallet_id AS intent_wallet_id,
+            i.policy_id AS intent_policy_id,
+            i.policy_version AS intent_policy_version,
+            b.agent_id AS budget_agent_id,
+            b.wallet_id AS budget_wallet_id,
+            b.policy_id AS budget_policy_id,
+            b.policy_version AS budget_policy_version,
+            a.owner_id,
+            w.owner_id AS wallet_owner_id,
+            p.owner_id AS policy_owner_id,
+            p.agent_id AS policy_agent_id,
+            p.wallet_id AS policy_wallet_id
+     FROM operations o
+     JOIN intents i ON i.intent_id = o.intent_id
+     JOIN agents a ON a.agent_id = o.agent_id
+     JOIN wallets w ON w.wallet_id = o.wallet_id
+     JOIN policies p ON p.policy_id = o.policy_id
+     JOIN budget_accounts b ON b.budget_id = $1
+     WHERE o.operation_id = $2
+     FOR UPDATE OF o, b, i, a, w, p`,
+    [budgetId, operationId, "pending"],
+  );
+  const row = result.rows[0];
+  if (!row)
+    throw new LedgerError(
+      "RESERVATION_NOT_FOUND",
+      `operation or budget not found: ${operationId}/${budgetId}`,
+    );
+  assertBindingConsistency(row);
+  return mapAuditCorrelation(row);
 };
 
 const getReservation = async (
@@ -273,50 +455,16 @@ export const reserveBudget = async (
     payload: request.idempotencyPayload,
   });
   return withSerializableTransaction(pool, async (client) => {
-    const operation = await client.query<{
-      intent_id: string;
-      agent_id: string;
-      wallet_id: string;
-      policy_id: string;
-      policy_version: number;
-    }>(
-      `SELECT intent_id, agent_id, wallet_id, policy_id, policy_version
-       FROM operations WHERE operation_id = $1`,
-      [request.operationId],
+    const persistedCorrelation = await getReservationBindingForReserve(
+      client,
+      request.budgetId,
+      request.operationId,
     );
-    const operationRow = operation.rows[0];
-    if (!operationRow)
-      throw new LedgerError(
-        "RESERVATION_NOT_FOUND",
-        `operation not found: ${request.operationId}`,
-      );
-
-    const budgetBinding = await client.query<{
-      agent_id: string;
-      wallet_id: string;
-      policy_id: string;
-      policy_version: number;
-    }>(
-      `SELECT agent_id, wallet_id, policy_id, policy_version
-       FROM budget_accounts WHERE budget_id = $1`,
-      [request.budgetId],
-    );
-    const budgetBindingRow = budgetBinding.rows[0];
-    if (!budgetBindingRow)
-      throw new LedgerError(
-        "RESERVATION_NOT_FOUND",
-        `budget not found: ${request.budgetId}`,
-      );
-    if (
-      operationRow.agent_id !== budgetBindingRow.agent_id ||
-      operationRow.wallet_id !== budgetBindingRow.wallet_id ||
-      operationRow.policy_id !== budgetBindingRow.policy_id ||
-      operationRow.policy_version !== budgetBindingRow.policy_version
-    )
-      throw new LedgerError(
-        "BUDGET_BINDING_MISMATCH",
-        `operation and budget do not share the same owner, wallet, policy, and version`,
-      );
+    const correlation = {
+      ...persistedCorrelation,
+      reservationId: request.reservationId,
+    };
+    assertAuditCorrelation(request.audit, correlation);
 
     const insertedIdempotency = await client.query<{
       reservation_id: string | null;
@@ -326,7 +474,7 @@ export const reserveBudget = async (
       [
         request.idempotencyKey,
         payloadHash,
-        operationRow.intent_id,
+        persistedCorrelation.intentId,
         request.operationId,
       ],
     );
@@ -388,8 +536,11 @@ export const reserveBudget = async (
       [reservation.reservationId, request.idempotencyKey],
     );
     await appendAuditEvent(client, {
-      ...request.audit,
       eventId: transitionEventId(request.audit, "budget.reservation.created"),
+      actorType: request.audit.actorType,
+      actorId: request.audit.actorId,
+      traceId: request.audit.traceId,
+      ...correlation,
       eventType: "budget.reservation.created",
       data: eventData(reservation),
     });
@@ -405,25 +556,29 @@ const transitionReservation = async (
   transition: (
     client: PoolClient,
     reservation: ReservationSnapshot,
+    correlation: AuditCorrelation,
   ) => Promise<ReservationSnapshot>,
 ): Promise<ReservationSnapshot> =>
-  withSerializableTransaction(pool, async (client) =>
-    transition(
-      client,
-      await getReservationForUpdate(client, input.reservationId),
-    ),
-  );
+  withSerializableTransaction(pool, async (client) => {
+    const binding = await getReservationForUpdate(client, input.reservationId);
+    assertAuditCorrelation(input.audit, binding.correlation);
+    return transition(client, binding.reservation, binding.correlation);
+  });
 
 const writeTransitionAudit = async (
   client: PoolClient,
   audit: AuditContext,
   eventType: AuditEventType,
   reservation: ReservationSnapshot,
+  correlation: AuditCorrelation,
   data: Record<string, unknown> = {},
 ): Promise<void> =>
   appendAuditEvent(client, {
-    ...audit,
     eventId: transitionEventId(audit, eventType),
+    actorType: audit.actorType,
+    actorId: audit.actorId,
+    traceId: audit.traceId,
+    ...correlation,
     eventType,
     data: eventData(reservation, data),
   });
@@ -432,187 +587,212 @@ export const authorizeReservation = (
   pool: Pool,
   input: TransitionInput,
 ): Promise<ReservationSnapshot> =>
-  transitionReservation(pool, input, async (client, reservation) => {
-    if (reservation.status === "AUTHORIZED") return reservation;
-    if (reservation.status !== "HELD")
-      throw new LedgerError(
-        "INVALID_RESERVATION_TRANSITION",
-        `cannot authorize ${reservation.status} reservation`,
+  transitionReservation(
+    pool,
+    input,
+    async (client, reservation, correlation) => {
+      if (reservation.status === "AUTHORIZED") return reservation;
+      if (reservation.status !== "HELD")
+        throw new LedgerError(
+          "INVALID_RESERVATION_TRANSITION",
+          `cannot authorize ${reservation.status} reservation`,
+        );
+      await client.query(
+        "UPDATE budget_reservations SET status = 'AUTHORIZED', updated_at = now() WHERE reservation_id = $1",
+        [reservation.reservationId],
       );
-    await client.query(
-      "UPDATE budget_reservations SET status = 'AUTHORIZED', updated_at = now() WHERE reservation_id = $1",
-      [reservation.reservationId],
-    );
-    const next = { ...reservation, status: "AUTHORIZED" as const };
-    await writeTransitionAudit(
-      client,
-      input.audit,
-      "budget.reservation.authorized",
-      next,
-    );
-    return next;
-  });
+      const next = { ...reservation, status: "AUTHORIZED" as const };
+      await writeTransitionAudit(
+        client,
+        input.audit,
+        "budget.reservation.authorized",
+        next,
+        correlation,
+      );
+      return next;
+    },
+  );
 
 export const markReservationBroadcast = (
   pool: Pool,
   input: TransitionInput & { evidence: BroadcastEvidence },
 ): Promise<ReservationSnapshot> =>
-  transitionReservation(pool, input, async (client, reservation) => {
-    if (reservation.status === "BROADCAST") {
-      await getBroadcastEvidence(client, reservation.reservationId);
-      return reservation;
-    }
-    if (reservation.status !== "AUTHORIZED")
-      throw new LedgerError(
-        "INVALID_RESERVATION_TRANSITION",
-        `cannot mark ${reservation.status} reservation as broadcast`,
-      );
-    if (input.audit.actorType !== "adapter")
-      throw new LedgerError(
-        "INVALID_BROADCAST_EVIDENCE",
-        "only an adapter actor may record verified broadcast evidence",
-      );
-    const evidence = parseBroadcastEvidence(input.evidence);
-    await client.query(
-      `INSERT INTO reservation_broadcast_evidence
+  transitionReservation(
+    pool,
+    input,
+    async (client, reservation, correlation) => {
+      if (reservation.status === "BROADCAST") {
+        await getBroadcastEvidence(client, reservation.reservationId);
+        return reservation;
+      }
+      if (reservation.status !== "AUTHORIZED")
+        throw new LedgerError(
+          "INVALID_RESERVATION_TRANSITION",
+          `cannot mark ${reservation.status} reservation as broadcast`,
+        );
+      if (input.audit.actorType !== "adapter")
+        throw new LedgerError(
+          "INVALID_BROADCAST_EVIDENCE",
+          "only an adapter actor may record verified broadcast evidence",
+        );
+      const evidence = parseBroadcastEvidence(input.evidence);
+      await client.query(
+        `INSERT INTO reservation_broadcast_evidence
        (reservation_id, transaction_hash, nonce, receipt_reference, verification_source)
        VALUES ($1, $2, $3::numeric, $4, $5)`,
-      [
-        reservation.reservationId,
-        evidence.transactionHash,
-        evidence.nonce,
-        evidence.receiptReference,
-        input.audit.actorId,
-      ],
-    );
-    await client.query(
-      "UPDATE budget_reservations SET status = 'BROADCAST', updated_at = now() WHERE reservation_id = $1",
-      [reservation.reservationId],
-    );
-    const next = { ...reservation, status: "BROADCAST" as const };
-    await writeTransitionAudit(
-      client,
-      input.audit,
-      "budget.reservation.broadcast",
-      next,
-      {
-        transactionHash: evidence.transactionHash,
-        nonce: evidence.nonce,
-        proofReference: evidence.receiptReference,
-      },
-    );
-    return next;
-  });
+        [
+          reservation.reservationId,
+          evidence.transactionHash,
+          evidence.nonce,
+          evidence.receiptReference,
+          input.audit.actorId,
+        ],
+      );
+      await client.query(
+        "UPDATE budget_reservations SET status = 'BROADCAST', updated_at = now() WHERE reservation_id = $1",
+        [reservation.reservationId],
+      );
+      const next = { ...reservation, status: "BROADCAST" as const };
+      await writeTransitionAudit(
+        client,
+        input.audit,
+        "budget.reservation.broadcast",
+        next,
+        correlation,
+        {
+          transactionHash: evidence.transactionHash,
+          nonce: evidence.nonce,
+          proofReference: evidence.receiptReference,
+        },
+      );
+      return next;
+    },
+  );
 
 export const verifyBroadcastEvidence = (
   pool: Pool,
   input: TransitionInput,
 ): Promise<ReservationSnapshot> =>
-  transitionReservation(pool, input, async (client, reservation) => {
-    if (reservation.status !== "BROADCAST")
-      throw new LedgerError(
-        "INVALID_RESERVATION_TRANSITION",
-        `cannot verify evidence for ${reservation.status} reservation`,
+  transitionReservation(
+    pool,
+    input,
+    async (client, reservation, correlation) => {
+      if (reservation.status !== "BROADCAST")
+        throw new LedgerError(
+          "INVALID_RESERVATION_TRANSITION",
+          `cannot verify evidence for ${reservation.status} reservation`,
+        );
+      if (
+        input.audit.actorType !== "worker" ||
+        !input.audit.actorId.startsWith("reconciler:")
+      )
+        throw new LedgerError(
+          "INVALID_BROADCAST_EVIDENCE",
+          "only a reconciler worker may verify broadcast evidence",
+        );
+      const evidence = await getBroadcastEvidence(
+        client,
+        reservation.reservationId,
       );
-    if (
-      input.audit.actorType !== "worker" ||
-      !input.audit.actorId.startsWith("reconciler:")
-    )
-      throw new LedgerError(
-        "INVALID_BROADCAST_EVIDENCE",
-        "only a reconciler worker may verify broadcast evidence",
-      );
-    const evidence = await getBroadcastEvidence(
-      client,
-      reservation.reservationId,
-    );
-    if (evidence.verification_status === "VERIFIED") return reservation;
-    await client.query(
-      `UPDATE reservation_broadcast_evidence
+      if (evidence.verification_status === "VERIFIED") return reservation;
+      await client.query(
+        `UPDATE reservation_broadcast_evidence
        SET verification_status = 'VERIFIED', verified_at = now(), verified_by = $1
        WHERE reservation_id = $2`,
-      [input.audit.actorId, reservation.reservationId],
-    );
-    await writeTransitionAudit(
-      client,
-      input.audit,
-      "budget.reservation.evidence.verified",
-      reservation,
-      {
-        transactionHash: evidence.transaction_hash,
-        nonce: String(evidence.nonce),
-        proofReference: evidence.receipt_reference,
-        verificationStatus: "VERIFIED",
-      },
-    );
-    return reservation;
-  });
+        [input.audit.actorId, reservation.reservationId],
+      );
+      await writeTransitionAudit(
+        client,
+        input.audit,
+        "budget.reservation.evidence.verified",
+        reservation,
+        correlation,
+        {
+          transactionHash: evidence.transaction_hash,
+          nonce: String(evidence.nonce),
+          proofReference: evidence.receipt_reference,
+          verificationStatus: "VERIFIED",
+        },
+      );
+      return reservation;
+    },
+  );
 
 export const releaseReservation = (
   pool: Pool,
   input: TransitionInput,
 ): Promise<ReservationSnapshot> =>
-  transitionReservation(pool, input, async (client, reservation) => {
-    if (reservation.status === "RELEASED") return reservation;
-    if (reservation.status !== "HELD" && reservation.status !== "AUTHORIZED")
-      throw new LedgerError(
-        "INVALID_RESERVATION_TRANSITION",
-        `cannot release ${reservation.status} reservation`,
-      );
-    await client.query(
-      `UPDATE budget_accounts SET available = available + $1::numeric, reserved = reserved - $1::numeric,
+  transitionReservation(
+    pool,
+    input,
+    async (client, reservation, correlation) => {
+      if (reservation.status === "RELEASED") return reservation;
+      if (reservation.status !== "HELD" && reservation.status !== "AUTHORIZED")
+        throw new LedgerError(
+          "INVALID_RESERVATION_TRANSITION",
+          `cannot release ${reservation.status} reservation`,
+        );
+      await client.query(
+        `UPDATE budget_accounts SET available = available + $1::numeric, reserved = reserved - $1::numeric,
        version = version + 1, updated_at = now() WHERE budget_id = $2`,
-      [reservation.amountAtomic, reservation.budgetId],
-    );
-    await client.query(
-      "UPDATE budget_reservations SET status = 'RELEASED', updated_at = now() WHERE reservation_id = $1",
-      [reservation.reservationId],
-    );
-    const next = { ...reservation, status: "RELEASED" as const };
-    await writeTransitionAudit(
-      client,
-      input.audit,
-      "budget.reservation.released",
-      next,
-    );
-    return next;
-  });
+        [reservation.amountAtomic, reservation.budgetId],
+      );
+      await client.query(
+        "UPDATE budget_reservations SET status = 'RELEASED', updated_at = now() WHERE reservation_id = $1",
+        [reservation.reservationId],
+      );
+      const next = { ...reservation, status: "RELEASED" as const };
+      await writeTransitionAudit(
+        client,
+        input.audit,
+        "budget.reservation.released",
+        next,
+        correlation,
+      );
+      return next;
+    },
+  );
 
 export const expireReservation = (
   pool: Pool,
   input: TransitionInput & { now: string | Date },
 ): Promise<ReservationSnapshot> =>
-  transitionReservation(pool, input, async (client, reservation) => {
-    if (reservation.status === "EXPIRED") return reservation;
-    if (reservation.status !== "HELD" && reservation.status !== "AUTHORIZED")
-      throw new LedgerError(
-        "INVALID_RESERVATION_TRANSITION",
-        `cannot expire ${reservation.status} reservation`,
-      );
-    const now = validDate(input.now);
-    if (new Date(reservation.expiresAt).getTime() > now.getTime())
-      throw new LedgerError(
-        "RESERVATION_NOT_EXPIRED",
-        `reservation ${reservation.reservationId} has not expired`,
-      );
-    await client.query(
-      `UPDATE budget_accounts SET available = available + $1::numeric, reserved = reserved - $1::numeric,
+  transitionReservation(
+    pool,
+    input,
+    async (client, reservation, correlation) => {
+      if (reservation.status === "EXPIRED") return reservation;
+      if (reservation.status !== "HELD" && reservation.status !== "AUTHORIZED")
+        throw new LedgerError(
+          "INVALID_RESERVATION_TRANSITION",
+          `cannot expire ${reservation.status} reservation`,
+        );
+      const now = validDate(input.now);
+      if (new Date(reservation.expiresAt).getTime() > now.getTime())
+        throw new LedgerError(
+          "RESERVATION_NOT_EXPIRED",
+          `reservation ${reservation.reservationId} has not expired`,
+        );
+      await client.query(
+        `UPDATE budget_accounts SET available = available + $1::numeric, reserved = reserved - $1::numeric,
        version = version + 1, updated_at = now() WHERE budget_id = $2`,
-      [reservation.amountAtomic, reservation.budgetId],
-    );
-    await client.query(
-      "UPDATE budget_reservations SET status = 'EXPIRED', updated_at = now() WHERE reservation_id = $1",
-      [reservation.reservationId],
-    );
-    const next = { ...reservation, status: "EXPIRED" as const };
-    await writeTransitionAudit(
-      client,
-      input.audit,
-      "budget.reservation.expired",
-      next,
-    );
-    return next;
-  });
+        [reservation.amountAtomic, reservation.budgetId],
+      );
+      await client.query(
+        "UPDATE budget_reservations SET status = 'EXPIRED', updated_at = now() WHERE reservation_id = $1",
+        [reservation.reservationId],
+      );
+      const next = { ...reservation, status: "EXPIRED" as const };
+      await writeTransitionAudit(
+        client,
+        input.audit,
+        "budget.reservation.expired",
+        next,
+        correlation,
+      );
+      return next;
+    },
+  );
 
 export const finalizeReservation = (
   pool: Pool,
@@ -622,87 +802,97 @@ export const finalizeReservation = (
   },
 ): Promise<ReservationSnapshot> => {
   const actualSpend = parseAtomic(input.actualSpendAtomic);
-  return transitionReservation(pool, input, async (client, reservation) => {
-    if (reservation.status === "FINALIZED") return reservation;
-    if (reservation.status !== "BROADCAST")
-      throw new LedgerError(
-        "INVALID_RESERVATION_TRANSITION",
-        `cannot finalize ${reservation.status} reservation`,
+  return transitionReservation(
+    pool,
+    input,
+    async (client, reservation, correlation) => {
+      if (reservation.status === "FINALIZED") return reservation;
+      if (reservation.status !== "BROADCAST")
+        throw new LedgerError(
+          "INVALID_RESERVATION_TRANSITION",
+          `cannot finalize ${reservation.status} reservation`,
+        );
+      const evidence = await getBroadcastEvidence(
+        client,
+        reservation.reservationId,
       );
-    const evidence = await getBroadcastEvidence(
-      client,
-      reservation.reservationId,
-    );
-    if (evidence.verification_status !== "VERIFIED")
-      throw new LedgerError(
-        "INVALID_BROADCAST_EVIDENCE",
-        "finalization requires independently verified broadcast evidence",
-      );
-    if (input.proofReference !== evidence.receipt_reference)
-      throw new LedgerError(
-        "INVALID_BROADCAST_EVIDENCE",
-        "finalization proof must match the verified broadcast receipt",
-      );
-    if (BigInt(actualSpend) > BigInt(reservation.amountAtomic))
-      throw new LedgerError(
-        "INVALID_ATOMIC_AMOUNT",
-        "actual spend exceeds reserved amount",
-      );
-    await client.query(
-      `UPDATE budget_accounts
+      if (evidence.verification_status !== "VERIFIED")
+        throw new LedgerError(
+          "INVALID_BROADCAST_EVIDENCE",
+          "finalization requires independently verified broadcast evidence",
+        );
+      if (input.proofReference !== evidence.receipt_reference)
+        throw new LedgerError(
+          "INVALID_BROADCAST_EVIDENCE",
+          "finalization proof must match the verified broadcast receipt",
+        );
+      if (BigInt(actualSpend) > BigInt(reservation.amountAtomic))
+        throw new LedgerError(
+          "INVALID_ATOMIC_AMOUNT",
+          "actual spend exceeds reserved amount",
+        );
+      await client.query(
+        `UPDATE budget_accounts
        SET available = available + ($1::numeric - $2::numeric), reserved = reserved - $1::numeric,
            finalized_spend = finalized_spend + $2::numeric, version = version + 1, updated_at = now()
        WHERE budget_id = $3`,
-      [reservation.amountAtomic, actualSpend, reservation.budgetId],
-    );
-    await client.query(
-      `UPDATE budget_reservations SET status = 'FINALIZED', finalized_spend_atomic = $1::numeric,
+        [reservation.amountAtomic, actualSpend, reservation.budgetId],
+      );
+      await client.query(
+        `UPDATE budget_reservations SET status = 'FINALIZED', finalized_spend_atomic = $1::numeric,
        proof_reference = $2, updated_at = now() WHERE reservation_id = $3`,
-      [actualSpend, input.proofReference, reservation.reservationId],
-    );
-    const next = {
-      ...reservation,
-      status: "FINALIZED" as const,
-      finalizedSpendAtomic: actualSpend,
-      proofReference: input.proofReference,
-    };
-    await writeTransitionAudit(
-      client,
-      input.audit,
-      "budget.reservation.finalized",
-      next,
-      {
+        [actualSpend, input.proofReference, reservation.reservationId],
+      );
+      const next = {
+        ...reservation,
+        status: "FINALIZED" as const,
+        finalizedSpendAtomic: actualSpend,
         proofReference: input.proofReference,
-        transactionHash: evidence.transaction_hash,
-        nonce: String(evidence.nonce),
-      },
-    );
-    return next;
-  });
+      };
+      await writeTransitionAudit(
+        client,
+        input.audit,
+        "budget.reservation.finalized",
+        next,
+        correlation,
+        {
+          proofReference: input.proofReference,
+          transactionHash: evidence.transaction_hash,
+          nonce: String(evidence.nonce),
+        },
+      );
+      return next;
+    },
+  );
 };
 
 export const disputeReservation = (
   pool: Pool,
   input: TransitionInput & { reason: string },
 ): Promise<ReservationSnapshot> =>
-  transitionReservation(pool, input, async (client, reservation) => {
-    if (reservation.status === "DISPUTED") return reservation;
-    if (!["HELD", "AUTHORIZED", "BROADCAST"].includes(reservation.status))
-      throw new LedgerError(
-        "INVALID_RESERVATION_TRANSITION",
-        `cannot dispute ${reservation.status} reservation`,
+  transitionReservation(
+    pool,
+    input,
+    async (client, reservation, correlation) => {
+      if (reservation.status === "DISPUTED") return reservation;
+      if (!["HELD", "AUTHORIZED", "BROADCAST"].includes(reservation.status))
+        throw new LedgerError(
+          "INVALID_RESERVATION_TRANSITION",
+          `cannot dispute ${reservation.status} reservation`,
+        );
+      await client.query(
+        "UPDATE budget_reservations SET status = 'DISPUTED', updated_at = now() WHERE reservation_id = $1",
+        [reservation.reservationId],
       );
-    await client.query(
-      "UPDATE budget_reservations SET status = 'DISPUTED', updated_at = now() WHERE reservation_id = $1",
-      [reservation.reservationId],
-    );
-    const next = { ...reservation, status: "DISPUTED" as const };
-    await writeTransitionAudit(
-      client,
-      input.audit,
-      "budget.reservation.disputed",
-      next,
-      { reason: input.reason },
-    );
-    return next;
-  });
+      const next = { ...reservation, status: "DISPUTED" as const };
+      await writeTransitionAudit(
+        client,
+        input.audit,
+        "budget.reservation.disputed",
+        next,
+        correlation,
+        { reason: input.reason },
+      );
+      return next;
+    },
+  );

@@ -4,6 +4,7 @@ import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { URL } from "node:url";
 
+import { loadLocalRuntime } from "./local-runtime.mjs";
 import { PHASE1_TEST_PARAMETERS } from "./phase1-test-parameters.mjs";
 
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
@@ -94,8 +95,15 @@ if (gate === "concurrency") {
 }
 if (gate === "db") {
   const parameters = PHASE1_TEST_PARAMETERS.database;
+  const runtime = loadLocalRuntime({ root: repoRoot });
   log(
-    `Database parameters: host=${parameters.host} port=${parameters.port} database=${parameters.database} user=${parameters.user}`,
+    `Database runtime: host=${runtime.postgres.host} port=${runtime.postgres.port} database=${parameters.database} user=${parameters.user}`,
+  );
+}
+if (gate === "concurrency") {
+  const runtime = loadLocalRuntime({ root: repoRoot });
+  log(
+    `Concurrency database runtime: host=${runtime.postgres.host} port=${runtime.postgres.port} database=${runtime.postgres.database} user=${runtime.postgres.user}`,
   );
 }
 

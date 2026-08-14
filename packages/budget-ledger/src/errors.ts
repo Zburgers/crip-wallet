@@ -7,6 +7,7 @@ export type LedgerErrorCode =
   | "INVALID_PROOF_REFERENCE"
   | "INVALID_BROADCAST_EVIDENCE"
   | "BUDGET_BINDING_MISMATCH"
+  | "AUDIT_CORRELATION_MISMATCH"
   | "INVALID_ATOMIC_AMOUNT";
 
 export class LedgerError extends Error {

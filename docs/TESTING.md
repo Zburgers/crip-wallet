@@ -41,8 +41,8 @@ canonical values in `tooling/phase1-test-parameters.mjs`:
   property.
 - `npm run test:concurrency`: `4` workers, `32` rounds, a
   `ready/start/release` barrier, and a `5000 ms` barrier timeout.
-- `npm run test:db`: loopback PostgreSQL at `127.0.0.1:55432`, database
-  `crip_wallet`, user `crip`.
+- `npm run test:db`: loopback PostgreSQL whose host, effective port, database,
+  and user are loaded from `.local/runtime.env`.
 
 Database and concurrency gates fail closed when their required test directories
 are absent. This preserves a visible `BLOCKED` result until real migrations,
@@ -51,8 +51,17 @@ reservation, and race tests are added; empty suites cannot report a pass.
 ## Required environment
 
 `npm run dev:up` starts digest-pinned PostgreSQL and Foundry/Anvil containers on
-loopback. Tests generate disposable state under `.local/` and use only chain
-31337. Clean-room runs begin with a fresh Compose volume and record image digests.
+loopback. It creates `.local/runtime.env` mode `0600` as the authoritative,
+checkout-bound effective configuration: Docker assigns collision-free host
+ports, and `dev:up` persists those ports after health checks. DB and concurrency
+tests load that same file; a missing, copied, stopped, or conflicting runtime
+fails closed instead of falling back to a shared default or another checkout.
+The Compose project and PostgreSQL volume are checkout-specific. Tests use only
+chain 31337 and generated disposable state under `.local/`.
+
+`CRIP_POSTGRES_PORT=<other-port> npm run test:concurrency` is expected to fail
+before connecting when it disagrees with the persisted runtime, protecting the
+suite's destructive `TRUNCATE ... CASCADE` setup.
 
 ## Evidence promotion
 

@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { Pool, type PoolClient } from "pg";
@@ -27,33 +26,22 @@ import {
   verifyBroadcastEvidence,
   withSerializableTransaction,
   type AuditContext,
+  type AuditEventInput,
 } from "@crip/budget-ledger";
+import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
 
 const repositoryRoot = join(import.meta.dirname, "../..");
 const assetAddress = "0x0000000000000000000000000000000000000001";
 type Queryable = Pick<PoolClient, "query">;
 
-const runtimePassword = (): string => {
-  if (process.env.CRIP_POSTGRES_PASSWORD)
-    return process.env.CRIP_POSTGRES_PASSWORD;
-  const path = join(repositoryRoot, ".local/runtime.env");
-  if (!existsSync(path))
-    throw new Error(
-      "PostgreSQL runtime is not initialized; run npm run dev:up first",
-    );
-  const line = readFileSync(path, "utf8")
-    .split("\n")
-    .find((value) => value.startsWith("CRIP_POSTGRES_PASSWORD="));
-  if (!line) throw new Error("PostgreSQL runtime password is missing");
-  return line.slice("CRIP_POSTGRES_PASSWORD=".length);
-};
+const runtime = loadLocalRuntime({ root: repositoryRoot });
 
 const pool = new Pool({
-  host: process.env.CRIP_POSTGRES_HOST ?? "127.0.0.1",
-  port: Number(process.env.CRIP_POSTGRES_PORT ?? 55432),
-  database: process.env.CRIP_POSTGRES_DATABASE ?? "crip_wallet",
-  user: process.env.CRIP_POSTGRES_USER ?? "crip",
-  password: runtimePassword(),
+  host: runtime.postgres.host,
+  port: runtime.postgres.port,
+  database: runtime.postgres.database,
+  user: runtime.postgres.user,
+  password: runtime.postgres.password,
   max: 8,
 });
 
@@ -61,6 +49,15 @@ const auditContext = (operationId: string): AuditContext => ({
   eventId: `evt_${operationId}`,
   actorType: "system",
   actorId: "ledger-test",
+  traceId: createHash("md5").update(operationId).digest("hex"),
+});
+
+const assertedCorrelation = (
+  operationId: string,
+  reservationId: string,
+): NonNullable<AuditContext["assertedCorrelation"]> => ({
+  reservationId,
+  budgetId: "budget_1",
   ownerId: "owner_1",
   agentId: "agent_1",
   walletId: "wallet_1",
@@ -68,7 +65,26 @@ const auditContext = (operationId: string): AuditContext => ({
   operationId,
   policyId: "policy_1",
   policyVersion: 1,
+});
+
+const persistedAuditInput = (
+  operationId: string,
+  reservationId: string,
+): AuditEventInput => ({
+  eventId: `evt_${operationId}`,
+  actorType: "system",
+  actorId: "ledger-test",
   traceId: createHash("md5").update(operationId).digest("hex"),
+  reservationId,
+  ownerId: "owner_1",
+  agentId: "agent_1",
+  walletId: "wallet_1",
+  intentId: `intent_${operationId}`,
+  operationId,
+  policyId: "policy_1",
+  policyVersion: 1,
+  eventType: "budget.reservation.created",
+  data: { reservationId, amountAtomic: "10" },
 });
 
 const adapterAuditContext = (operationId: string): AuditContext => ({
@@ -81,6 +97,15 @@ const reconcilerAuditContext = (operationId: string): AuditContext => ({
   ...auditContext(operationId),
   actorType: "worker",
   actorId: "reconciler:ledger-test",
+});
+
+const withAssertedCorrelation = (
+  audit: AuditContext,
+  operationId: string,
+  reservationId: string,
+): AuditContext => ({
+  ...audit,
+  assertedCorrelation: assertedCorrelation(operationId, reservationId),
 });
 
 const seedFixture = async (client: Queryable): Promise<void> => {
@@ -150,7 +175,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     const migration = await pool.query<{ filename: string; checksum: string }>(
       "SELECT filename, checksum FROM schema_migrations ORDER BY filename",
     );
-    expect(migration.rows).toHaveLength(12);
+    expect(migration.rows).toHaveLength(14);
     expect(migration.rows.map((row) => row.filename)).toEqual([
       "0001_ws003_budget_ledger.sql",
       "0002_ws003_idempotency_binding_guard.sql",
@@ -164,6 +189,8 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       "0010_ws003_parent_binding_guards.sql",
       "0011_ws003_pending_evidence_default_fix.sql",
       "0012_ws003_evidence_guard_column_fix.sql",
+      "0013_ws003_audit_reservation_correlation.sql",
+      "0014_ws003_audit_correlation_hardening.sql",
     ]);
     expect(
       migration.rows.every((row) => /^sha256:[0-9a-f]{64}$/.test(row.checksum)),
@@ -334,6 +361,291 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     expect(
       (await pool.query("SELECT event_type FROM audit_events")).rows,
     ).toEqual([{ event_type: "budget.reservation.created" }]);
+  });
+
+  test("rejects a reservation audit asserted as another valid operation", async () => {
+    await insertOperation(pool, "op_reservation_a");
+    await insertOperation(pool, "op_reservation_b");
+    await expect(
+      reserveBudget(pool, {
+        reservationId: "res_reservation_a",
+        budgetId: "budget_1",
+        operationId: "op_reservation_a",
+        idempotencyKey: "reservation-correlation-key",
+        idempotencyPayload: { operationId: "op_reservation_a" },
+        amountAtomic: "10",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        audit: withAssertedCorrelation(
+          auditContext("op_reservation_a"),
+          "op_reservation_b",
+          "res_reservation_b",
+        ),
+      }),
+    ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" });
+    expect((await getBudget(pool, "budget_1")).snapshot).toMatchObject({
+      available: "100",
+      reserved: "0",
+    });
+    expect(
+      (await pool.query("SELECT count(*)::int AS count FROM audit_events"))
+        .rows[0]?.count,
+    ).toBe(0);
+  });
+
+  test.each([
+    ["intentId", "intent_other"],
+    ["ownerId", "owner_other"],
+    ["agentId", "agent_other"],
+    ["walletId", "wallet_other"],
+    ["policyId", "policy_other"],
+    ["policyVersion", 2],
+  ] as const)(
+    "rejects an asserted correlation mismatch for %s",
+    (field, value) => {
+      const operationId = `op_asserted_${field}`;
+      const reservationId = `res_asserted_${field}`;
+      return insertOperation(pool, operationId).then(() =>
+        expect(
+          reserveBudget(pool, {
+            reservationId,
+            budgetId: "budget_1",
+            operationId,
+            idempotencyKey: `asserted-${field}`,
+            idempotencyPayload: { operationId },
+            amountAtomic: "10",
+            expiresAt: "2099-01-01T00:00:00.000Z",
+            audit: {
+              ...auditContext(operationId),
+              assertedCorrelation: {
+                ...assertedCorrelation(operationId, reservationId),
+                [field]: value,
+              },
+            },
+          }),
+        ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" }),
+      );
+    },
+  );
+
+  test("rejects alternate operation correlation across every reservation mutation", async () => {
+    const cases = [
+      "authorize",
+      "broadcast",
+      "verify",
+      "release",
+      "expire",
+      "finalize",
+      "dispute",
+    ] as const;
+    for (const kind of cases) {
+      const operationId = `op_transition_${kind}`;
+      const reservationId = `res_transition_${kind}`;
+      const otherOperationId = `op_other_${kind}`;
+      const otherReservationId = `res_other_${kind}`;
+      await insertOperation(pool, operationId);
+      await insertOperation(pool, otherOperationId);
+      await reserve(
+        operationId,
+        reservationId,
+        `transition-${kind}-key`,
+        "1",
+        kind === "expire" ? "2020-01-01T00:00:00.000Z" : undefined,
+      );
+      const forged = (base: AuditContext): AuditContext =>
+        withAssertedCorrelation(base, otherOperationId, otherReservationId);
+
+      if (kind === "authorize") {
+        await expect(
+          authorizeReservation(pool, {
+            reservationId,
+            audit: forged(auditContext(operationId)),
+          }),
+        ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" });
+      } else if (kind === "broadcast") {
+        await authorizeReservation(pool, {
+          reservationId,
+          audit: auditContext(operationId),
+        });
+        await expect(
+          markReservationBroadcast(pool, {
+            reservationId,
+            audit: forged(adapterAuditContext(operationId)),
+            evidence: {
+              transactionHash: `0x${"a".repeat(64)}`,
+              nonce: "1",
+              receiptReference: `receipt:${kind}`,
+            },
+          }),
+        ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" });
+      } else if (kind === "verify") {
+        await authorizeReservation(pool, {
+          reservationId,
+          audit: auditContext(operationId),
+        });
+        await markReservationBroadcast(pool, {
+          reservationId,
+          audit: adapterAuditContext(operationId),
+          evidence: {
+            transactionHash: `0x${"b".repeat(64)}`,
+            nonce: "1",
+            receiptReference: `receipt:${kind}`,
+          },
+        });
+        await expect(
+          verifyBroadcastEvidence(pool, {
+            reservationId,
+            audit: forged(reconcilerAuditContext(operationId)),
+          }),
+        ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" });
+      } else if (kind === "release") {
+        await expect(
+          releaseReservation(pool, {
+            reservationId,
+            audit: forged(auditContext(operationId)),
+          }),
+        ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" });
+      } else if (kind === "expire") {
+        await expect(
+          expireReservation(pool, {
+            reservationId,
+            now: "2021-01-01T00:00:00.000Z",
+            audit: forged(auditContext(operationId)),
+          }),
+        ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" });
+      } else if (kind === "finalize") {
+        await authorizeReservation(pool, {
+          reservationId,
+          audit: auditContext(operationId),
+        });
+        await markReservationBroadcast(pool, {
+          reservationId,
+          audit: adapterAuditContext(operationId),
+          evidence: {
+            transactionHash: `0x${"c".repeat(64)}`,
+            nonce: "1",
+            receiptReference: `receipt:${kind}`,
+          },
+        });
+        await verifyBroadcastEvidence(pool, {
+          reservationId,
+          audit: reconcilerAuditContext(operationId),
+        });
+        await expect(
+          finalizeReservation(pool, {
+            reservationId,
+            actualSpendAtomic: "1",
+            proofReference: `receipt:${kind}`,
+            audit: forged(auditContext(operationId)),
+          }),
+        ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" });
+      } else {
+        await expect(
+          disputeReservation(pool, {
+            reservationId,
+            reason: "correlation test",
+            audit: forged(auditContext(operationId)),
+          }),
+        ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" });
+      }
+
+      const persisted = await pool.query<{
+        status: string;
+        operation_id: string;
+      }>(
+        "SELECT status, operation_id FROM budget_reservations WHERE reservation_id = $1",
+        [reservationId],
+      );
+      expect(persisted.rows[0]?.operation_id).toBe(operationId);
+      expect(persisted.rows[0]?.status).not.toBe("FINALIZED");
+      const forgedEvents = await pool.query(
+        "SELECT count(*)::int AS count FROM audit_events WHERE operation_id = $1",
+        [otherOperationId],
+      );
+      expect(forgedEvents.rows[0]?.count).toBe(0);
+    }
+  });
+
+  test("does not let an idempotent retry introduce alternate correlation", async () => {
+    await insertOperation(pool, "op_idempotency_a");
+    await insertOperation(pool, "op_idempotency_b");
+    await reserve(
+      "op_idempotency_a",
+      "res_idempotency_a",
+      "correlation-retry-key",
+      "10",
+    );
+    await expect(
+      reserveBudget(pool, {
+        reservationId: "res_idempotency_retry",
+        budgetId: "budget_1",
+        operationId: "op_idempotency_a",
+        idempotencyKey: "correlation-retry-key",
+        idempotencyPayload: { amount: "10", operationId: "op_idempotency_a" },
+        amountAtomic: "10",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        audit: withAssertedCorrelation(
+          auditContext("op_idempotency_a"),
+          "op_idempotency_b",
+          "res_idempotency_b",
+        ),
+      }),
+    ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" });
+    expect((await getBudget(pool, "budget_1")).snapshot).toMatchObject({
+      available: "90",
+      reserved: "10",
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS count FROM audit_events WHERE operation_id = $1",
+          ["op_idempotency_a"],
+        )
+      ).rows[0]?.count,
+    ).toBe(1);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS count FROM audit_events WHERE operation_id = $1",
+          ["op_idempotency_b"],
+        )
+      ).rows[0]?.count,
+    ).toBe(0);
+  });
+
+  test("database guard rejects direct mismatch for every financial correlation field", async () => {
+    await insertOperation(pool, "op_direct_a");
+    await insertOperation(pool, "op_direct_b");
+    await reserve("op_direct_a", "res_direct_a", "direct-a-key", "10");
+    const mismatches = [
+      ["operationId", "op_direct_b"],
+      ["intentId", "intent_direct_b"],
+      ["ownerId", "owner_direct_b"],
+      ["agentId", "agent_direct_b"],
+      ["walletId", "wallet_direct_b"],
+      ["policyId", "policy_direct_b"],
+      ["policyVersion", 2],
+    ] as const;
+    for (const [field, value] of mismatches) {
+      const eventId = `evt_direct_mismatch_${field}`;
+      await expect(
+        withSerializableTransaction(pool, async (client) => {
+          await appendAuditEvent(client, {
+            ...persistedAuditInput("op_direct_a", "res_direct_a"),
+            eventId,
+            [field]: value,
+            data: { reservationId: "res_direct_a", amountAtomic: "10" },
+          } as AuditEventInput);
+        }),
+      ).rejects.toThrow(/correlation mismatch|authoritative binding/i);
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int AS count FROM audit_events WHERE event_id = $1",
+            [eventId],
+          )
+        ).rows[0]?.count,
+      ).toBe(0);
+    }
   });
 
   test("enforces balanced numeric constraints and foreign keys", async () => {
@@ -656,14 +968,16 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
         `INSERT INTO audit_events
           (event_id, event_type, sequence_no, actor_type, actor_id, owner_id, agent_id, wallet_id,
            intent_id, operation_id, policy_id, policy_version, trace_id, data, previous_event_hash,
-           event_hash, occurred_at, canonical_payload)
+           event_hash, occurred_at, canonical_payload, reservation_id)
          VALUES ('evt_tampered', 'budget.reservation.created', 99, 'system', 'ledger-test',
            'owner_1', 'agent_1', 'wallet_1', 'intent_op_audit_verify', 'op_audit_verify',
            'policy_1', 1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '{}'::jsonb, NULL,
-           $1, '2026-08-13T00:00:00Z', '{}')`,
+           $1, '2026-08-13T00:00:00Z', '{}', 'res_audit_verify')`,
         [`0x${"0".repeat(64)}`],
       ),
-    ).rejects.toThrow(/canonical audit payload|hash does not match/i);
+    ).rejects.toThrow(
+      /canonical audit payload|hash does not match|payload\/reservation correlation/i,
+    );
   });
 
   test("retries SQLSTATE 40001 a bounded number of times", async () => {
@@ -693,7 +1007,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
           "UPDATE budget_accounts SET available = available - 10, reserved = reserved + 10 WHERE budget_id = 'budget_1'",
         );
         await appendAuditEvent(client, {
-          ...auditContext("op_audit_rollback"),
+          ...persistedAuditInput("op_audit_rollback", "missing-rollback"),
           eventId: "evt_bad",
           eventType: "not-a-real-event",
           data: { amountAtomic: "10" },
@@ -718,7 +1032,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
           "UPDATE budget_accounts SET available = available - 10, reserved = reserved + 10 WHERE budget_id = 'budget_1'",
         );
         await appendAuditEvent(client, {
-          ...auditContext("op_audit_contract"),
+          ...persistedAuditInput("op_audit_contract", "missing-contract"),
           eventId: "evt_audit_contract",
           eventType: "budget.reservation.created",
           data: { privateKey: "must-not-persist" },
@@ -925,6 +1239,12 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
 
   test("retries a mutated serializable transaction without duplicating its audit event", async () => {
     await insertOperation(pool, "op_serializable_retry");
+    await reserve(
+      "op_serializable_retry",
+      "res_serializable_retry",
+      "serializable-retry-key",
+      "1",
+    );
     let attempts = 0;
     await withSerializableTransaction(pool, async (client) => {
       attempts += 1;
@@ -932,10 +1252,16 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
         "UPDATE budget_accounts SET available = available - 10, reserved = reserved + 10 WHERE budget_id = 'budget_1'",
       );
       await appendAuditEvent(client, {
-        ...auditContext("op_serializable_retry"),
+        ...persistedAuditInput(
+          "op_serializable_retry",
+          "res_serializable_retry",
+        ),
         eventId: "evt_serializable_retry",
         eventType: "budget.reservation.created",
-        data: { amountAtomic: "10" },
+        data: {
+          reservationId: "res_serializable_retry",
+          amountAtomic: "10",
+        },
       });
       if (attempts === 1) {
         const error = new Error("synthetic serialization failure") as Error & {
@@ -947,8 +1273,8 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     });
     expect(attempts).toBe(2);
     expect((await getBudget(pool, "budget_1")).snapshot).toMatchObject({
-      available: "90",
-      reserved: "10",
+      available: "89",
+      reserved: "11",
     });
     expect(
       (
@@ -957,12 +1283,24 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
           ["op_serializable_retry"],
         )
       ).rows[0]?.count,
-    ).toBe(1);
+    ).toBe(2);
   });
 
   test("retries a real PostgreSQL serialization failure without duplicating audit", async () => {
     await insertOperation(pool, "op_real_serialization_1");
     await insertOperation(pool, "op_real_serialization_2");
+    await reserve(
+      "op_real_serialization_1",
+      "res_real_serialization_1",
+      "real-serialization-key-1",
+      "10",
+    );
+    await reserve(
+      "op_real_serialization_2",
+      "res_real_serialization_2",
+      "real-serialization-key-2",
+      "10",
+    );
     let firstPasses = 0;
     let ready = 0;
     let release!: () => void;
@@ -989,10 +1327,21 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
           "UPDATE budget_accounts SET available = available - 10, reserved = reserved + 10 WHERE budget_id = 'budget_1'",
         );
         await appendAuditEvent(client, {
-          ...auditContext(operationId),
+          ...persistedAuditInput(
+            operationId,
+            operationId === "op_real_serialization_1"
+              ? "res_real_serialization_1"
+              : "res_real_serialization_2",
+          ),
           eventId: `evt_${operationId}`,
           eventType: "budget.reservation.created",
-          data: { amountAtomic: "10" },
+          data: {
+            reservationId:
+              operationId === "op_real_serialization_1"
+                ? "res_real_serialization_1"
+                : "res_real_serialization_2",
+            amountAtomic: "10",
+          },
         });
       });
     const requests = [
@@ -1004,8 +1353,8 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     await Promise.all(requests);
     expect(firstPasses).toBe(3);
     expect((await getBudget(pool, "budget_1")).snapshot).toMatchObject({
-      available: "80",
-      reserved: "20",
+      available: "60",
+      reserved: "40",
     });
     expect(
       (
@@ -1013,7 +1362,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
           "SELECT count(*)::int AS count FROM audit_events WHERE event_type = 'budget.reservation.created'",
         )
       ).rows[0]?.count,
-    ).toBe(2);
+    ).toBe(4);
   });
 
   test("enforces immutable policy versions and append-only audit rows", async () => {

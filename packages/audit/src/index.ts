@@ -20,10 +20,9 @@ export type AuditEventType =
   | "budget.reservation.finalized"
   | "budget.reservation.disputed";
 
-export interface AuditContext {
-  eventId: string;
-  actorType: AuditActorType;
-  actorId: string;
+export interface AuditCorrelation {
+  reservationId: string;
+  budgetId: string;
   ownerId: string;
   agentId: string;
   walletId: string;
@@ -31,10 +30,30 @@ export interface AuditContext {
   operationId: string;
   policyId: string;
   policyVersion: number;
-  traceId: string;
 }
 
-export interface AuditEventInput extends AuditContext {
+export interface AuditContext {
+  eventId: string;
+  actorType: AuditActorType;
+  actorId: string;
+  traceId: string;
+  /** Optional caller assertion; persisted correlation is always resolved from PostgreSQL. */
+  assertedCorrelation?: Partial<AuditCorrelation>;
+}
+
+export interface AuditEventInput {
+  eventId: string;
+  actorType: AuditActorType;
+  actorId: string;
+  traceId: string;
+  reservationId: string;
+  ownerId: string;
+  agentId: string;
+  walletId: string;
+  intentId: string;
+  operationId: string;
+  policyId: string;
+  policyVersion: number;
   eventType: AuditEventType;
   data: Record<string, unknown>;
 }
@@ -127,8 +146,9 @@ export const appendAuditEvent = async (
   await client.query(
     `INSERT INTO audit_events
       (event_id, event_type, sequence_no, actor_type, actor_id, owner_id, agent_id, wallet_id,
-       intent_id, operation_id, policy_id, policy_version, trace_id, data, previous_event_hash, event_hash, occurred_at, canonical_payload)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, $18)`,
+       intent_id, operation_id, policy_id, policy_version, trace_id, data, previous_event_hash,
+       event_hash, occurred_at, canonical_payload, reservation_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, $18, $19)`,
     [
       input.eventId,
       input.eventType,
@@ -148,6 +168,7 @@ export const appendAuditEvent = async (
       eventHash,
       occurredAt,
       canonicalPayload,
+      input.reservationId,
     ],
   );
 };

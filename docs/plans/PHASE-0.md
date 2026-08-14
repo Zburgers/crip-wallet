@@ -69,6 +69,17 @@ Status: COMPLETE at commit `5a9d80c`.
   <verification><command>git diff --check 3a044ee..HEAD &amp;&amp; npm ci &amp;&amp; npm run check</command><expected>Exit 0 with exact result recorded; no false closure of external gaps.</expected></verification>
 </task>
 
+### WP-02 — deterministic local/test isolation (2026-08-15)
+
+The local runtime authority is `.local/runtime.env`, bound to the resolved
+checkout hash and Compose project. `dev:up` requests Docker-assigned host ports
+on loopback, persists the effective PostgreSQL and Anvil ports after health
+checks, and traps partial-start failures with project-scoped `down
+--remove-orphans` cleanup. `dev:status`, `dev:down`, the DB gate, and the
+concurrency gate consume that state; conflicting environment overrides and
+copied/stale runtime files fail closed. This strengthens P0-005's local proof;
+it does not close S0, which still requires independent human review/acceptance.
+
 ## Exit gate
 
 Phase 0 may hand off to Phase 1 when P0-001 through P0-006 pass locally, the
@@ -86,7 +97,7 @@ authorize Phase 2.
   locked install, 15 repository tests, 41 schema tests, dependency audit, live
   PostgreSQL 17.10 and Anvil 31337 inspection, permission/log checks, baseline
   diff check, and digest-pinned Gitleaks history/candidate scans.
-- 2026-08-14 remote closeout: PR #1 head `081fe78` passed CI run
+- 2026-08-14 remote closeout: earlier PR #1 head `081fe78` passed CI run
   `31812303081` and Gitleaks run `31812303011`; ruleset `20791659` is active
   on `main` with one required approval and the registered `validate` check;
   Dependabot security fixes are enabled. ADR-0013 is accepted as MIT with a

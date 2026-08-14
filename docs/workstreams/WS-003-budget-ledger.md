@@ -37,6 +37,9 @@ changes through the lead; cannot modify shared contracts or lifecycle alone.
   receipt/hash/nonce evidence independently transitioned to `VERIFIED` by the
   reconciler boundary; disputed value remains reserved.
 - State change and audit event commit or roll back together.
+- Financial audit correlation is derived from the locked reservation, budget,
+  operation, intent, identity, and policy rows; caller assertions are checked
+  against that binding but never persisted as the source of truth.
 
 ## Acceptance and tests
 
@@ -52,6 +55,32 @@ Update testing docs, risk/matrix, Phase-1 and workstream evidence. Gate S1 remai
 closed until independent security review and full integrated rerun.
 
 ## Evidence
+
+WP-01 remediation evidence, 2026-08-15, PR #1 head
+`a200e84be553f99112bec614b8fc5d28202b70b5`:
+
+- Forward migration `0013_ws003_audit_reservation_correlation.sql` adds a
+  required relational reservation reference and a database trigger that checks
+  reservation-to-operation-to-intent-to-owner/agent/wallet/policy/version
+  correlation before an audit row can be inserted.
+- `npm run test:db`: 35/35 passed against the effective loopback PostgreSQL
+  runtime. Focused coverage rejects alternate valid-operation assertions,
+  intent/owner/agent/wallet/policy/version mismatches, every reservation
+  mutation helper, alternate idempotent retries, and a direct audit insert;
+  existing audit hash verification and accounting assertions remain passing.
+- Gate S1 remains blocked; this remediation does not accept the independent
+  review, close S1, open Phase 2, or expose WS-004.
+
+WP-02 isolation evidence, 2026-08-15:
+
+- `tests/db/ledger.test.ts` and `tests/concurrency/reservations.test.ts` use
+  `tooling/local-runtime.mjs`; no suite hard-codes a host port or password
+  fallback. The concurrency gate logged the same effective loopback PostgreSQL
+  port as the DB runtime, and an intentional `CRIP_POSTGRES_PORT=55432`
+  mismatch failed closed before Vitest.
+- The persisted runtime is checkout-bound and Docker-assigned ports are
+  collision-free for simultaneous Compose projects. This remains local
+  evidence, not S1 acceptance.
 
 Local evidence, 2026-08-13, exact checkout
 `/home/naki/Desktop/itsthatnewshit/isthisreal/crip-wallet`, branch
@@ -87,7 +116,9 @@ Local evidence, 2026-08-13, exact checkout
   compatibility backfill, `0010_ws003_parent_binding_guards.sql` protects
   operation/budget ownership fields, and `0011_ws003_pending_evidence_default_fix.sql`
   plus `0012_ws003_evidence_guard_column_fix.sql` harden the evidence migration
-  path. The applied migration ledger contains all twelve `sha256:` checksums.
+  path. The applied migration ledger contains all thirteen `sha256:` checksums;
+  migration `0013_ws003_audit_reservation_correlation.sql` adds the
+  row-level reservation and authoritative relationship guard described above.
 - The final inspected `budget_1` row was
   `allocated=100, available=10, reserved=90, finalized_spend=0, version=3`,
   with three held 30-unit reservations, three reservation audit rows, and no

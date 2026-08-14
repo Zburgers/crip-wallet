@@ -14,8 +14,8 @@ assert.equal(manifest.private, true, "root package must be private");
 assert.match(manifest.packageManager, /^npm@\d+\.\d+\.\d+$/);
 assert.match(compose, /postgres:17-alpine@sha256:[a-f0-9]{64}/);
 assert.match(compose, /foundry:stable@sha256:[a-f0-9]{64}/);
-assert.match(compose, /127\.0\.0\.1:\$\{CRIP_POSTGRES_PORT:-55432\}:5432/);
-assert.match(compose, /127\.0\.0\.1:\$\{CRIP_ANVIL_PORT:-8545\}:8545/);
+assert.match(compose, /127\.0\.0\.1:\$\{CRIP_POSTGRES_PORT:-0\}:5432/);
+assert.match(compose, /127\.0\.0\.1:\$\{CRIP_ANVIL_PORT:-0\}:8545/);
 assert.match(ignore, /^\.local\/$/m);
 
 for (const workflow of workflows) {

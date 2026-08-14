@@ -52,8 +52,8 @@ test("defines local-only PostgreSQL and Anvil services with immutable images", (
     compose,
     /ghcr\.io\/foundry-rs\/foundry:stable@sha256:[a-f0-9]{64}/,
   );
-  assert.match(compose, /127\.0\.0\.1:\$\{CRIP_POSTGRES_PORT:-55432\}:5432/);
-  assert.match(compose, /127\.0\.0\.1:\$\{CRIP_ANVIL_PORT:-8545\}:8545/);
+  assert.match(compose, /127\.0\.0\.1:\$\{CRIP_POSTGRES_PORT:-0\}:5432/);
+  assert.match(compose, /127\.0\.0\.1:\$\{CRIP_ANVIL_PORT:-0\}:8545/);
   assert.match(compose, /--chain-id[\s\S]*31337/);
   assert.match(compose, /--mnemonic-seed-unsafe[\s\S]*31337/);
   assert.match(compose, /--quiet/);
@@ -174,9 +174,9 @@ test("example environment is local-only and contains no assigned secret", () => 
 
   assert.match(example, /^CRIP_ENVIRONMENT=local$/m);
   assert.match(example, /^CRIP_CHAIN_ID=eip155:31337$/m);
-  assert.match(example, /^CRIP_RPC_URL=http:\/\/127\.0\.0\.1:8545$/m);
-  assert.match(example, /^CRIP_ANVIL_PORT=8545$/m);
-  assert.match(example, /^CRIP_POSTGRES_PORT=55432$/m);
+  assert.doesNotMatch(example, /^CRIP_RPC_URL=/m);
+  assert.doesNotMatch(example, /^CRIP_ANVIL_PORT=/m);
+  assert.doesNotMatch(example, /^CRIP_POSTGRES_PORT=/m);
   assert.doesNotMatch(example, /(?:PASSWORD|SECRET|TOKEN|PRIVATE_KEY)=\S+/);
 });
 

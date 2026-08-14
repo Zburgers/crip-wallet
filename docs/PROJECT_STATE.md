@@ -39,10 +39,11 @@ keep this as the current resume snapshot rather than an activity log.
   settings were inspected on 2026-08-10.
 - Phase-0 tooling is implemented in the working tree: npm lock/config, static
   checks, repository policy tests, digest-pinned Compose, fail-closed local
-  environment validation, deterministic Anvil fixture, per-checkout container
-  and database isolation, and defensive lifecycle scripts.
+  environment validation, deterministic Anvil fixture, checkout-bound
+  effective runtime state, per-checkout container/database isolation, and
+  defensive lifecycle scripts with project-scoped partial-start cleanup.
 - CI, secret scanning, CODEOWNERS, Dependabot, and contribution templates are
-  implemented locally. PR #1 head `081fe78` passed `validate` run
+  implemented locally. Earlier PR #1 head `081fe78` passed `validate` run
   `31812303081` and Gitleaks run `31812303011`; the active main ruleset is
   verified remotely.
 - WS-002 is locally frozen without any signing surface: the canonical enforcement-grade
@@ -60,6 +61,11 @@ keep this as the current resume snapshot rather than an activity log.
   worker response-loss retry, real serialization retry, migration recovery,
   ambiguous-funds retention, generated event sequences, and binding guards. No
   signing or autonomous execution surface was added.
+- WP-02 makes `.local/runtime.env` the single effective local runtime source.
+  Docker-assigned loopback ports are persisted mode `0600`; DB and concurrency
+  tests use the same loader and reject conflicting overrides or copied runtime
+  state. The audit ledger derives correlation from locked database rows and
+  rejects mismatches in application and PostgreSQL guards.
 
 ## Active blockers and risks
 
@@ -110,7 +116,9 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   Node tests. `npm audit --audit-level=high` reported 0 vulnerabilities on the
   current lockfile.
 - `npm run dev:up` and `npm run dev:status`: PostgreSQL 17.10 ready on loopback
-  `55432`; deterministic quiet Anvil ready on loopback `8545`, chain `0x7a69`.
+  `127.0.0.1:32769`; deterministic quiet Anvil ready on loopback
+  `127.0.0.1:32768`, chain `0x7a69`; effective values are persisted in
+  `.local/runtime.env`.
 - Generated runtime/Anvil configs are Git-ignored, mode `0600`; Anvil log output
   is empty. The Anvil config inode is created at `0600` before container startup.
   Compose and all Bash files validate.
@@ -126,6 +134,12 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   service step now succeeds on the GitHub Linux runner after Anvil moved its
   transient config write into container `/tmp`; the host copy is restored to
   mode `0600` and Anvil remains chain `0x7a69`.
+- PR #1 remediation work starts from current head `a200e84`; no post-remediation
+  merge or S0/S1 acceptance is claimed here.
+- 2026-08-15 WP-02 focused verification: 20 Node repository tests and 118
+  package tests passed; DB 35/35 and concurrency 1/1 across 32 rounds passed
+  against the persisted 32769 runtime; a wrong-port override failed closed;
+  the two-checkout Docker proof used distinct projects and effective ports.
 
 ## Next integration step
 
@@ -134,4 +148,5 @@ authorization, signing, and provider consumers until Gate S1's approval,
 revocation/pause, authenticated reconciliation, integrated recovery, and
 independent-review evidence is accepted.
 
-Last updated: 2026-08-14; verified local Phase-1 review, CI, S0 ruleset, and MIT license state.
+Last updated: 2026-08-15; verified WP-02 local isolation, Phase-1 ledger review,
+CI, S0 ruleset, and MIT license state. S0/S1 are not marked passed.

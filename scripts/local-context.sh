@@ -16,4 +16,6 @@ checkout_sha256() {
 
 readonly CRIP_CHECKOUT_HASH="$(printf '%s' "$REPO_ROOT" | checkout_sha256 | cut -c1-12)"
 readonly CRIP_COMPOSE_PROJECT="crip-wallet-$CRIP_CHECKOUT_HASH"
+readonly CRIP_RUNTIME_ENV="$REPO_ROOT/.local/runtime.env"
 export CRIP_COMPOSE_PROJECT
+export CRIP_RUNTIME_ENV

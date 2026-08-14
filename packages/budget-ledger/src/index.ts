@@ -21,6 +21,7 @@ export {
   computeAuditEventHash,
   verifyAuditEvent,
   type AuditContext,
+  type AuditCorrelation,
   type AuditEventInput,
   type AuditEventType,
 } from "@crip/audit";

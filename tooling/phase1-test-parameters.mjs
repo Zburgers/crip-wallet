@@ -2,8 +2,6 @@
 export const PHASE1_TEST_PARAMETERS = Object.freeze({
   database: Object.freeze({
     database: "crip_wallet",
-    host: "127.0.0.1",
-    port: 55432,
     user: "crip",
   }),
   concurrency: Object.freeze({

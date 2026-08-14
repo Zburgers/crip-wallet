@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { Pool } from "pg";
@@ -18,28 +17,17 @@ import {
   withSerializableTransaction,
   type AuditContext,
 } from "@crip/budget-ledger";
+import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
 
 const root = join(import.meta.dirname, "../..");
-const password = (): string => {
-  if (process.env.CRIP_POSTGRES_PASSWORD)
-    return process.env.CRIP_POSTGRES_PASSWORD;
-  const path = join(root, ".local/runtime.env");
-  if (!existsSync(path))
-    throw new Error(
-      "PostgreSQL runtime is not initialized; run npm run dev:up first",
-    );
-  const line = readFileSync(path, "utf8")
-    .split("\n")
-    .find((value) => value.startsWith("CRIP_POSTGRES_PASSWORD="));
-  if (!line) throw new Error("PostgreSQL runtime password is missing");
-  return line.slice("CRIP_POSTGRES_PASSWORD=".length);
-};
+const runtime = loadLocalRuntime({ root });
+
 const pool = new Pool({
-  host: "127.0.0.1",
-  port: 55432,
-  database: "crip_wallet",
-  user: "crip",
-  password: password(),
+  host: runtime.postgres.host,
+  port: runtime.postgres.port,
+  database: runtime.postgres.database,
+  user: runtime.postgres.user,
+  password: runtime.postgres.password,
   max: 8,
 });
 
@@ -47,13 +35,6 @@ const audit = (index: number): AuditContext => ({
   eventId: `evt_${index}`,
   actorType: "system",
   actorId: "concurrency-test",
-  ownerId: "owner_1",
-  agentId: "agent_1",
-  walletId: "wallet_1",
-  intentId: `intent_op_${index}`,
-  operationId: `op_${index}`,
-  policyId: "policy_1",
-  policyVersion: 1,
   traceId: String(index).padStart(32, "0"),
 });
 

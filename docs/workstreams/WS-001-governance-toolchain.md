@@ -39,6 +39,9 @@ define product schemas owned by WS-002.
 - P0-001 through P0-006 evidence is reproducible.
 - `npm ci`, static checks, repository policy tests, and docs checks pass.
 - Clean Compose startup reports PostgreSQL healthy and chain ID `0x7a69`.
+- `.local/runtime.env` is the checkout-bound effective runtime authority;
+  Docker-assigned loopback host ports are persisted mode `0600`, and lifecycle
+  failure cleanup is restricted to the checkout's Compose project.
 - Secret/dependency scans contain no critical/high unresolved result.
 - Required docs have owners/update rules and no duplicate authority.
 
@@ -64,7 +67,13 @@ tooling/local environment; CI/security controls; verification/state.
   SHAs; 14/14 repository tests enforce the controls. Gitleaks 8.30.1 scanned all
   five committed revisions at `da1451c` and the exported staged candidate with
   no leaks; `docs/PROJECT_STATE.md` records the exact digest and commands.
-- 2026-08-14 remote evidence: PR #1 head `081fe78` passed CI `validate` run
+- WP-02 focused proof on 2026-08-15: non-default effective PostgreSQL/Anvil
+  ports loaded by both DB and concurrency suites; a conflicting port override
+  failed before DB connection; copied runtime state was rejected by checkout
+  hash; two checkout projects received separate Docker-assigned ports; failed
+  startup cleanup used project-scoped `down --remove-orphans` without volume
+  deletion. S0 remains open pending independent review/acceptance.
+- 2026-08-14 remote evidence: earlier PR #1 head `081fe78` passed CI `validate` run
   `31812303081` and Gitleaks run `31812303011`. Ruleset `20791659` is active on
   `main`, requiring one approval and the registered `validate` check; Dependabot
   security fixes are enabled. The only Phase-0 closeout items still external

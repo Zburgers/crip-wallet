@@ -76,6 +76,15 @@ Current reproducibility parameters: fast-check lifecycle seed `2026081301`,
 malformed-input seed `2026081302`, event-sequence seed `2026081303`, `512`
 property runs, concurrency workers `4`, concurrency rounds `32`,
 `ready/start/release` barrier, `5000 ms` barrier timeout, and loopback PostgreSQL
-`127.0.0.1:55432` (`crip_wallet`, user `crip`). Migration state is twelve applied
-forward migrations with checksums recorded in `schema_migrations`; no
+loaded from the checkout's `.local/runtime.env` (`crip_wallet`, user `crip`).
+The effective port is persisted after `dev:up`; mismatches fail closed. Migration
+state is thirteen applied forward migrations with checksums recorded in
+`schema_migrations`; migration
+`0013_ws003_audit_reservation_correlation.sql` binds each audit row to its
+persisted reservation and operation relationship; no
 down-migration or destructive migration API exists.
+
+WP-02 closes the PR #1 concurrency isolation finding: the DB and concurrency
+suites use the same runtime loader, while ledger audit correlation is derived
+from locked reservation/operation/intent/identity/policy rows. This is local
+implementation evidence only; Gate S1 remains blocked and Phase 2 is not open.

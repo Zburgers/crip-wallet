@@ -8,9 +8,16 @@ the same integration change.
 
 ### Changed
 
+- WP-02 makes `.local/runtime.env` the checkout-bound effective local runtime
+  authority. `dev:up` persists Docker-assigned loopback PostgreSQL/Anvil ports,
+  lifecycle scripts and DB/concurrency tests consume the same state, and
+  failed startup removes only resources in this checkout's Compose project.
+- WP-02 binds audit events to row-derived reservation/operation/intent/identity/
+  policy correlation with application and PostgreSQL guards. Gate S0/S1 status
+  remains open/blocked; PR #1 is not merged.
 - Reconciled Phase-0/Phase-1 plans, project state, workstreams, risk register,
   and test matrix with the verified remote state as of 2026-08-14. PR #1 head
-  `081fe78` passed `validate` and Gitleaks; the active main protection ruleset
+  earlier head `081fe78` passed `validate` and Gitleaks; the active main protection ruleset
   and Dependabot security fixes are recorded. Phase 2 remains intentionally
   unopened while Gate S1 stays blocked on authorization/control and review
   evidence.
