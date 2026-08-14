@@ -40,6 +40,23 @@ chmod 600 "$RUNTIME_ENV"
 printf '%s\n' 'LOCAL TEST ONLY: starting disposable Anvil and local PostgreSQL.' >&2
 docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
   --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" up -d --wait
+readonly ANVIL_CONTAINER_ID="$(docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
+  --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" ps -q anvil)"
+[[ -n "$ANVIL_CONTAINER_ID" ]] || {
+  printf '%s\n' 'ERROR: Anvil container was not created.' >&2
+  exit 1
+}
+for attempt in {1..30}; do
+  if docker exec "$ANVIL_CONTAINER_ID" test -s /tmp/anvil.json; then
+    break
+  fi
+  if [[ "$attempt" == 30 ]]; then
+    printf '%s\n' 'ERROR: Anvil did not create its local test configuration.' >&2
+    exit 1
+  fi
+  sleep 1
+done
+docker exec "$ANVIL_CONTAINER_ID" cat /tmp/anvil.json >"$ANVIL_CONFIG"
 [[ -f "$ANVIL_CONFIG" ]] || {
   printf '%s\n' 'ERROR: Anvil did not create its local test configuration.' >&2
   exit 1

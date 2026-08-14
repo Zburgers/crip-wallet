@@ -37,12 +37,10 @@ services:
       - --mnemonic-seed-unsafe
       - "31337"
       - --config-out
-      - /data/anvil.json
+      - /tmp/anvil.json
       - --quiet
     ports:
       - "127.0.0.1:${CRIP_ANVIL_PORT:-8545}:8545"
-    volumes:
-      - ./.local/anvil:/data
     healthcheck:
       test:
         [
