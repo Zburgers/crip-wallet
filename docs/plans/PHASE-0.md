@@ -74,8 +74,8 @@ Status: COMPLETE at commit `5a9d80c`.
 Phase 0 may hand off to Phase 1 when P0-001 through P0-006 pass locally, the
 governance sources agree, and no real-funds/configuration or critical security
 finding exists. The active `S0 main protection` ruleset and protected remote
-CI now provide the previously missing remote evidence. License choice and
-required human review remain explicit external closeout items and do not
+CI now provide the previously missing remote evidence. Required human review
+remains the only explicit external closeout item and does not
 authorize Phase 2.
 
 ## Verification status
@@ -89,6 +89,10 @@ authorize Phase 2.
 - 2026-08-14 remote closeout: PR #1 head `081fe78` passed CI run
   `31812303081` and Gitleaks run `31812303011`; ruleset `20791659` is active
   on `main` with one required approval and the registered `validate` check;
-  Dependabot security fixes are enabled. The remaining S0 closeout items are
-  the ADR-0013 license decision and required independent human review/
+  Dependabot security fixes are enabled. ADR-0013 is accepted as MIT with a
+  root `LICENSE`, package metadata, README, and contribution guidance updated.
+  The lockfile dependency metadata was reviewed and reports Apache-2.0,
+  BSD-2-Clause, BSD-3-Clause, BlueOak-1.0.0, ISC, MIT, and MPL-2.0 licenses;
+  no dependency license required changing the repository license decision.
+  The remaining S0 closeout item is required independent human review/
   acceptance of PR #1. Phase 2 remains intentionally unopened.

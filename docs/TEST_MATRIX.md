@@ -73,16 +73,16 @@ set `PASS`.
 
 ## Phase-0 evidence
 
-| ID     | Check                                          | Status  | Evidence                                                                                                                                                                                     |
-| ------ | ---------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P0-001 | Baseline SHA and clean-room inventory recorded | PASS    | `3a044ee788297bf006c633ce97d61b30a6e6cf40`; audit 2026-08-10                                                                                                                                 |
-| P0-002 | Canonical governing paths, no duplicates       | PASS    | Commit `5a9d80c`; byte identity checks exit 0                                                                                                                                                |
-| P0-003 | Current-tree and history secret pattern scan   | PASS    | Gitleaks 8.30.1 digest-pinned scan at `6aa8382`: eight revisions and final candidate, no leaks                                                                                               |
-| P0-004 | Fresh npm install/static/test gate             | PASS    | 2026-08-10: `npm ci` 133/135 packages; `npm run check`; 15/15 Node + 41/41 schema tests                                                                                                      |
-| P0-005 | PostgreSQL/Anvil clean local startup           | PASS    | 2026-08-10: PostgreSQL 17.10; Anvil `0x7a69`; deterministic fixture; loopback-only; per-checkout project/volume; precreated mode `0600` state                                                |
-| P0-006 | CI and secret-scan workflow                    | PASS    | 2026-08-14: PR #1 head `081fe78`; remote `validate` run `31812303081` and Gitleaks run `31812303011` passed, including isolated fake-money startup, mode `0600`, and quiet signer-log checks |
-| P0-007 | Protected main branch                          | PASS    | 2026-08-14: active ruleset `20791659` (`S0 main protection`) requires one approval and registered `validate`; deletion and force-push protections are active                                 |
-| P0-008 | License decision                               | BLOCKED | ADR-0013 requires owner decision                                                                                                                                                             |
+| ID     | Check                                          | Status | Evidence                                                                                                                                                                                     |
+| ------ | ---------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0-001 | Baseline SHA and clean-room inventory recorded | PASS   | `3a044ee788297bf006c633ce97d61b30a6e6cf40`; audit 2026-08-10                                                                                                                                 |
+| P0-002 | Canonical governing paths, no duplicates       | PASS   | Commit `5a9d80c`; byte identity checks exit 0                                                                                                                                                |
+| P0-003 | Current-tree and history secret pattern scan   | PASS   | Gitleaks 8.30.1 digest-pinned scan at `6aa8382`: eight revisions and final candidate, no leaks                                                                                               |
+| P0-004 | Fresh npm install/static/test gate             | PASS   | 2026-08-10: `npm ci` 133/135 packages; `npm run check`; 15/15 Node + 41/41 schema tests                                                                                                      |
+| P0-005 | PostgreSQL/Anvil clean local startup           | PASS   | 2026-08-10: PostgreSQL 17.10; Anvil `0x7a69`; deterministic fixture; loopback-only; per-checkout project/volume; precreated mode `0600` state                                                |
+| P0-006 | CI and secret-scan workflow                    | PASS   | 2026-08-14: PR #1 head `081fe78`; remote `validate` run `31812303081` and Gitleaks run `31812303011` passed, including isolated fake-money startup, mode `0600`, and quiet signer-log checks |
+| P0-007 | Protected main branch                          | PASS   | 2026-08-14: active ruleset `20791659` (`S0 main protection`) requires one approval and registered `validate`; deletion and force-push protections are active                                 |
+| P0-008 | License decision                               | PASS   | 2026-08-14: ADR-0013 accepted as MIT; root `LICENSE`, package metadata, README, contribution guidance, and dependency metadata reconciled                                                    |
 
 ## Phase-1 evidence
 

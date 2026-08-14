@@ -1056,15 +1056,15 @@ authorization or signature is produced. Revocation cannot cancel or reverse an
 already-broadcast blockchain transaction and the UI, API, and logs must not claim
 that it can.
 
-| Operation point | Required behavior after revocation |
-|---|---|
-| Prepared or pre-reservation intent | Stop progression and mark `REVOKED`; no reservation is created. |
-| Held reservation before authorization | Mark the operation `REVOKED` and atomically release the reservation. |
-| Pending approval | Revoke the approval, mark the operation `REVOKED`, and atomically release the reservation. |
-| Authorized but unsigned | Reject signing, invalidate authorization, mark `REVOKED`, and atomically release the reservation. |
-| Signed but unbroadcast | Never broadcast; quarantine and discard signer-local bytes. Keep the reservation held as `DISPUTED` until non-execution is proven by the adapter recovery procedure, then release it. |
-| Broadcast or pending confirmation | Continue monitoring and reconciliation; retain the reservation and disclose that cancellation is not guaranteed. |
-| Confirmed | Reconcile actual spend normally; revocation only prevents later authorization. |
+| Operation point                       | Required behavior after revocation                                                                                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prepared or pre-reservation intent    | Stop progression and mark `REVOKED`; no reservation is created.                                                                                                                       |
+| Held reservation before authorization | Mark the operation `REVOKED` and atomically release the reservation.                                                                                                                  |
+| Pending approval                      | Revoke the approval, mark the operation `REVOKED`, and atomically release the reservation.                                                                                            |
+| Authorized but unsigned               | Reject signing, invalidate authorization, mark `REVOKED`, and atomically release the reservation.                                                                                     |
+| Signed but unbroadcast                | Never broadcast; quarantine and discard signer-local bytes. Keep the reservation held as `DISPUTED` until non-execution is proven by the adapter recovery procedure, then release it. |
+| Broadcast or pending confirmation     | Continue monitoring and reconciliation; retain the reservation and disclose that cancellation is not guaranteed.                                                                      |
+| Confirmed                             | Reconcile actual spend normally; revocation only prevents later authorization.                                                                                                        |
 
 System and wallet pause use the same immediate pre-sign boundary. A cancellation
 request is best effort after broadcast and never substitutes for revocation.
@@ -2436,7 +2436,8 @@ These questions do not block Phase 0 unless noted:
 - Whether API and MCP server are separate processes
 - Policy expression language versus typed policy object
 - Formal verification scope for smart-contract modules
-- License choice
+- License choice — resolved by accepted ADR-0013 as MIT; superseding changes
+  require a new ADR.
 - Hosted-service boundary
 - Safe allowance versus ERC-7710 delegation for first testnet adapter
 - How to attest adapter conformance

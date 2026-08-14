@@ -2,31 +2,38 @@
 
 ## Status
 
-Proposed — product-owner decision required
+Accepted — 2026-08-14
 
 ## Context
 
-The product is intended to be open source, but no license terms were present at
-the verified baseline. Adding a license changes legal permissions and is not a
-routine engineering decision.
+The product is intended to be open source. The repository needs a permissive
+license that supports adoption and contributions without imposing reciprocal
+distribution obligations. The project has not identified a patent-specific
+licensing requirement, and this decision does not authorize real-value or
+production deployment.
 
 ## Decision
 
-No license is granted by repository text until the product owner selects and
-approves one. Candidate review should compare Apache-2.0, MIT, and an appropriate
-copyleft option for patent protection, ecosystem adoption, contribution policy,
-and hosted-service goals.
+The repository is licensed under the MIT License. MIT is the smallest safe
+permissive choice for this local-only MVP: it is widely understood, compatible
+with the current dependency set, and does not create a copyleft obligation.
+The copyright holder is `Zburgers`. If a future production or patent-protection
+requirement makes MIT insufficient, a superseding ADR is required before that
+scope is added.
 
 ## Consequences
 
-- A root `LICENSE` file is intentionally absent.
-- README and contribution guidance must state that licensing is unresolved.
-- Public contribution acceptance remains blocked until legal terms are chosen.
+- A root `LICENSE` file contains the canonical MIT text and package metadata
+  declares SPDX identifier `MIT`.
+- README and contribution guidance identify the MIT License.
+- This decision closes the license-selection blocker; it does not waive the
+  required PR review, security review, or local-only/fake-money constraints.
 
 ## Verification
 
-- Product-owner approval, added `LICENSE`, README update, dependency license
-  compatibility review, and ADR acceptance.
+- Added `LICENSE`, package metadata, README/contribution updates, and the
+  dependency license review recorded in the Phase-0 evidence. The ADR and
+  decision index are accepted together with this change.
 
 ## Related
 

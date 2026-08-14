@@ -12,16 +12,16 @@ keep this as the current resume snapshot rather than an activity log.
   manifests, local databases, build output, generated junk, or secret-pattern
   findings in the current tree or two-commit history.
 - Working branch: `phase-0/governance-foundation`
-- Last integrated implementation: Phase-1 local proof plus the Anvil CI startup
-  hardening at `081fe78`; remote CI and the active main ruleset are verified,
-  while required human review and the license decision remain open.
+- Last integrated implementation: Phase-1 local proof, Anvil CI startup
+  hardening, and MIT license closeout at `006a314`; remote CI and the active
+  main ruleset are verified, while required human review remains open.
 
 ## Current phase and status
 
 - Phase: 1 — canonical core and local ledger (WS-002/WS-003 locally frozen)
 - Status: LOCAL IMPLEMENTATION COMPLETE; S0 is ready for final external closeout and Gate S1 remains open
-- Gate S0: OPEN pending the product-owner license decision and required review/
-  acceptance of PR #1. GitHub ruleset `20791659` (`S0 main protection`) is
+- Gate S0: OPEN pending required review/acceptance of PR #1. GitHub ruleset
+  `20791659` (`S0 main protection`) is
   active, requires one approval and `validate`, and the remote CI/security
   checks for PR #1 are green. Secret scanning, push protection, and Dependabot
   security fixes are enabled.
@@ -65,21 +65,21 @@ keep this as the current resume snapshot rather than an activity log.
 
 - External: obtain the required independent approval for PR #1 and merge only
   after human review confirms the local-only boundary and Phase-1 evidence.
-- Product decision: license selection (ADR-0013).
 - Security: local implementation proof gates are green, but external security
   acceptance and execution-boundary gates remain open; no autonomous execution
   or signing surface may be exposed.
 
 ## Open decisions
 
-- ADR-0013 license selection requires product-owner approval.
+- ADR-0013 is accepted as MIT; future licensing changes require a superseding
+  ADR before dependent production scope lands.
 - Non-blocking later decisions: exact Safe/testnet adapter, production owner
   identity, hosted boundary, and post-MVP formal verification.
 
 ## Active workstreams
 
-- WS-001 governance and toolchain — local implementation and remote CI/ruleset
-  verification complete; license and required review remain open.
+- WS-001 governance and toolchain — local implementation, license, and remote
+  CI/ruleset verification complete; required review remains open.
 - WS-002 canonical domain contracts — locally frozen; P1-001, P1-002, and
   P1-003 accepted locally pending Gate S1 and required review acceptance.
 - WS-003 atomic ledger proof — local implementation/evidence complete; Gate S1
@@ -134,4 +134,4 @@ authorization, signing, and provider consumers until Gate S1's approval,
 revocation/pause, authenticated reconciliation, integrated recovery, and
 independent-review evidence is accepted.
 
-Last updated: 2026-08-14; verified local Phase-1 review, CI, and S0 ruleset state.
+Last updated: 2026-08-14; verified local Phase-1 review, CI, S0 ruleset, and MIT license state.

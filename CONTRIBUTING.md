@@ -53,6 +53,6 @@ meaningful integration point.
 
 ## Licensing
 
-License selection is unresolved. Contributions cannot be accepted until the
-product owner resolves `docs/decisions/ADR-0013-license-selection.md` and the
-contribution terms are updated.
+This repository is licensed under the MIT License. See `LICENSE` and
+`docs/decisions/ADR-0013-license-selection.md`; contributions remain subject
+to the repository's local-only/fake-money boundary and required review gates.

@@ -54,6 +54,6 @@ changes. Never report a suspected vulnerability in a public issue.
 
 ## License
 
-No license has been selected. See
-[`ADR-0013`](docs/decisions/ADR-0013-license-selection.md); absence of a license
-means no permission is granted beyond applicable law until the owner decides.
+This project is licensed under the [MIT License](LICENSE). The decision and
+scope constraints are recorded in
+[`ADR-0013`](docs/decisions/ADR-0013-license-selection.md).

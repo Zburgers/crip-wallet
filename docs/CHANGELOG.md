@@ -14,6 +14,8 @@ the same integration change.
   and Dependabot security fixes are recorded. Phase 2 remains intentionally
   unopened while Gate S1 stays blocked on authorization/control and review
   evidence.
+- Accepted ADR-0013 and selected the MIT License; added the root license text,
+  SPDX package metadata, and updated README/contribution guidance.
 - Normalized governing document paths to `docs/PRODUCT_SPEC.md` and
   `docs/LEAD_ORCHESTRATOR_PROMPT.md` without duplicate authorities.
 - Clarified the budget invariant, envelope finalization order, enforcement-grade

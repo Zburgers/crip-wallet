@@ -46,15 +46,15 @@ security ADR when it changes authority or trust.
 
 ## Integration sequence
 
-| Order | Phase/workstream | Entry | Exit evidence | Parallelism |
-|---|---|---|---|---|
-| 1 | Phase 0 / WS-001 | Verified baseline | Fresh install/check, services, CI, S0 report | Single owner |
-| 2 | Phase 1 / WS-002 | Accepted ADRs | Canonical schemas, lifecycle/hash vectors | Single owner |
-| 3 | Phase 1 / WS-003 | WS-002 contracts frozen | DB migration, ledger concurrency/property proof | One security-critical owner |
-| 4 | Phase 2 / WS-004 | Gate S1 | Mock token and full local transaction pipeline | Split contracts/adapter only after interfaces freeze |
-| 5 | Phase 3 / WS-005 | Stable envelope/adapter | Approval, controls and recovery proof | Single owner across shared lifecycle |
-| 6 | Phase 4 / WS-006 | Core API stable | MCP/CLI/dashboard parity and browser evidence | Interfaces may parallelize by non-overlap |
-| 7 | Phase 5 / WS-007 | Integrated product | Telemetry, adversarial/fault evidence, audit report | Reviewer independent from feature authors |
+| Order | Phase/workstream | Entry                   | Exit evidence                                       | Parallelism                                          |
+| ----- | ---------------- | ----------------------- | --------------------------------------------------- | ---------------------------------------------------- |
+| 1     | Phase 0 / WS-001 | Verified baseline       | Fresh install/check, services, CI, S0 report        | Single owner                                         |
+| 2     | Phase 1 / WS-002 | Accepted ADRs           | Canonical schemas, lifecycle/hash vectors           | Single owner                                         |
+| 3     | Phase 1 / WS-003 | WS-002 contracts frozen | DB migration, ledger concurrency/property proof     | One security-critical owner                          |
+| 4     | Phase 2 / WS-004 | Gate S1                 | Mock token and full local transaction pipeline      | Split contracts/adapter only after interfaces freeze |
+| 5     | Phase 3 / WS-005 | Stable envelope/adapter | Approval, controls and recovery proof               | Single owner across shared lifecycle                 |
+| 6     | Phase 4 / WS-006 | Core API stable         | MCP/CLI/dashboard parity and browser evidence       | Interfaces may parallelize by non-overlap            |
+| 7     | Phase 5 / WS-007 | Integrated product      | Telemetry, adversarial/fault evidence, audit report | Reviewer independent from feature authors            |
 
 ## Workstream contract
 
@@ -76,8 +76,8 @@ Acceptance:
 - Committed lockfile, strict static tooling, CI, secret scanning, CODEOWNERS.
 - Digest-pinned loopback PostgreSQL and Anvil start from ignored generated state.
 - `npm ci && npm run check` and local service health run from this branch.
-- External branch protection/license gaps remain explicit; they do not become
-  false local passes.
+- External review and acceptance gaps remain explicit; they do not become false
+  local passes.
 
 ## Phase 1 — Canonical core and ledger
 

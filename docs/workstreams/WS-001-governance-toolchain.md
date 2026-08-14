@@ -4,7 +4,7 @@
 
 Establish a reproducible, auditable, local-only repository foundation. Status:
 LOCAL COMPLETE / REMOTE CONTROLS VERIFIED on `phase-0/governance-foundation` from
-baseline `3a044ee`; license and required review remain open.
+baseline `3a044ee`; required review remains open.
 
 ## Governing sections
 
@@ -68,4 +68,4 @@ tooling/local environment; CI/security controls; verification/state.
   `31812303081` and Gitleaks run `31812303011`. Ruleset `20791659` is active on
   `main`, requiring one approval and the registered `validate` check; Dependabot
   security fixes are enabled. The only Phase-0 closeout items still external
-  are the ADR-0013 license decision and required independent review/acceptance.
+  is the required independent review/acceptance; ADR-0013 is accepted as MIT.

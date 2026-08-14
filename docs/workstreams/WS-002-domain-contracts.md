@@ -60,7 +60,8 @@ through orchestrator review before WS-003 begins.
   targeted cases cover the maximum uint256 boundary, floats/numbers/signs,
   leading zeros, unknown top/nested fields, malformed CAIP-2, mixed-case EVM
   addresses, generic calls, UTC form, and time ordering. Configured maximum
-  lifetime and idempotency payload hashing remain open, so P1-002 is not PASS.
+  lifetime and idempotency payload hashing were subsequently completed and are
+  covered by the 2026-08-13 P1-002 evidence below.
 - Full post-slice `npm run check`: 15/15 repository tests and 41/41 schema tests;
   the malformed-decimal negative cases also prove validation returns failure
   instead of throwing from uint256 conversion.
