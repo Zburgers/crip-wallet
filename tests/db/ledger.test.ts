@@ -648,6 +648,57 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     }
   });
 
+  test("raw SQL cannot bypass the persisted correlation trigger", async () => {
+    await insertOperation(pool, "op_raw_a");
+    await insertOperation(pool, "op_raw_b");
+    await reserve("op_raw_a", "res_raw_a", "raw-a-key", "10");
+    const mismatches = [
+      ["operation_id", "op_raw_b"],
+      ["intent_id", "intent_raw_b"],
+      ["owner_id", "owner_raw_b"],
+      ["agent_id", "agent_raw_b"],
+      ["wallet_id", "wallet_raw_b"],
+      ["policy_id", "policy_raw_b"],
+      ["policy_version", 2],
+    ] as const;
+    for (const [index, [field, value]] of mismatches.entries()) {
+      const values = {
+        owner_id: "owner_1",
+        agent_id: "agent_1",
+        wallet_id: "wallet_1",
+        intent_id: "intent_raw_a",
+        operation_id: "op_raw_a",
+        policy_id: "policy_1",
+        policy_version: 1,
+      };
+      values[field] = value as never;
+      await expect(
+        pool.query(
+          `INSERT INTO audit_events
+            (event_id, event_type, sequence_no, actor_type, actor_id, owner_id, agent_id, wallet_id,
+             intent_id, operation_id, policy_id, policy_version, trace_id, data, previous_event_hash,
+             event_hash, occurred_at, canonical_payload, reservation_id)
+           VALUES ($1, 'budget.reservation.created', $2, 'system', 'raw-test', $3, $4, $5,
+             $6, $7, $8, $9, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+             '{"reservationId":"res_raw_a","amountAtomic":"10"}'::jsonb, NULL,
+             $10, '2026-08-15T00:00:00Z', '{}', 'res_raw_a')`,
+          [
+            `evt_raw_mismatch_${field}`,
+            99 + index,
+            values.owner_id,
+            values.agent_id,
+            values.wallet_id,
+            values.intent_id,
+            values.operation_id,
+            values.policy_id,
+            values.policy_version,
+            `0x${"0".repeat(64)}`,
+          ],
+        ),
+      ).rejects.toThrow(/correlation mismatch|authoritative binding/i);
+    }
+  });
+
   test("enforces balanced numeric constraints and foreign keys", async () => {
     await expect(
       pool.query(
