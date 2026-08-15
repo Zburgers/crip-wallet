@@ -43,6 +43,10 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "policy.revoked",
   "system.paused",
   "system.resumed",
+  "execution.recovery.claimed",
+  "execution.recovery.ambiguous",
+  "execution.recovery.resolved",
+  "execution.recovery.conflict",
   "adapter.error",
 ] as const);
 
@@ -64,6 +68,7 @@ export const auditDataSchema = z.strictObject({
   consumerId: canonicalIdentifierSchema.optional(),
   assetAddress: evmAddressSchema.optional(),
   amountAtomic: atomicUnitSchema.optional(),
+  actualSpendAtomic: atomicUnitSchema.optional(),
   nonce: atomicUnitSchema.optional(),
   verificationStatus: z.enum(["PENDING", "VERIFIED"]).optional(),
   state: lifecycleStateSchema.optional(),
@@ -102,6 +107,23 @@ export const auditDataSchema = z.strictObject({
   policyFenceVersion: z.number().int().positive().safe().optional(),
   policyState: z.enum(["ACTIVE", "REVOKED"]).optional(),
   authorizationInvalidationId: canonicalIdentifierSchema.optional(),
+  credentialId: canonicalIdentifierSchema.optional(),
+  componentId: canonicalIdentifierSchema.optional(),
+  componentRole: z.enum(["ADAPTER", "RECONCILER"]).optional(),
+  authPayloadHash: z
+    .string()
+    .regex(/^sha256:[0-9a-f]{64}$/)
+    .optional(),
+  authenticationMethod: z.literal("ed25519").optional(),
+  attemptId: canonicalIdentifierSchema.optional(),
+  leaseVersion: z.number().int().positive().safe().optional(),
+  recoveryOutcome: z
+    .enum(["CONFIRMED", "FAILED", "AMBIGUOUS", "CONFLICT"])
+    .optional(),
+  resolutionHash: z
+    .string()
+    .regex(/^sha256:[0-9a-f]{64}$/)
+    .optional(),
 });
 
 /** Correlated, typed, append-only audit event payload. */

@@ -1,11 +1,10 @@
 {
-  "name": "@crip/budget-ledger",
+  "name": "@crip/trust-boundary",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "files": [
-    "dist",
-    "migrations"
+    "dist"
   ],
   "scripts": {
     "build": "tsc -b --force"
@@ -15,11 +14,5 @@
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     }
-  },
-  "dependencies": {
-    "@crip/audit": "0.0.0",
-    "@crip/schemas": "0.0.0",
-    "@crip/trust-boundary": "0.0.0",
-    "pg": "8.23.0"
   }
 }

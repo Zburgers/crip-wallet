@@ -10,6 +10,12 @@ import {
   positiveAtomicUnitSchema,
 } from "@crip/schemas";
 import type { Pool, PoolClient } from "pg";
+import {
+  componentAuthPayloadHash,
+  type ComponentAuthorization,
+  type ComponentRole,
+  verifyComponentAction,
+} from "@crip/trust-boundary";
 
 import {
   IdempotencyConflictError,
@@ -55,6 +61,28 @@ export interface BroadcastEvidence {
   transactionHash: string;
   nonce: string;
   receiptReference: string;
+}
+
+export interface RecoveryLease {
+  operationId: string;
+  reservationId: string;
+  credentialId: string;
+  componentId: string;
+  leaseVersion: string;
+  leaseExpiresAt: string;
+}
+
+export type RecoveryOutcome = "CONFIRMED" | "FAILED" | "AMBIGUOUS" | "CONFLICT";
+
+export interface RecoveryResolution {
+  attemptId: string;
+  operationId: string;
+  reservationId: string;
+  leaseVersion: string;
+  outcome: RecoveryOutcome;
+  reason: string;
+  actualSpendAtomic?: string;
+  proofReference?: string;
 }
 
 export interface ReserveRequest {
@@ -168,6 +196,75 @@ type BroadcastEvidenceRow = {
   verification_status: "PENDING" | "VERIFIED";
   verified_at: Date | string | null;
   verified_by: string | null;
+  adapter_credential_id: string;
+  adapter_component_id: string;
+  adapter_component_role: "ADAPTER";
+  adapter_auth_signature: string;
+  adapter_auth_payload_hash: string;
+  verification_credential_id: string | null;
+  verification_component_id: string | null;
+  verification_component_role: "RECONCILER" | null;
+  verification_auth_signature: string | null;
+  verification_auth_payload_hash: string | null;
+};
+
+type AuthenticatedComponent = {
+  credentialId: string;
+  componentId: string;
+  role: ComponentRole;
+  authPayloadHash: string;
+  signature: string;
+};
+
+const authenticateComponent = async (
+  client: PoolClient,
+  authorization: ComponentAuthorization | undefined,
+  expectedRole: ComponentRole,
+  action: string,
+  payload: Record<string, unknown>,
+): Promise<AuthenticatedComponent> => {
+  if (!authorization || authorization.role !== expectedRole)
+    throw new LedgerError(
+      "COMPONENT_AUTHENTICATION_FAILED",
+      `authenticated ${expectedRole.toLowerCase()} credential is required`,
+    );
+  const result = await client.query<{
+    component_id: string;
+    component_role: ComponentRole;
+    public_key: string;
+    status: "ACTIVE" | "REVOKED";
+  }>(
+    `SELECT component_id, component_role, public_key, status
+     FROM trusted_component_credentials WHERE credential_id = $1`,
+    [authorization.credentialId],
+  );
+  const credential = result.rows[0];
+  if (!credential || credential.status !== "ACTIVE")
+    throw new LedgerError(
+      "COMPONENT_NOT_TRUSTED",
+      `component credential is not active: ${authorization.credentialId}`,
+    );
+  if (
+    credential.component_id !== authorization.componentId ||
+    credential.component_role !== authorization.role ||
+    !verifyComponentAction(
+      authorization,
+      credential.public_key,
+      action,
+      payload,
+    )
+  )
+    throw new LedgerError(
+      "COMPONENT_AUTHENTICATION_FAILED",
+      "component action signature is invalid",
+    );
+  return {
+    credentialId: authorization.credentialId,
+    componentId: credential.component_id,
+    role: credential.component_role,
+    authPayloadHash: componentAuthPayloadHash(action, authorization, payload),
+    signature: authorization.signature,
+  };
 };
 
 const validDate = (value: string | Date): Date => {
@@ -467,7 +564,12 @@ const getBroadcastEvidence = async (
 ): Promise<BroadcastEvidenceRow> => {
   const result = await client.query<BroadcastEvidenceRow>(
     `SELECT transaction_hash, nonce, receipt_reference, verification_source,
-            verification_status, verified_at, verified_by
+            verification_status, verified_at, verified_by,
+            adapter_credential_id, adapter_component_id, adapter_component_role,
+            adapter_auth_signature, adapter_auth_payload_hash,
+            verification_credential_id, verification_component_id,
+            verification_component_role, verification_auth_signature,
+            verification_auth_payload_hash
      FROM reservation_broadcast_evidence WHERE reservation_id = $1`,
     [reservationId],
   );
@@ -632,15 +734,32 @@ const writeTransitionAudit = async (
   reservation: ReservationSnapshot,
   correlation: AuditCorrelation,
   data: Record<string, unknown> = {},
+  authenticated?: AuthenticatedComponent,
 ): Promise<void> =>
   appendAuditEvent(client, {
     eventId: transitionEventId(audit, eventType),
-    actorType: audit.actorType,
-    actorId: audit.actorId,
+    actorType: authenticated
+      ? authenticated.role === "ADAPTER"
+        ? "adapter"
+        : "worker"
+      : audit.actorType,
+    actorId: authenticated?.componentId ?? audit.actorId,
     traceId: audit.traceId,
     ...correlation,
     eventType,
-    data: eventData(reservation, data),
+    data: eventData(
+      reservation,
+      authenticated
+        ? {
+            ...data,
+            credentialId: authenticated.credentialId,
+            componentId: authenticated.componentId,
+            componentRole: authenticated.role,
+            authPayloadHash: authenticated.authPayloadHash,
+            authenticationMethod: "ed25519",
+          }
+        : data,
+    ),
   });
 
 export const authorizeReservation = (
@@ -681,8 +800,33 @@ export const markReservationBroadcast = (
     pool,
     input,
     async (client, reservation, correlation) => {
+      const evidence = parseBroadcastEvidence(input.evidence);
+      const authenticated = await authenticateComponent(
+        client,
+        input.audit.componentAuth,
+        "ADAPTER",
+        "broadcast",
+        {
+          reservationId: reservation.reservationId,
+          transactionHash: evidence.transactionHash,
+          nonce: evidence.nonce,
+          receiptReference: evidence.receiptReference,
+        },
+      );
       if (reservation.status === "BROADCAST") {
-        await getBroadcastEvidence(client, reservation.reservationId);
+        const existing = await getBroadcastEvidence(
+          client,
+          reservation.reservationId,
+        );
+        if (
+          existing.transaction_hash !== evidence.transactionHash ||
+          String(existing.nonce) !== evidence.nonce ||
+          existing.receipt_reference !== evidence.receiptReference
+        )
+          throw new LedgerError(
+            "RECOVERY_CONFLICT",
+            "broadcast evidence conflicts with the immutable execution record",
+          );
         return reservation;
       }
       if (reservation.status !== "AUTHORIZED")
@@ -690,22 +834,23 @@ export const markReservationBroadcast = (
           "INVALID_RESERVATION_TRANSITION",
           `cannot mark ${reservation.status} reservation as broadcast`,
         );
-      if (input.audit.actorType !== "adapter")
-        throw new LedgerError(
-          "INVALID_BROADCAST_EVIDENCE",
-          "only an adapter actor may record verified broadcast evidence",
-        );
-      const evidence = parseBroadcastEvidence(input.evidence);
       await client.query(
         `INSERT INTO reservation_broadcast_evidence
-       (reservation_id, transaction_hash, nonce, receipt_reference, verification_source)
-       VALUES ($1, $2, $3::numeric, $4, $5)`,
+       (reservation_id, transaction_hash, nonce, receipt_reference, verification_source,
+        adapter_credential_id, adapter_component_id, adapter_component_role,
+        adapter_auth_signature, adapter_auth_payload_hash)
+       VALUES ($1, $2, $3::numeric, $4, $5, $6, $7, $8, $9, $10)`,
         [
           reservation.reservationId,
           evidence.transactionHash,
           evidence.nonce,
           evidence.receiptReference,
-          input.audit.actorId,
+          authenticated.componentId,
+          authenticated.credentialId,
+          authenticated.componentId,
+          authenticated.role,
+          authenticated.signature,
+          authenticated.authPayloadHash,
         ],
       );
       await client.query(
@@ -724,6 +869,7 @@ export const markReservationBroadcast = (
           nonce: evidence.nonce,
           proofReference: evidence.receiptReference,
         },
+        authenticated,
       );
       return next;
     },
@@ -742,24 +888,39 @@ export const verifyBroadcastEvidence = (
           "INVALID_RESERVATION_TRANSITION",
           `cannot verify evidence for ${reservation.status} reservation`,
         );
-      if (
-        input.audit.actorType !== "worker" ||
-        !input.audit.actorId.startsWith("reconciler:")
-      )
-        throw new LedgerError(
-          "INVALID_BROADCAST_EVIDENCE",
-          "only a reconciler worker may verify broadcast evidence",
-        );
       const evidence = await getBroadcastEvidence(
         client,
         reservation.reservationId,
       );
+      const authenticated = await authenticateComponent(
+        client,
+        input.audit.componentAuth,
+        "RECONCILER",
+        "verify",
+        {
+          reservationId: reservation.reservationId,
+          transactionHash: evidence.transaction_hash,
+          nonce: String(evidence.nonce),
+          receiptReference: evidence.receipt_reference,
+        },
+      );
       if (evidence.verification_status === "VERIFIED") return reservation;
       await client.query(
         `UPDATE reservation_broadcast_evidence
-       SET verification_status = 'VERIFIED', verified_at = now(), verified_by = $1
-       WHERE reservation_id = $2`,
-        [input.audit.actorId, reservation.reservationId],
+       SET verification_status = 'VERIFIED', verified_at = now(), verified_by = $1,
+           verification_credential_id = $2, verification_component_id = $3,
+           verification_component_role = $4, verification_auth_signature = $5,
+           verification_auth_payload_hash = $6
+       WHERE reservation_id = $7`,
+        [
+          `reconciler:${authenticated.componentId}`,
+          authenticated.credentialId,
+          authenticated.componentId,
+          authenticated.role,
+          authenticated.signature,
+          authenticated.authPayloadHash,
+          reservation.reservationId,
+        ],
       );
       await writeTransitionAudit(
         client,
@@ -773,6 +934,7 @@ export const verifyBroadcastEvidence = (
           proofReference: evidence.receipt_reference,
           verificationStatus: "VERIFIED",
         },
+        authenticated,
       );
       return reservation;
     },
@@ -956,3 +1118,455 @@ export const disputeReservation = (
       return next;
     },
   );
+
+export interface RecoveryClaimRequest {
+  attemptId: string;
+  operationId: string;
+  reservationId: string;
+  leaseDurationSeconds: number;
+  now: string | Date;
+  audit: AuditContext;
+}
+
+const recoveryEventId = (audit: AuditContext, suffix: string): string =>
+  `${audit.eventId}:recovery:${suffix}`;
+
+const recoveryPayload = (
+  input: RecoveryResolution,
+  evidence: BroadcastEvidenceRow | null,
+): Record<string, unknown> => ({
+  attemptId: input.attemptId,
+  operationId: input.operationId,
+  reservationId: input.reservationId,
+  leaseVersion: input.leaseVersion,
+  outcome: input.outcome,
+  reason: input.reason,
+  actualSpendAtomic: input.actualSpendAtomic ?? null,
+  proofReference: input.proofReference ?? null,
+  evidence: evidence
+    ? {
+        transactionHash: evidence.transaction_hash,
+        nonce: String(evidence.nonce),
+        receiptReference: evidence.receipt_reference,
+      }
+    : null,
+});
+
+const writeRecoveryAudit = async (
+  client: PoolClient,
+  audit: AuditContext,
+  eventType: AuditEventType,
+  reservation: ReservationSnapshot,
+  correlation: AuditCorrelation,
+  authenticated: AuthenticatedComponent,
+  data: Record<string, unknown>,
+): Promise<void> =>
+  appendAuditEvent(client, {
+    eventId: recoveryEventId(
+      audit,
+      `${eventType.replaceAll(".", ":")}:${data.attemptId ?? "claim"}`,
+    ),
+    actorType: "worker",
+    actorId: authenticated.componentId,
+    traceId: audit.traceId,
+    ...correlation,
+    eventType,
+    data: eventData(reservation, {
+      ...data,
+      credentialId: authenticated.credentialId,
+      componentId: authenticated.componentId,
+      componentRole: authenticated.role,
+      authPayloadHash: authenticated.authPayloadHash,
+      authenticationMethod: "ed25519",
+    }),
+  });
+
+/** Claim one durable recovery lease. A worker label alone has no authority. */
+export const claimRecoveryLease = async (
+  pool: Pool,
+  input: RecoveryClaimRequest,
+): Promise<RecoveryLease> => {
+  if (
+    !Number.isInteger(input.leaseDurationSeconds) ||
+    input.leaseDurationSeconds <= 0
+  )
+    throw new LedgerError(
+      "RECOVERY_LEASE_STALE",
+      "recovery lease duration must be a positive integer",
+    );
+  const now = validDate(input.now);
+  const expiresAt = new Date(now.getTime() + input.leaseDurationSeconds * 1000);
+  return withSerializableTransaction(pool, async (client) => {
+    const binding = await getReservationForUpdate(client, input.reservationId);
+    if (binding.reservation.operationId !== input.operationId)
+      throw new LedgerError(
+        "BUDGET_BINDING_MISMATCH",
+        "recovery operation and reservation do not match",
+      );
+    const authenticated = await authenticateComponent(
+      client,
+      input.audit.componentAuth,
+      "RECONCILER",
+      "recovery.claim",
+      {
+        attemptId: input.attemptId,
+        operationId: input.operationId,
+        reservationId: input.reservationId,
+      },
+    );
+    const existing = await client.query<{
+      lease_version: string;
+      lease_expires_at: Date | string;
+      lease_state: "ACTIVE" | "RESOLVED";
+    }>(
+      `SELECT lease_version, lease_expires_at, lease_state
+       FROM operation_recovery_leases WHERE operation_id = $1 FOR UPDATE`,
+      [input.operationId],
+    );
+    const current = existing.rows[0];
+    if (
+      current &&
+      current.lease_state === "ACTIVE" &&
+      new Date(current.lease_expires_at).getTime() > now.getTime()
+    )
+      throw new LedgerError(
+        "RECOVERY_LEASE_HELD",
+        "recovery operation is already leased",
+      );
+    const leaseVersion = current ? BigInt(current.lease_version) + 1n : 1n;
+    if (leaseVersion > BigInt(Number.MAX_SAFE_INTEGER))
+      throw new LedgerError(
+        "RECOVERY_LEASE_STALE",
+        "recovery lease version exhausted",
+      );
+    await client.query(
+      `INSERT INTO operation_recovery_leases
+         (operation_id, reservation_id, credential_id, lease_version, lease_expires_at, lease_state)
+       VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
+       ON CONFLICT (operation_id) DO UPDATE SET
+         reservation_id = EXCLUDED.reservation_id,
+         credential_id = EXCLUDED.credential_id,
+         lease_version = EXCLUDED.lease_version,
+         lease_expires_at = EXCLUDED.lease_expires_at,
+         lease_state = 'ACTIVE', updated_at = now()`,
+      [
+        input.operationId,
+        input.reservationId,
+        authenticated.credentialId,
+        leaseVersion.toString(),
+        expiresAt,
+      ],
+    );
+    await writeRecoveryAudit(
+      client,
+      input.audit,
+      "execution.recovery.claimed",
+      binding.reservation,
+      binding.correlation,
+      authenticated,
+      { attemptId: input.attemptId, leaseVersion: Number(leaseVersion) },
+    );
+    return {
+      operationId: input.operationId,
+      reservationId: input.reservationId,
+      credentialId: authenticated.credentialId,
+      componentId: authenticated.componentId,
+      leaseVersion: leaseVersion.toString(),
+      leaseExpiresAt: expiresAt.toISOString(),
+    };
+  });
+};
+
+/**
+ * Resolve an uncertain outcome under a live lease. AMBIGUOUS and CONFLICT
+ * always retain the reservation. CONFIRMED finalizes only matching immutable
+ * evidence; FAILED releases only pre-broadcast reservations.
+ */
+export const resolveRecovery = async (
+  pool: Pool,
+  input: RecoveryResolution & { audit: AuditContext },
+): Promise<ReservationSnapshot> => {
+  const actualSpend = input.actualSpendAtomic
+    ? parseAtomic(input.actualSpendAtomic)
+    : undefined;
+  if (input.outcome === "CONFIRMED" && (!actualSpend || !input.proofReference))
+    throw new LedgerError(
+      "INVALID_BROADCAST_EVIDENCE",
+      "confirmed recovery requires spend and proof",
+    );
+  return withSerializableTransaction(pool, async (client) => {
+    const binding = await getReservationForUpdate(client, input.reservationId);
+    if (binding.reservation.operationId !== input.operationId)
+      throw new LedgerError(
+        "BUDGET_BINDING_MISMATCH",
+        "recovery operation and reservation do not match",
+      );
+    const evidenceResult = await client.query<BroadcastEvidenceRow>(
+      `SELECT transaction_hash, nonce, receipt_reference, verification_source,
+              verification_status, verified_at, verified_by,
+              adapter_credential_id, adapter_component_id, adapter_component_role,
+              adapter_auth_signature, adapter_auth_payload_hash,
+              verification_credential_id, verification_component_id,
+              verification_component_role, verification_auth_signature,
+              verification_auth_payload_hash
+       FROM reservation_broadcast_evidence WHERE reservation_id = $1`,
+      [input.reservationId],
+    );
+    const evidence = evidenceResult.rows[0] ?? null;
+    const authenticated = await authenticateComponent(
+      client,
+      input.audit.componentAuth,
+      "RECONCILER",
+      "recovery.resolve",
+      recoveryPayload(input, evidence),
+    );
+    const resolutionHash = authenticated.authPayloadHash;
+    const prior = await client.query<{
+      operation_id: string;
+      reservation_id: string;
+      resolution_hash: string;
+    }>(
+      `SELECT operation_id, reservation_id, resolution_hash
+       FROM recovery_attempts WHERE attempt_id = $1 FOR UPDATE`,
+      [input.attemptId],
+    );
+    if (prior.rows[0]) {
+      if (
+        prior.rows[0].operation_id !== input.operationId ||
+        prior.rows[0].reservation_id !== input.reservationId ||
+        prior.rows[0].resolution_hash !== resolutionHash
+      )
+        throw new LedgerError(
+          "RECOVERY_CONFLICT",
+          "recovery attempt was replayed with different evidence",
+        );
+      return binding.reservation;
+    }
+    const lease = await client.query<{
+      reservation_id: string;
+      credential_id: string;
+      lease_version: string;
+      lease_expires_at: Date | string;
+      lease_state: "ACTIVE" | "RESOLVED";
+    }>(
+      `SELECT reservation_id, credential_id, lease_version, lease_expires_at, lease_state
+       FROM operation_recovery_leases WHERE operation_id = $1 FOR UPDATE`,
+      [input.operationId],
+    );
+    const current = lease.rows[0];
+    if (
+      !current ||
+      current.reservation_id !== input.reservationId ||
+      current.credential_id !== authenticated.credentialId ||
+      current.lease_version !== input.leaseVersion ||
+      current.lease_state !== "ACTIVE" ||
+      new Date(current.lease_expires_at).getTime() <= Date.now()
+    )
+      throw new LedgerError(
+        "RECOVERY_LEASE_STALE",
+        "recovery lease is stale or not owned by this worker",
+      );
+
+    let next = binding.reservation;
+    if (input.outcome === "CONFIRMED") {
+      if (!evidence || binding.reservation.status !== "BROADCAST")
+        throw new LedgerError(
+          "INVALID_BROADCAST_EVIDENCE",
+          "confirmed recovery requires broadcast evidence",
+        );
+      if (input.proofReference !== evidence.receipt_reference)
+        throw new LedgerError(
+          "INVALID_BROADCAST_EVIDENCE",
+          "recovery proof does not match broadcast evidence",
+        );
+      const confirmedSpend = actualSpend;
+      if (!confirmedSpend)
+        throw new LedgerError(
+          "INVALID_BROADCAST_EVIDENCE",
+          "confirmed recovery spend is missing",
+        );
+      if (BigInt(confirmedSpend) > BigInt(binding.reservation.amountAtomic))
+        throw new LedgerError(
+          "INVALID_ATOMIC_AMOUNT",
+          "recovered spend exceeds reserved amount",
+        );
+      if (evidence.verification_status === "PENDING") {
+        await client.query(
+          `UPDATE reservation_broadcast_evidence
+           SET verification_status = 'VERIFIED', verified_at = now(), verified_by = $1,
+               verification_credential_id = $2, verification_component_id = $3,
+               verification_component_role = $4, verification_auth_signature = $5,
+               verification_auth_payload_hash = $6
+           WHERE reservation_id = $7`,
+          [
+            `reconciler:${authenticated.componentId}`,
+            authenticated.credentialId,
+            authenticated.componentId,
+            authenticated.role,
+            authenticated.signature,
+            authenticated.authPayloadHash,
+            input.reservationId,
+          ],
+        );
+        await writeRecoveryAudit(
+          client,
+          input.audit,
+          "budget.reservation.evidence.verified",
+          binding.reservation,
+          binding.correlation,
+          authenticated,
+          {
+            attemptId: input.attemptId,
+            leaseVersion: Number(input.leaseVersion),
+            transactionHash: evidence.transaction_hash,
+            nonce: String(evidence.nonce),
+            proofReference: evidence.receipt_reference,
+            verificationStatus: "VERIFIED",
+          },
+        );
+      }
+      await client.query(
+        `UPDATE budget_accounts
+         SET available = available + ($1::numeric - $2::numeric),
+             reserved = reserved - $1::numeric,
+             finalized_spend = finalized_spend + $2::numeric,
+             version = version + 1, updated_at = now()
+         WHERE budget_id = $3`,
+        [
+          binding.reservation.amountAtomic,
+          confirmedSpend,
+          binding.reservation.budgetId,
+        ],
+      );
+      await client.query(
+        `UPDATE budget_reservations
+         SET status = 'FINALIZED', finalized_spend_atomic = $1::numeric,
+             proof_reference = $2, updated_at = now()
+         WHERE reservation_id = $3`,
+        [confirmedSpend, input.proofReference, input.reservationId],
+      );
+      next = {
+        ...binding.reservation,
+        status: "FINALIZED",
+        finalizedSpendAtomic: confirmedSpend,
+        proofReference: input.proofReference,
+      };
+      await writeRecoveryAudit(
+        client,
+        input.audit,
+        "budget.reservation.finalized",
+        next,
+        binding.correlation,
+        authenticated,
+        {
+          attemptId: input.attemptId,
+          leaseVersion: Number(input.leaseVersion),
+          actualSpendAtomic: confirmedSpend,
+          proofReference: input.proofReference,
+          transactionHash: evidence.transaction_hash,
+          nonce: String(evidence.nonce),
+        },
+      );
+    } else if (
+      input.outcome === "FAILED" &&
+      ["HELD", "AUTHORIZED"].includes(binding.reservation.status)
+    ) {
+      await client.query(
+        `UPDATE budget_accounts SET available = available + $1::numeric,
+         reserved = reserved - $1::numeric, version = version + 1, updated_at = now()
+         WHERE budget_id = $2`,
+        [binding.reservation.amountAtomic, binding.reservation.budgetId],
+      );
+      await client.query(
+        "UPDATE budget_reservations SET status = 'RELEASED', updated_at = now() WHERE reservation_id = $1",
+        [input.reservationId],
+      );
+      next = { ...binding.reservation, status: "RELEASED" };
+      await writeRecoveryAudit(
+        client,
+        input.audit,
+        "budget.reservation.released",
+        next,
+        binding.correlation,
+        authenticated,
+        {
+          attemptId: input.attemptId,
+          leaseVersion: Number(input.leaseVersion),
+          reason: input.reason,
+        },
+      );
+    } else if (
+      ["AMBIGUOUS", "CONFLICT"].includes(input.outcome) ||
+      (input.outcome === "FAILED" &&
+        ["BROADCAST", "DISPUTED"].includes(binding.reservation.status))
+    ) {
+      if (binding.reservation.status !== "DISPUTED") {
+        await client.query(
+          "UPDATE budget_reservations SET status = 'DISPUTED', updated_at = now() WHERE reservation_id = $1",
+          [input.reservationId],
+        );
+        next = { ...binding.reservation, status: "DISPUTED" };
+        await writeRecoveryAudit(
+          client,
+          input.audit,
+          "budget.reservation.disputed",
+          next,
+          binding.correlation,
+          authenticated,
+          {
+            attemptId: input.attemptId,
+            leaseVersion: Number(input.leaseVersion),
+            reason: input.reason,
+          },
+        );
+      }
+    } else {
+      throw new LedgerError(
+        "INVALID_RESERVATION_TRANSITION",
+        `cannot resolve ${input.outcome} for ${binding.reservation.status} reservation`,
+      );
+    }
+    await client.query(
+      `INSERT INTO recovery_attempts
+         (attempt_id, operation_id, reservation_id, lease_version, credential_id,
+          outcome, resolution_hash, reason, actual_spend_atomic, proof_reference)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::numeric, $10)`,
+      [
+        input.attemptId,
+        input.operationId,
+        input.reservationId,
+        input.leaseVersion,
+        authenticated.credentialId,
+        input.outcome,
+        resolutionHash,
+        input.reason,
+        actualSpend ?? null,
+        input.proofReference ?? null,
+      ],
+    );
+    await client.query(
+      "UPDATE operation_recovery_leases SET lease_state = 'RESOLVED', updated_at = now() WHERE operation_id = $1",
+      [input.operationId],
+    );
+    await writeRecoveryAudit(
+      client,
+      input.audit,
+      input.outcome === "AMBIGUOUS"
+        ? "execution.recovery.ambiguous"
+        : input.outcome === "CONFLICT"
+          ? "execution.recovery.conflict"
+          : "execution.recovery.resolved",
+      next,
+      binding.correlation,
+      authenticated,
+      {
+        attemptId: input.attemptId,
+        leaseVersion: Number(input.leaseVersion),
+        recoveryOutcome: input.outcome,
+        resolutionHash,
+        reason: input.reason,
+      },
+    );
+    return next;
+  });
+};

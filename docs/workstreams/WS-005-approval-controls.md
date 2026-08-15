@@ -3,9 +3,10 @@
 ## Objective and status
 
 Prove that approval, revocation, and pause state cannot authorize stale work.
-WP-04 is COMPLETE LOCALLY for the Phase-1 database control-plane proof. Gate
-S1 remains open pending independent acceptance, owner authentication, an
-integrated signing/provider boundary, reconciliation, and recovery evidence.
+WP-04 is COMPLETE LOCALLY for the Phase-1 database control-plane proof. WP-05
+is COMPLETE LOCALLY for authenticated local evidence and deterministic recovery.
+Gate S1 remains open pending independent acceptance, owner authentication, an
+integrated signing/provider boundary, and chain reconciliation.
 
 ## Governing sources
 
@@ -47,3 +48,16 @@ The focused suite has 14 deterministic tests using a ready barrier and
 database-row blocker rather than sleeps. The full local DB gate passed 57/57;
 the combined concurrency gate passed 16/16; invariants remained green. No
 signing, broadcast, owner-key, or public-chain consumer is in this workstream.
+
+## WP-05 authenticated recovery proof
+
+`trusted_component_credentials` is the local trust root for adapter and
+reconciler actions. Ed25519 signatures bind the credential, component, role,
+action, and canonical operation/evidence payload. PostgreSQL snapshots the
+authenticated identity and signed-payload hash on immutable broadcast evidence.
+Recovery leases use monotonic versions and append-only attempt IDs. Expired or
+stale workers cannot resolve; duplicate attempts are idempotent; simultaneous
+recoverers serialize; conflicting evidence fails closed; and AMBIGUOUS/
+CONFLICT outcomes remain DISPUTED with reserved funds. The focused proof is
+`tests/db/wp05-recovery.test.ts` (7/7). It uses local fakes and deliberately
+does not open signing, RPC, provider, testnet, mainnet, or real-funds scope.

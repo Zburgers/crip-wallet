@@ -11,6 +11,7 @@ export default tseslint.config(
       "contracts/out/**",
       "coverage/**",
       "dist/**",
+      "**/dist/**",
       "node_modules/**",
     ],
   },

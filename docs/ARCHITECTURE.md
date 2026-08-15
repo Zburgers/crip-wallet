@@ -26,23 +26,24 @@ PostgreSQL state + audit          approval / autonomous fence
                                            v
                               Anvil 31337 + mock ERC-20
 
-Cross-cutting: OpenTelemetry, structured redacted logs, pause/revocation fences
+Cross-cutting: OpenTelemetry, structured redacted logs, pause/revocation fences,
+authenticated local component credentials, and durable recovery leases
 ```
 
 ## Components
 
-| Component | Responsibility | Must not do |
-|---|---|---|
-| Interface adapters | Authenticate, validate public schemas, rate-limit, map errors | Decide policy or expose raw signing |
-| Intent service | Validate configured lifetime, canonicalize typed provider-neutral intent, and derive its versioned idempotency payload hash | Trust hints as asset identity |
-| Policy engine | Deterministic immutable-policy evaluation | Call LLMs or silently coerce unknown values |
-| Budget ledger | Atomic reservations and balanced reconciliation | Use floating point or infer timeout failure |
-| Transaction pipeline | Construct, decode, verify, simulate, finalize candidates | Accept raw calldata for MVP transfers |
-| Approval/controls | Envelope-bound one-time approval, versioned pause/revocation fence, stale-authority invalidation | Claim post-broadcast cancellation |
-| Adapter SDK | Normalize capabilities, signing authorization, broadcast, receipts | Define core policy or overstate enforcement |
-| Local Anvil adapter | Isolate disposable local signer and local RPC | Serve production/public networks |
-| Audit/telemetry | Correlate durable events and operational evidence | Become authorization input or log secrets |
-| Recovery worker | Idempotently resume leased lifecycle work | Recreate authorization on retry |
+| Component            | Responsibility                                                                                                              | Must not do                                 |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Interface adapters   | Authenticate, validate public schemas, rate-limit, map errors                                                               | Decide policy or expose raw signing         |
+| Intent service       | Validate configured lifetime, canonicalize typed provider-neutral intent, and derive its versioned idempotency payload hash | Trust hints as asset identity               |
+| Policy engine        | Deterministic immutable-policy evaluation                                                                                   | Call LLMs or silently coerce unknown values |
+| Budget ledger        | Atomic reservations and balanced reconciliation                                                                             | Use floating point or infer timeout failure |
+| Transaction pipeline | Construct, decode, verify, simulate, finalize candidates                                                                    | Accept raw calldata for MVP transfers       |
+| Approval/controls    | Envelope-bound one-time approval, versioned pause/revocation fence, stale-authority invalidation                            | Claim post-broadcast cancellation           |
+| Adapter SDK          | Normalize capabilities, signing authorization, broadcast, receipts                                                          | Define core policy or overstate enforcement |
+| Local Anvil adapter  | Isolate disposable local signer and local RPC                                                                               | Serve production/public networks            |
+| Audit/telemetry      | Correlate durable events and operational evidence                                                                           | Become authorization input or log secrets   |
+| Recovery worker      | Idempotently resume leased lifecycle work                                                                                   | Recreate authorization on retry             |
 
 ## Data flow and ordering
 
@@ -62,7 +63,12 @@ authorized evidence row can no longer be used. Resume advances the system
 fence; it never restores the old snapshot.
 Fence versions are PostgreSQL `bigint` values bounded at
 `Number.MAX_SAFE_INTEGER` before they enter the JavaScript/audit contract, so
-the local comparison path cannot lose version precision.
+the local comparison path cannot lose version precision. WP-05 adds a separate
+local execution-evidence boundary: adapter and reconciler actions must verify
+an active Ed25519 credential and signed canonical payload; descriptive audit
+actor labels are not authority. Evidence snapshots retain the credential and
+signature hash. Recovery leases and attempt IDs are durable and fenced; unknown
+outcomes remain disputed until authenticated reconciliation.
 
 ## Deployment topology
 
@@ -86,5 +92,5 @@ review, schema tests, compatibility notes, and an ADR when security-relevant.
 
 ## Decision map
 
-ADRs 0001–0012 define the current architecture. `docs/decisions/README.md` is the
+ADRs 0001–0014 define the current architecture. `docs/decisions/README.md` is the
 index; accepted records are superseded rather than edited.

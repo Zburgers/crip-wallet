@@ -28,10 +28,24 @@ import {
   type AuditContext,
   type AuditEventInput,
 } from "@crip/budget-ledger";
+import {
+  generateComponentCredential,
+  signComponentAction,
+} from "@crip/trust-boundary";
 import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
 
 const repositoryRoot = join(import.meta.dirname, "../..");
 const assetAddress = "0x0000000000000000000000000000000000000001";
+const adapterCredential = generateComponentCredential({
+  credentialId: "credential_adapter_test",
+  componentId: "adapter_test",
+  role: "ADAPTER",
+});
+const reconcilerCredential = generateComponentCredential({
+  credentialId: "credential_reconciler_test",
+  componentId: "reconciler_test",
+  role: "RECONCILER",
+});
 type Queryable = Pick<PoolClient, "query">;
 
 const runtime = loadLocalRuntime({ root: repositoryRoot });
@@ -87,16 +101,40 @@ const persistedAuditInput = (
   data: { reservationId, amountAtomic: "10" },
 });
 
-const adapterAuditContext = (operationId: string): AuditContext => ({
+const adapterAuditContext = (
+  operationId: string,
+  reservationId: string,
+  evidence: {
+    transactionHash: string;
+    nonce: string;
+    receiptReference: string;
+  },
+): AuditContext => ({
   ...auditContext(operationId),
   actorType: "adapter",
   actorId: "adapter-test",
+  componentAuth: signComponentAction(adapterCredential, "broadcast", {
+    reservationId,
+    ...evidence,
+  }),
 });
 
-const reconcilerAuditContext = (operationId: string): AuditContext => ({
+const reconcilerAuditContext = (
+  operationId: string,
+  reservationId: string,
+  evidence: {
+    transactionHash: string;
+    nonce: string;
+    receiptReference: string;
+  },
+): AuditContext => ({
   ...auditContext(operationId),
   actorType: "worker",
   actorId: "reconciler:ledger-test",
+  componentAuth: signComponentAction(reconcilerCredential, "verify", {
+    reservationId,
+    ...evidence,
+  }),
 });
 
 const withAssertedCorrelation = (
@@ -118,6 +156,11 @@ const seedFixture = async (client: Queryable): Promise<void> => {
     INSERT INTO control_fences (scope_type, scope_id, state) VALUES
       ('SYSTEM', 'system', 'ACTIVE'), ('OWNER', 'owner_1', 'ACTIVE'),
       ('AGENT', 'agent_1', 'ACTIVE'), ('POLICY', 'policy_1', 'ACTIVE');
+    INSERT INTO trusted_component_credentials
+      (credential_id, component_id, component_role, public_key)
+    VALUES
+      ('${adapterCredential.credentialId}', '${adapterCredential.componentId}', 'ADAPTER', '${adapterCredential.publicKey}'),
+      ('${reconcilerCredential.credentialId}', '${reconcilerCredential.componentId}', 'RECONCILER', '${reconcilerCredential.publicKey}');
     INSERT INTO budget_accounts (budget_id, agent_id, wallet_id, policy_id, policy_version, asset_address, allocated, available, reserved, finalized_spend)
       VALUES ('budget_1', 'agent_1', 'wallet_1', 'policy_1', 1, '${assetAddress}', 100, 100, 0, 0);
   `);
@@ -146,7 +189,7 @@ const insertOperation = async (
 
 const reset = async (): Promise<void> => {
   await pool.query(
-    "TRUNCATE audit_events, idempotency_records, budget_reservations, budget_accounts, operations, intents, policy_decisions, execution_envelopes, policy_versions, policies, wallets, agents, owners, control_fences CASCADE",
+    "TRUNCATE recovery_attempts, operation_recovery_leases, trusted_component_credentials, audit_events, idempotency_records, budget_reservations, budget_accounts, operations, intents, policy_decisions, execution_envelopes, policy_versions, policies, wallets, agents, owners, control_fences CASCADE",
   );
   await withSerializableTransaction(pool, seedFixture);
 };
@@ -178,7 +221,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     const migration = await pool.query<{ filename: string; checksum: string }>(
       "SELECT filename, checksum FROM schema_migrations ORDER BY filename",
     );
-    expect(migration.rows).toHaveLength(16);
+    expect(migration.rows).toHaveLength(18);
     expect(migration.rows.map((row) => row.filename)).toEqual([
       "0001_ws003_budget_ledger.sql",
       "0002_ws003_idempotency_binding_guard.sql",
@@ -196,6 +239,8 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       "0014_ws003_audit_correlation_hardening.sql",
       "0015_wp03_approval_authorization.sql",
       "0016_wp04_control_fences.sql",
+      "0017_wp05_authenticated_recovery.sql",
+      "0018_wp05_evidence_trigger_fix.sql",
     ]);
     expect(
       migration.rows.every((row) => /^sha256:[0-9a-f]{64}$/.test(row.checksum)),
@@ -216,6 +261,9 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
           "budget_accounts",
           "budget_reservations",
           "control_fences",
+          "trusted_component_credentials",
+          "operation_recovery_leases",
+          "recovery_attempts",
           "idempotency_records",
           "audit_events",
         ],
@@ -233,9 +281,12 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       "execution_envelopes",
       "idempotency_records",
       "intents",
+      "operation_recovery_leases",
       "operations",
       "policies",
       "policy_decisions",
+      "recovery_attempts",
+      "trusted_component_credentials",
     ]);
   });
 
@@ -484,7 +535,13 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
         await expect(
           markReservationBroadcast(pool, {
             reservationId,
-            audit: forged(adapterAuditContext(operationId)),
+            audit: forged(
+              adapterAuditContext(operationId, reservationId, {
+                transactionHash: `0x${"a".repeat(64)}`,
+                nonce: "1",
+                receiptReference: `receipt:${kind}`,
+              }),
+            ),
             evidence: {
               transactionHash: `0x${"a".repeat(64)}`,
               nonce: "1",
@@ -499,7 +556,11 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
         });
         await markReservationBroadcast(pool, {
           reservationId,
-          audit: adapterAuditContext(operationId),
+          audit: adapterAuditContext(operationId, reservationId, {
+            transactionHash: `0x${"b".repeat(64)}`,
+            nonce: "1",
+            receiptReference: `receipt:${kind}`,
+          }),
           evidence: {
             transactionHash: `0x${"b".repeat(64)}`,
             nonce: "1",
@@ -509,7 +570,13 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
         await expect(
           verifyBroadcastEvidence(pool, {
             reservationId,
-            audit: forged(reconcilerAuditContext(operationId)),
+            audit: forged(
+              reconcilerAuditContext(operationId, reservationId, {
+                transactionHash: `0x${"b".repeat(64)}`,
+                nonce: "1",
+                receiptReference: `receipt:${kind}`,
+              }),
+            ),
           }),
         ).rejects.toMatchObject({ code: "AUDIT_CORRELATION_MISMATCH" });
       } else if (kind === "release") {
@@ -534,7 +601,11 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
         });
         await markReservationBroadcast(pool, {
           reservationId,
-          audit: adapterAuditContext(operationId),
+          audit: adapterAuditContext(operationId, reservationId, {
+            transactionHash: `0x${"c".repeat(64)}`,
+            nonce: "1",
+            receiptReference: `receipt:${kind}`,
+          }),
           evidence: {
             transactionHash: `0x${"c".repeat(64)}`,
             nonce: "1",
@@ -543,7 +614,11 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
         });
         await verifyBroadcastEvidence(pool, {
           reservationId,
-          audit: reconcilerAuditContext(operationId),
+          audit: reconcilerAuditContext(operationId, reservationId, {
+            transactionHash: `0x${"c".repeat(64)}`,
+            nonce: "1",
+            receiptReference: `receipt:${kind}`,
+          }),
         });
         await expect(
           finalizeReservation(pool, {
@@ -790,7 +865,11 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     });
     await markReservationBroadcast(pool, {
       reservationId: "res_finalize",
-      audit: adapterAuditContext("op_finalize"),
+      audit: adapterAuditContext("op_finalize", "res_finalize", {
+        transactionHash: `0x${"1".repeat(64)}`,
+        nonce: "1",
+        receiptReference: "receipt:op_finalize",
+      }),
       evidence: {
         transactionHash: `0x${"1".repeat(64)}`,
         nonce: "1",
@@ -799,7 +878,11 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     });
     await verifyBroadcastEvidence(pool, {
       reservationId: "res_finalize",
-      audit: reconcilerAuditContext("op_finalize"),
+      audit: reconcilerAuditContext("op_finalize", "res_finalize", {
+        transactionHash: `0x${"1".repeat(64)}`,
+        nonce: "1",
+        receiptReference: "receipt:op_finalize",
+      }),
     });
     const finalized = await finalizeReservation(pool, {
       reservationId: "res_finalize",
@@ -841,7 +924,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
           receiptReference: "receipt:forged",
         },
       }),
-    ).rejects.toMatchObject({ code: "INVALID_BROADCAST_EVIDENCE" });
+    ).rejects.toMatchObject({ code: "COMPONENT_AUTHENTICATION_FAILED" });
     await expect(
       pool.query(
         "UPDATE budget_reservations SET status = 'BROADCAST' WHERE reservation_id = $1",
@@ -918,7 +1001,11 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       (
         await markReservationBroadcast(pool, {
           reservationId: "res_lifecycle",
-          audit: adapterAuditContext("op_lifecycle"),
+          audit: adapterAuditContext("op_lifecycle", "res_lifecycle", {
+            transactionHash: `0x${"2".repeat(64)}`,
+            nonce: "2",
+            receiptReference: "receipt:op_lifecycle",
+          }),
           evidence: {
             transactionHash: `0x${"2".repeat(64)}`,
             nonce: "2",
@@ -937,7 +1024,11 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     ).rejects.toMatchObject({ code: "INVALID_BROADCAST_EVIDENCE" });
     await verifyBroadcastEvidence(pool, {
       reservationId: "res_lifecycle",
-      audit: reconcilerAuditContext("op_lifecycle"),
+      audit: reconcilerAuditContext("op_lifecycle", "res_lifecycle", {
+        transactionHash: `0x${"2".repeat(64)}`,
+        nonce: "2",
+        receiptReference: "receipt:op_lifecycle",
+      }),
     });
     await expect(
       pool.query(

@@ -42,13 +42,13 @@ claims. Database queries are parameterized and transactions use one client.
 
 ## Security gates
 
-| Gate                    | Current evidence                                                                                                                                                                                                 | Status       |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| S0 repository safety    | Secret scanning, push protection, Dependabot security fixes, active main ruleset `20791659`, green remote CI/Gitleaks for PR #1, and MIT licensing are verified; required review acceptance remains              | OPEN         |
-| S1 core invariant proof | WS-002/WS-003 local implementation and proof suites pass; independent approval/revocation/pause fencing acceptance, authenticated adapter/reconciler integration, integrated recovery, and review acceptance remain | BLOCKED      |
-| S2 local E2E            | No vertical slice yet                                                                                                                                                                                            | BLOCKED      |
-| S3 testnet readiness    | Out of MVP; requires stronger adapter/auth and review                                                                                                                                                            | NOT STARTED  |
-| S4 real-value canary    | Prohibited without explicit owner approval                                                                                                                                                                       | OUT OF SCOPE |
+| Gate                    | Current evidence                                                                                                                                                                                    | Status       |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| S0 repository safety    | Secret scanning, push protection, Dependabot security fixes, active main ruleset `20791659`, green remote CI/Gitleaks for PR #1, and MIT licensing are verified; required review acceptance remains | OPEN         |
+| S1 core invariant proof | WS-002/WS-003/WP-03/WP-04/WP-05 local proof suites pass; independent security acceptance, owner authentication, provider/chain integration, and review acceptance remain                            | BLOCKED      |
+| S2 local E2E            | No vertical slice yet                                                                                                                                                                               | BLOCKED      |
+| S3 testnet readiness    | Out of MVP; requires stronger adapter/auth and review                                                                                                                                               | NOT STARTED  |
+| S4 real-value canary    | Prohibited without explicit owner approval                                                                                                                                                          | OUT OF SCOPE |
 
 ## WP-03 authorization evidence
 
@@ -88,3 +88,22 @@ releases eligible held reservations in the same transaction. Resume increments
 the system fence and cannot resurrect old evidence. Deterministic local proof
 is in `tests/concurrency/control-fence.test.ts`; provider/signing and chain
 reconciliation remain outside this packet and Gate S1 remains blocked.
+
+## WP-05 authenticated execution boundary and recovery
+
+Phase 1 provisions adapter and reconciler Ed25519 public keys out of band in
+`trusted_component_credentials`. An execution-boundary or recovery action must
+carry a signature over a canonical, domain-separated action payload. The service
+looks up the credential, checks its active status and role, verifies the
+signature, and only then writes the action. `actorType` and `actorId` are
+descriptive audit projections, never authority.
+
+Broadcast evidence snapshots the credential ID, component ID, role, signature,
+and signed-payload hash. Verification snapshots the same fields for the
+reconciler. Recovery uses a PostgreSQL lease version and append-only attempt ID;
+expired or stale workers fail closed, duplicate attempts return the original
+result, and simultaneous recoverers serialize on the lease row. CONFIRMED can
+finalize only matching immutable evidence. FAILED releases only pre-broadcast
+held/authorized reservations. AMBIGUOUS and CONFLICT remain DISPUTED and keep
+funds reserved. The proof uses controlled local fakes only and does not claim a
+chain receipt or real execution.

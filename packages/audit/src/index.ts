@@ -30,7 +30,18 @@ export type AuditEventType =
   | "owner.revoked"
   | "policy.revoked"
   | "system.paused"
-  | "system.resumed";
+  | "system.resumed"
+  | "execution.recovery.claimed"
+  | "execution.recovery.ambiguous"
+  | "execution.recovery.resolved"
+  | "execution.recovery.conflict";
+
+export interface ComponentAuthorization {
+  credentialId: string;
+  componentId: string;
+  role: "ADAPTER" | "RECONCILER";
+  signature: string;
+}
 
 export interface AuditCorrelation {
   reservationId: string;
@@ -51,6 +62,8 @@ export interface AuditContext {
   traceId: string;
   /** Optional caller assertion; persisted correlation is always resolved from PostgreSQL. */
   assertedCorrelation?: Partial<AuditCorrelation>;
+  /** Signed by a pre-provisioned local adapter or reconciler credential. */
+  componentAuth?: ComponentAuthorization;
 }
 
 export interface AuditEventInput {

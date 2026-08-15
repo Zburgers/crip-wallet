@@ -25,10 +25,10 @@ keep this as the current resume snapshot rather than an activity log.
   active, requires one approval and `validate`, and the remote CI/security
   checks for PR #1 are green. Secret scanning, push protection, and Dependabot
   security fixes are enabled.
-- Gate S1: BLOCKED pending independent acceptance of approval/revocation/pause fencing and integrated
-  authorization proof, authenticated adapter/chain reconciliation, integrated
-  execution recovery, independent security review, and required human
-  acceptance. The WS-003 budget-ledger slice is now locally evidenced.
+- Gate S1: BLOCKED pending independent acceptance of approval/revocation/pause fencing,
+  independent security review, and required human acceptance. WP-05 now supplies
+  local authenticated adapter/reconciler and deterministic recovery evidence;
+  provider/chain reconciliation remains out of scope.
 - Gate S2: BLOCKED; no local end-to-end transaction vertical slice exists.
 
 ## Implemented and verified
@@ -80,6 +80,12 @@ keep this as the current resume snapshot rather than an activity log.
   eligible held-reservation release; and append-only control/invalidation audit
   evidence. Resume advances the system fence and never resurrects stale
   approvals. No signing or broadcast surface was added.
+- WP-05 adds pre-provisioned Ed25519 component credentials, signed action
+  payloads, immutable execution-evidence identity snapshots, versioned recovery
+  leases, append-only recovery attempts, stale-worker fencing, conflict
+  rejection, and exactly-once local finalization. AMBIGUOUS and CONFLICT remain
+  DISPUTED with funds reserved. No provider, RPC, transaction signing, testnet,
+  mainnet, or real-funds surface was added.
 
 ## Active blockers and risks
 
@@ -108,12 +114,11 @@ keep this as the current resume snapshot rather than an activity log.
 - WS-002 canonical domain contracts — locally frozen; P1-001, P1-002, and
   P1-003 accepted locally pending Gate S1 and required review acceptance.
 - WS-003 atomic ledger proof — local implementation/evidence complete; Gate S1
-  remains blocked on approval/revocation/pause fencing, authenticated
-  reconciliation, integrated execution recovery, independent security review,
-  and external acceptance of the review.
-- WS-005 approval and controls — WP-04 control-fence proof complete locally;
-  Gate S1 remains blocked on owner authentication, provider/signing boundary,
-  reconciliation/recovery, independent security review, and acceptance.
+  remains blocked on independent security review and external acceptance.
+- WS-005 approval and controls — WP-04 control-fence and WP-05 authenticated
+  recovery proofs complete locally; Gate S1 remains blocked on owner
+  authentication, provider/signing boundary, chain reconciliation, independent
+  security review, and acceptance.
 
 ## Latest test results
 
@@ -175,13 +180,18 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   `npm run test:concurrency` passed 16/16. Ledger rows preserved
   `allocated = available + reserved + finalized_spend`; no Gate S1 pass is
   claimed.
+- 2026-08-15 WP-05 focused verification: migration set is 18 forward migrations;
+  `tests/db/wp05-recovery.test.ts` passed 7/7 for authenticated component
+  acceptance/rejection, uncertain-outcome recovery, crash/retry idempotency,
+  simultaneous/stale workers, conflicting evidence, protected funds, and
+  exactly-once finalization. No Gate S1 pass is claimed.
 
 ## Next integration step
 
 Keep shared WS-002 contracts frozen and withhold Phase-2 transaction execution,
 signing, and provider consumers until Gate S1's approval,
-revocation/pause, authenticated reconciliation, integrated recovery, and
-independent-review evidence is accepted.
+revocation/pause, independent security review, owner authentication, and
+provider/chain reconciliation acceptance is complete.
 
 Last updated: 2026-08-15; verified WP-04 control-fence evidence, WP-03
 authorization evidence, WP-02 local isolation, Phase-1 ledger review, CI, S0

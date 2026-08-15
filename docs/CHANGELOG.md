@@ -8,6 +8,14 @@ the same integration change.
 
 ### Security
 
+- WP-05 replaces label-only adapter/reconciler authority with pre-provisioned
+  Ed25519 component credentials and canonical signed action payloads. Broadcast
+  and verification evidence persist authenticated identity snapshots. Durable
+  recovery leases and append-only attempts fence stale workers, make retries
+  idempotent, reject conflicting evidence, and keep ambiguous outcomes
+  DISPUTED with funds reserved. This is a local controlled-fake proof only; no
+  signing, RPC, provider, testnet, mainnet, or real-funds surface was added.
+
 - WP-04 adds authoritative, monotonic `control_fences` for system, owner,
   agent, and policy scopes. Approval requests, decisions, and authorization
   evidence persist all fence snapshots; control changes serialize with

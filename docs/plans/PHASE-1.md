@@ -37,6 +37,11 @@ balanced ledger transitions, idempotency, and transactional audit events.
   Local evidence is `tests/concurrency/control-fence.test.ts` (14 focused
   cases), `test:db` 57/57, and `test:concurrency` 16/16. Gate S1 remains
   blocked and no signing, broadcast, or provider consumer was added.
+- WP-05 adds the local authenticated adapter/reconciler boundary, immutable
+  component-authenticated evidence snapshots, PostgreSQL recovery leases and
+  append-only attempts, deterministic stale-worker fencing, and uncertain-outcome
+  recovery proof. The focused suite passes 7/7; this remains a controlled-fake
+  local proof with no transaction signing, RPC, provider, or real-funds surface.
 
 ## Ordered tasks
 
@@ -85,7 +90,7 @@ property runs, concurrency workers `4`, concurrency rounds `32`,
 `ready/start/release` barrier, `5000 ms` barrier timeout, and loopback PostgreSQL
 loaded from the checkout's `.local/runtime.env` (`crip_wallet`, user `crip`).
 The effective port is persisted after `dev:up`; mismatches fail closed. Migration
-state is sixteen applied forward migrations with checksums recorded in
+state is eighteen applied forward migrations with checksums recorded in
 `schema_migrations`; migrations
 `0013_ws003_audit_reservation_correlation.sql` binds each audit row to its
 persisted reservation and operation relationship, and
