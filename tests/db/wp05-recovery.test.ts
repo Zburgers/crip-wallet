@@ -37,6 +37,7 @@ import {
   signComponentAction,
 } from "@crip/trust-boundary";
 import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
+import { createLocalOwnerTestCredential } from "./local-owner-auth.js";
 
 const root = join(import.meta.dirname, "../..");
 const runtime = loadLocalRuntime({ root });
@@ -50,6 +51,10 @@ const pool = new Pool({
 });
 const asset = "0x0000000000000000000000000000000000000001";
 const zeroHash = `0x${"1".repeat(64)}`;
+const ownerCredential = createLocalOwnerTestCredential(
+  "owner_1",
+  "owner_1_wp05_key",
+);
 const adapter = generateComponentCredential({
   credentialId: "credential_wp05_adapter",
   componentId: "adapter_wp05",
@@ -262,6 +267,8 @@ const authorizeCanonically = async (
     [operationId],
   );
   const approvalId = `approval_${operationId}`;
+  const approvalExpiresAt = "2099-01-01T10:05:00Z";
+  const approvalNonce = `nonce_${operationId}`;
   await createApprovalRequest(pool, {
     approvalId,
     operationId,
@@ -271,13 +278,20 @@ const authorizeCanonically = async (
     envelopeHash: envelope.envelopeHash,
     policyDecisionId: decisionId,
     issuedAt: "2020-01-01T10:00:00Z",
-    expiresAt: "2099-01-01T10:05:00Z",
-    nonce: `nonce_${operationId}`,
+    expiresAt: approvalExpiresAt,
+    nonce: approvalNonce,
     audit: approvalAudit(operationId, "requested"),
   });
   await approveApproval(pool, {
     approvalId,
-    approverId: "owner_1",
+    authentication: ownerCredential.authenticate({
+      approvalId,
+      envelopeHash: envelope.envelopeHash,
+      policyId: "policy_1",
+      policyVersion: 1,
+      expiresAt: approvalExpiresAt,
+      nonce: approvalNonce,
+    }),
     now: "2099-01-01T10:01:00Z",
     audit: approvalAudit(operationId, "approved", "owner"),
   });
@@ -331,6 +345,16 @@ const setup = async (): Promise<void> => {
     INSERT INTO budget_accounts (budget_id, agent_id, wallet_id, policy_id, policy_version, asset_address, allocated, available, reserved, finalized_spend)
       VALUES ('budget_1', 'agent_1', 'wallet_1', 'policy_1', 1, '${asset}', 100, 100, 0, 0);
   `);
+  await pool.query(
+    `INSERT INTO local_owner_approval_keys
+      (key_id, owner_id, algorithm, public_key)
+     VALUES ($1, $2, 'ED25519', $3)`,
+    [
+      ownerCredential.keyId,
+      ownerCredential.ownerId,
+      ownerCredential.publicKeyPem,
+    ],
+  );
 };
 
 const reset = async (): Promise<void> => {

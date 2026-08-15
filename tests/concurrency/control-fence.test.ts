@@ -27,6 +27,7 @@ import {
 } from "@crip/budget-ledger";
 import { attachEnvelopeHash } from "@crip/schemas";
 import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
+import { createLocalOwnerTestCredential } from "../db/local-owner-auth.js";
 
 const root = join(import.meta.dirname, "../..");
 const runtime = loadLocalRuntime({ root });
@@ -40,6 +41,10 @@ const pool = new Pool({
 });
 const asset = "0x0000000000000000000000000000000000000001";
 const hash = `0x${"7".repeat(64)}`;
+const ownerCredential = createLocalOwnerTestCredential(
+  "owner_1",
+  "owner_1_fence_key",
+);
 
 const audit = (
   operationId: string,
@@ -75,6 +80,16 @@ const reset = async (): Promise<void> => {
        (budget_id, agent_id, wallet_id, policy_id, policy_version, asset_address,
         allocated, available, reserved, finalized_spend)
        VALUES ('budget_1', 'agent_1', 'wallet_1', 'policy_1', 1, '${asset}', 100, 100, 0, 0);`,
+  );
+  await pool.query(
+    `INSERT INTO local_owner_approval_keys
+      (key_id, owner_id, algorithm, public_key)
+     VALUES ($1, $2, 'ED25519', $3)`,
+    [
+      ownerCredential.keyId,
+      ownerCredential.ownerId,
+      ownerCredential.publicKeyPem,
+    ],
   );
 };
 
@@ -195,6 +210,7 @@ const insertApproval = async (
     [operationId],
   );
   if (createApproval) {
+    const approvalNonce = `nonce_${operationId}`;
     await createApprovalRequest(pool, {
       approvalId,
       operationId,
@@ -205,12 +221,19 @@ const insertApproval = async (
       policyDecisionId: decisionId,
       issuedAt: "2020-01-01T10:00:00Z",
       expiresAt: approvalExpiresAt,
-      nonce: `nonce_${operationId}`,
+      nonce: approvalNonce,
       audit: audit(operationId, "requested"),
     });
     await approveApproval(pool, {
       approvalId,
-      approverId: "owner_1",
+      authentication: ownerCredential.authenticate({
+        approvalId,
+        envelopeHash: envelope.envelopeHash,
+        policyId: "policy_1",
+        policyVersion: 1,
+        expiresAt: approvalExpiresAt,
+        nonce: approvalNonce,
+      }),
       now: approvalNow,
       audit: audit(operationId, "approved", "owner"),
     });

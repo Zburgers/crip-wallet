@@ -40,6 +40,7 @@ import {
   signComponentAction,
 } from "@crip/trust-boundary";
 import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
+import { createLocalOwnerTestCredential } from "./local-owner-auth.js";
 
 const repositoryRoot = join(import.meta.dirname, "../..");
 const assetAddress = "0x0000000000000000000000000000000000000001";
@@ -54,6 +55,10 @@ const reconcilerCredential = generateComponentCredential({
   componentId: "reconciler_test",
   role: "RECONCILER",
 });
+const ownerCredential = createLocalOwnerTestCredential(
+  "owner_1",
+  "owner_1_ledger_key",
+);
 type Queryable = Pick<PoolClient, "query">;
 
 const runtime = loadLocalRuntime({ root: repositoryRoot });
@@ -183,6 +188,16 @@ const seedFixture = async (client: Queryable): Promise<void> => {
     INSERT INTO budget_accounts (budget_id, agent_id, wallet_id, policy_id, policy_version, asset_address, allocated, available, reserved, finalized_spend)
       VALUES ('budget_1', 'agent_1', 'wallet_1', 'policy_1', 1, '${assetAddress}', 100, 100, 0, 0);
   `);
+  await client.query(
+    `INSERT INTO local_owner_approval_keys
+      (key_id, owner_id, algorithm, public_key)
+     VALUES ($1, $2, 'ED25519', $3)`,
+    [
+      ownerCredential.keyId,
+      ownerCredential.ownerId,
+      ownerCredential.publicKeyPem,
+    ],
+  );
 };
 
 const insertOperation = async (
@@ -334,6 +349,8 @@ const authorizeReservation = async (
     [operationId],
   );
   const approvalId = `approval_${operationId}`;
+  const approvalExpiresAt = "2099-01-01T10:05:00Z";
+  const approvalNonce = `nonce_${operationId}`;
   await createApprovalRequest(targetPool, {
     approvalId,
     operationId,
@@ -343,13 +360,20 @@ const authorizeReservation = async (
     envelopeHash: envelope.envelopeHash,
     policyDecisionId: decisionId,
     issuedAt: "2020-01-01T10:00:00Z",
-    expiresAt: "2099-01-01T10:05:00Z",
-    nonce: `nonce_${operationId}`,
+    expiresAt: approvalExpiresAt,
+    nonce: approvalNonce,
     audit: approvalAudit(operationId, "requested"),
   });
   await approveApproval(targetPool, {
     approvalId,
-    approverId: "owner_1",
+    authentication: ownerCredential.authenticate({
+      approvalId,
+      envelopeHash: envelope.envelopeHash,
+      policyId: "policy_1",
+      policyVersion: 1,
+      expiresAt: approvalExpiresAt,
+      nonce: approvalNonce,
+    }),
     now: "2099-01-01T10:01:00Z",
     audit: approvalAudit(operationId, "approved", "owner"),
   });
@@ -375,7 +399,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     const migration = await pool.query<{ filename: string; checksum: string }>(
       "SELECT filename, checksum FROM schema_migrations ORDER BY filename",
     );
-    expect(migration.rows).toHaveLength(19);
+    expect(migration.rows).toHaveLength(20);
     expect(migration.rows.map((row) => row.filename)).toEqual([
       "0001_ws003_budget_ledger.sql",
       "0002_ws003_idempotency_binding_guard.sql",
@@ -396,6 +420,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       "0017_wp05_authenticated_recovery.sql",
       "0018_wp05_evidence_trigger_fix.sql",
       "0019_wp07_canonical_authorization_guard.sql",
+      "0020_wp08_owner_approval_auth.sql",
     ]);
     expect(
       migration.rows.every((row) => /^sha256:[0-9a-f]{64}$/.test(row.checksum)),
@@ -421,6 +446,8 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
           "recovery_attempts",
           "idempotency_records",
           "audit_events",
+          "local_owner_approval_keys",
+          "owner_approval_authentications",
         ],
       ],
     );
@@ -436,8 +463,10 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       "execution_envelopes",
       "idempotency_records",
       "intents",
+      "local_owner_approval_keys",
       "operation_recovery_leases",
       "operations",
+      "owner_approval_authentications",
       "policies",
       "policy_decisions",
       "recovery_attempts",

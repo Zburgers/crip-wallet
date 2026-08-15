@@ -27,6 +27,7 @@ import {
 } from "@crip/budget-ledger";
 import { attachEnvelopeHash } from "@crip/schemas";
 import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
+import { createLocalOwnerTestCredential } from "./local-owner-auth.js";
 
 const repositoryRoot = join(import.meta.dirname, "../..");
 const runtime = loadLocalRuntime({ root: repositoryRoot });
@@ -40,6 +41,10 @@ const pool = new Pool({
 });
 const assetAddress = "0x0000000000000000000000000000000000000001";
 const zeroHash = `0x${"1".repeat(64)}`;
+const ownerCredential = createLocalOwnerTestCredential(
+  "owner_1",
+  "owner_1_wp08_key",
+);
 type Queryable = Pick<PoolClient, "query">;
 
 const auditContext = (operationId: string, suffix: string): AuditContext => ({
@@ -59,6 +64,11 @@ const approvalAudit = (
   actorId: actorType === "owner" ? "owner_1" : "approval-test",
 });
 
+const secondPrecision = (value: Date | string): string =>
+  new Date(value instanceof Date ? value.valueOf() : value)
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "Z");
+
 const seedFixture = async (client: Queryable): Promise<void> => {
   await client.query(`
     INSERT INTO owners (owner_id, display_name) VALUES ('owner_1', 'Approval test owner');
@@ -73,6 +83,16 @@ const seedFixture = async (client: Queryable): Promise<void> => {
     INSERT INTO budget_accounts (budget_id, agent_id, wallet_id, policy_id, policy_version, asset_address, allocated, available, reserved, finalized_spend)
       VALUES ('budget_1', 'agent_1', 'wallet_1', 'policy_1', 1, '${assetAddress}', 100, 100, 0, 0);
   `);
+  await client.query(
+    `INSERT INTO local_owner_approval_keys
+      (key_id, owner_id, algorithm, public_key)
+     VALUES ($1, $2, 'ED25519', $3)`,
+    [
+      ownerCredential.keyId,
+      ownerCredential.ownerId,
+      ownerCredential.publicKeyPem,
+    ],
+  );
 };
 
 const reset = async (): Promise<void> => {
@@ -208,12 +228,39 @@ const requestApproval = async (
     audit: approvalAudit(fixture.operationId, "requested"),
   });
 
+const authenticationFor = async (
+  fixture: Awaited<ReturnType<typeof prepareApprovalFixture>>,
+) => {
+  const approvalId = `approval_${fixture.operationId}`;
+  const binding = await pool.query<{
+    envelope_hash: string;
+    policy_id: string;
+    policy_version: number;
+    expires_at: Date | string;
+    nonce: string;
+  }>(
+    `SELECT envelope_hash, policy_id, policy_version, expires_at, nonce
+     FROM approval_requests WHERE approval_id = $1`,
+    [approvalId],
+  );
+  const row = binding.rows[0];
+  if (!row) throw new Error(`missing approval fixture: ${approvalId}`);
+  return ownerCredential.authenticate({
+    approvalId,
+    envelopeHash: row.envelope_hash,
+    policyId: row.policy_id,
+    policyVersion: row.policy_version,
+    expiresAt: secondPrecision(row.expires_at),
+    nonce: row.nonce,
+  });
+};
+
 const approve = async (
   fixture: Awaited<ReturnType<typeof prepareApprovalFixture>>,
 ) =>
   approveApproval(pool, {
     approvalId: `approval_${fixture.operationId}`,
-    approverId: "owner_1",
+    authentication: await authenticationFor(fixture),
     now: "2099-01-01T10:01:00Z",
     audit: approvalAudit(fixture.operationId, "approved", "owner"),
   });
@@ -232,12 +279,12 @@ const consume = async (
     audit: approvalAudit(fixture.operationId, "consumed"),
   });
 
-describe.sequential("WP-03 approval authorization proof", () => {
+describe.sequential("WP-03/WP-08 approval authorization proof", () => {
   beforeAll(async () => applyMigrations(pool));
   beforeEach(reset);
   afterAll(async () => pool.end());
 
-  test("approves and atomically consumes one exact envelope", async () => {
+  test("approves and atomically consumes one exact authenticated envelope", async () => {
     const fixture = await prepareApprovalFixture();
     const requested = await requestApproval(fixture);
     expect(requested.status).toBe("PENDING");
@@ -259,11 +306,14 @@ describe.sequential("WP-03 approval authorization proof", () => {
     await expect(
       pool.query(
         `SELECT a.status, o.current_state, r.status AS reservation_status,
-                ae.authorization_id, ae.envelope_hash, ae.policy_version
+                ae.authorization_id, ae.envelope_hash, ae.policy_version,
+                ae.owner_authentication_id, auth.consumed_at AS auth_consumed_at
          FROM approval_requests a
          JOIN operations o ON o.operation_id = a.operation_id
          JOIN budget_reservations r ON r.reservation_id = a.reservation_id
          JOIN authorization_evidence ae ON ae.approval_id = a.approval_id
+         JOIN owner_approval_authentications auth
+           ON auth.authentication_id = ae.owner_authentication_id
          WHERE a.approval_id = $1`,
         [requested.approvalId],
       ),
@@ -275,9 +325,96 @@ describe.sequential("WP-03 approval authorization proof", () => {
           reservation_status: "AUTHORIZED",
           envelope_hash: fixture.envelope.envelopeHash,
           policy_version: 1,
+          owner_authentication_id: `${requested.approvalId}:owner-auth:${ownerCredential.keyId}`,
+          auth_consumed_at: expect.anything(),
         }),
       ],
     });
+  });
+
+  test("forged approverId string alone cannot approve", async () => {
+    const fixture = await prepareApprovalFixture("op_forged_approver");
+    await requestApproval(fixture);
+    await expect(
+      approveApproval(pool, {
+        approvalId: `approval_${fixture.operationId}`,
+        approverId: "owner_1",
+        now: "2099-01-01T10:01:00Z",
+        audit: approvalAudit(fixture.operationId, "forged-owner", "owner"),
+      } as unknown as Parameters<typeof approveApproval>[1]),
+    ).rejects.toMatchObject({ code: "APPROVAL_INVALID_STATE" });
+    await expect(
+      pool.query(
+        "SELECT status, approver_id FROM approval_requests WHERE approval_id = $1",
+        [`approval_${fixture.operationId}`],
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ status: "PENDING", approver_id: null }],
+    });
+  });
+
+  test("forged owner signature fails", async () => {
+    const fixture = await prepareApprovalFixture("op_forged_signature");
+    await requestApproval(fixture);
+    const authentication = await authenticationFor(fixture);
+    const replacement = authentication.signature.endsWith("A") ? "B" : "A";
+    await expect(
+      approveApproval(pool, {
+        approvalId: authentication.approvalId,
+        authentication: {
+          ...authentication,
+          signature: `${authentication.signature.slice(0, -1)}${replacement}`,
+        },
+        now: "2099-01-01T10:01:00Z",
+        audit: approvalAudit(fixture.operationId, "forged-signature", "owner"),
+      }),
+    ).rejects.toMatchObject({ code: "APPROVAL_INVALID_STATE" });
+  });
+
+  test("changed envelope, policy, version, or nonce invalidates owner authentication", async () => {
+    const fixture = await prepareApprovalFixture("op_changed_auth_binding");
+    await requestApproval(fixture);
+    const authentication = await authenticationFor(fixture);
+    const changed = [
+      { ...authentication, envelopeHash: `0x${"2".repeat(64)}` },
+      { ...authentication, policyId: "policy_other" },
+      { ...authentication, policyVersion: authentication.policyVersion + 1 },
+      { ...authentication, nonce: "nonce_changed" },
+    ];
+    for (const [index, candidate] of changed.entries()) {
+      await expect(
+        approveApproval(pool, {
+          approvalId: authentication.approvalId,
+          authentication: candidate,
+          now: "2099-01-01T10:01:00Z",
+          audit: approvalAudit(
+            fixture.operationId,
+            `changed-auth-binding-${index}`,
+            "owner",
+          ),
+        }),
+      ).rejects.toMatchObject({ code: "APPROVAL_BINDING_MISMATCH" });
+    }
+    await expect(
+      pool.query(
+        "SELECT count(*)::int AS count FROM owner_approval_authentications WHERE approval_id = $1",
+        [authentication.approvalId],
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: 0 }] });
+  });
+
+  test("database rejects a legacy direct approval transition without authentication evidence", async () => {
+    const fixture = await prepareApprovalFixture("op_direct_approval_bypass");
+    await requestApproval(fixture);
+    await expect(
+      pool.query(
+        `UPDATE approval_requests
+         SET status = 'APPROVED', approver_id = 'owner_1',
+             approved_at = '2026-08-16T00:00:00Z'
+         WHERE approval_id = $1`,
+        [`approval_${fixture.operationId}`],
+      ),
+    ).rejects.toThrow(/ADR-0008 authentication evidence/);
   });
 
   test("database rejects an impossible authorized operation without evidence", async () => {
@@ -418,7 +555,7 @@ describe.sequential("WP-03 approval authorization proof", () => {
     });
   });
 
-  test("expiry is enforced at approval and consumption boundaries", async () => {
+  test("expiry is enforced at authenticated approval and consumption boundaries", async () => {
     const fixture = await prepareApprovalFixture();
     await requestApproval(fixture, "2020-01-01T10:00:30Z");
     await expect(approve(fixture)).rejects.toMatchObject({
@@ -454,10 +591,12 @@ describe.sequential("WP-03 approval authorization proof", () => {
          WHERE approval_id = $1`,
         [`approval_${fixture.operationId}`],
       ),
-    ).rejects.toThrow(/approval binding does not match/);
+    ).rejects.toThrow(
+      /approval binding does not match|ADR-0008 authentication evidence/,
+    );
   });
 
-  test("replay after consumption fails closed and never creates another evidence row", async () => {
+  test("replay after consumption fails closed and authenticated evidence is consumed once", async () => {
     const fixture = await prepareApprovalFixture();
     await requestApproval(fixture);
     await approve(fixture);
@@ -470,6 +609,11 @@ describe.sequential("WP-03 approval authorization proof", () => {
       [`approval_${fixture.operationId}`],
     );
     expect(evidence.rows[0]?.count).toBe(1);
+    const authentication = await pool.query<{ consumed_at: Date | null }>(
+      "SELECT consumed_at FROM owner_approval_authentications WHERE approval_id = $1",
+      [`approval_${fixture.operationId}`],
+    );
+    expect(authentication.rows[0]?.consumed_at).toBeTruthy();
   });
 
   test.each([
@@ -620,7 +764,7 @@ describe.sequential("WP-03 approval authorization proof", () => {
     ).rejects.toMatchObject({ code: "REVALIDATION_REQUIRED" });
   });
 
-  test("same approval request and approval decision retries are idempotent", async () => {
+  test("same approval request and authenticated approval decision retries are idempotent", async () => {
     const fixture = await prepareApprovalFixture();
     const first = await requestApproval(fixture);
     const second = await requestApproval(fixture);

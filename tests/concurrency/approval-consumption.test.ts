@@ -20,6 +20,7 @@ import {
 import { applyMigrations, reserveBudget } from "@crip/budget-ledger";
 import { attachEnvelopeHash } from "@crip/schemas";
 import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
+import { createLocalOwnerTestCredential } from "../db/local-owner-auth.js";
 
 const root = join(import.meta.dirname, "../..");
 const runtime = loadLocalRuntime({ root });
@@ -33,6 +34,10 @@ const pool = new Pool({
 });
 const asset = "0x0000000000000000000000000000000000000001";
 const decisionHash = `0x${"4".repeat(64)}`;
+const ownerCredential = createLocalOwnerTestCredential(
+  "owner_1",
+  "owner_1_concurrency_approval_key",
+);
 
 const audit = (
   operationId: string,
@@ -62,6 +67,16 @@ const seed = async () => {
     INSERT INTO operations (operation_id, intent_id, agent_id, wallet_id, policy_id, policy_version, current_state)
       VALUES ('op_race', 'intent_race', 'agent_1', 'wallet_1', 'policy_1', 1, 'POLICY_FINALIZED');
   `);
+  await pool.query(
+    `INSERT INTO local_owner_approval_keys
+      (key_id, owner_id, algorithm, public_key)
+     VALUES ($1, $2, 'ED25519', $3)`,
+    [
+      ownerCredential.keyId,
+      ownerCredential.ownerId,
+      ownerCredential.publicKeyPem,
+    ],
+  );
   await reserveBudget(pool, {
     reservationId: "res_race",
     budgetId: "budget_1",
@@ -138,6 +153,8 @@ const seed = async () => {
   await pool.query(
     "UPDATE operations SET current_state = 'ENVELOPE_FINALIZED' WHERE operation_id = 'op_race'",
   );
+  const approvalExpiresAt = "2099-01-01T10:10:00Z";
+  const approvalNonce = "nonce_race";
   await createApprovalRequest(pool, {
     approvalId: "approval_race",
     operationId: "op_race",
@@ -147,20 +164,27 @@ const seed = async () => {
     envelopeHash: envelope.envelopeHash,
     policyDecisionId: "decision_race",
     issuedAt: "2020-01-01T10:00:00Z",
-    expiresAt: "2099-01-01T10:10:00Z",
-    nonce: "nonce_race",
+    expiresAt: approvalExpiresAt,
+    nonce: approvalNonce,
     audit: audit("op_race", "requested"),
   });
   await approveApproval(pool, {
     approvalId: "approval_race",
-    approverId: "owner_1",
+    authentication: ownerCredential.authenticate({
+      approvalId: "approval_race",
+      envelopeHash: envelope.envelopeHash,
+      policyId: "policy_1",
+      policyVersion: 1,
+      expiresAt: approvalExpiresAt,
+      nonce: approvalNonce,
+    }),
     now: "2099-01-01T10:01:00Z",
     audit: audit("op_race", "approved", true),
   });
   return envelope;
 };
 
-describe.sequential("WP-03 concurrent approval consumption", () => {
+describe.sequential("WP-03/WP-08 concurrent approval consumption", () => {
   beforeAll(async () => applyMigrations(pool));
   beforeEach(async () => {
     await pool.query(
@@ -169,7 +193,7 @@ describe.sequential("WP-03 concurrent approval consumption", () => {
   });
   afterAll(async () => pool.end());
 
-  test("two concurrent consumers cannot both consume one approval", async () => {
+  test("two concurrent consumers cannot both consume one authenticated approval", async () => {
     const envelope = await seed();
     const attempts = await Promise.allSettled(
       ["a", "b"].map((suffix) =>
@@ -196,6 +220,11 @@ describe.sequential("WP-03 concurrent approval consumption", () => {
     await expect(
       pool.query(
         "SELECT count(*)::int AS count FROM authorization_evidence WHERE approval_id = 'approval_race'",
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: 1 }] });
+    await expect(
+      pool.query(
+        "SELECT count(*)::int AS count FROM owner_approval_authentications WHERE approval_id = 'approval_race' AND consumed_at IS NOT NULL",
       ),
     ).resolves.toMatchObject({ rows: [{ count: 1 }] });
   });
