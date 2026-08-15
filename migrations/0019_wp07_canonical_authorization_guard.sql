@@ -77,3 +77,9 @@ CREATE CONSTRAINT TRIGGER budget_reservations_canonical_authorization_guard
   AFTER INSERT OR UPDATE OF status ON budget_reservations
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION enforce_reservation_canonical_authorization();
+
+-- Fail closed on upgrade if a pre-existing protected reservation was created
+-- without canonical evidence before this guard existed.
+UPDATE budget_reservations
+SET status = status
+WHERE status IN ('AUTHORIZED', 'BROADCAST', 'FINALIZED');
