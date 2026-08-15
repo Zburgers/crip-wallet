@@ -811,19 +811,15 @@ export const authorizeReservation = (
   pool: Pool,
   input: TransitionInput,
 ): Promise<ReservationSnapshot> =>
-  transitionReservation(
-    pool,
-    input,
-    async (client, reservation) => {
-      if (reservation.status !== "AUTHORIZED")
-        throw new LedgerError(
-          "INVALID_RESERVATION_TRANSITION",
-          "reservation authorization must be committed by the canonical authorization path",
-        );
-      await assertCanonicalAuthorizationEvidence(client, reservation);
-      return reservation;
-    },
-  );
+  transitionReservation(pool, input, async (client, reservation) => {
+    if (reservation.status !== "AUTHORIZED")
+      throw new LedgerError(
+        "INVALID_RESERVATION_TRANSITION",
+        "reservation authorization must be committed by the canonical authorization path",
+      );
+    await assertCanonicalAuthorizationEvidence(client, reservation);
+    return reservation;
+  });
 
 export const markReservationBroadcast = (
   pool: Pool,

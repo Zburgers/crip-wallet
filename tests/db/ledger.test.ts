@@ -249,8 +249,7 @@ const authorizeReservation = async (
     [input.reservationId],
   );
   const reservation = reservationResult.rows[0];
-  if (!reservation)
-    return verifyAuthorizedReservation(targetPool, input);
+  if (!reservation) return verifyAuthorizedReservation(targetPool, input);
   if (reservation.status === "AUTHORIZED")
     return verifyAuthorizedReservation(targetPool, input);
   if (reservation.status !== "HELD")
