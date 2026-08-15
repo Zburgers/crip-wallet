@@ -6,6 +6,16 @@ the same integration change.
 
 ## Unreleased
 
+### Security
+
+- WP-04 adds authoritative, monotonic `control_fences` for system, owner,
+  agent, and policy scopes. Approval requests, decisions, and authorization
+  evidence persist all fence snapshots; control changes serialize with
+  consumers, invalidate stale authority transactionally, release eligible held
+  reservations, and append correlated control/invalidation audit evidence.
+  Resume never resurrects stale approvals. This remains a local Phase-1 proof;
+  no signing or public-chain broadcast surface was added.
+
 ### Changed
 
 - WP-02 makes `.local/runtime.env` the checkout-bound effective local runtime

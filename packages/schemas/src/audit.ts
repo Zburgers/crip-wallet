@@ -39,6 +39,8 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "transaction.reverted",
   "operation.disputed",
   "agent.revoked",
+  "owner.revoked",
+  "policy.revoked",
   "system.paused",
   "system.resumed",
   "adapter.error",
@@ -86,35 +88,97 @@ export const auditDataSchema = z.strictObject({
   chainId: chainIdSchema.optional(),
   proofReference: z.string().min(1).max(256).optional(),
   reason: z.string().min(1).max(512).optional(),
+  scopeType: z.enum(["SYSTEM", "OWNER", "AGENT", "POLICY"]).optional(),
+  scopeId: canonicalIdentifierSchema.optional(),
+  fenceVersion: z.number().int().positive().safe().optional(),
+  controlState: z.enum(["ACTIVE", "PAUSED", "REVOKED"]).optional(),
+  previousControlState: z.enum(["ACTIVE", "PAUSED", "REVOKED"]).optional(),
+  systemFenceVersion: z.number().int().positive().safe().optional(),
+  systemState: z.enum(["ACTIVE", "PAUSED"]).optional(),
+  ownerFenceVersion: z.number().int().positive().safe().optional(),
+  ownerState: z.enum(["ACTIVE", "REVOKED"]).optional(),
+  agentFenceVersion: z.number().int().positive().safe().optional(),
+  agentState: z.enum(["ACTIVE", "REVOKED"]).optional(),
+  policyFenceVersion: z.number().int().positive().safe().optional(),
+  policyState: z.enum(["ACTIVE", "REVOKED"]).optional(),
+  authorizationInvalidationId: canonicalIdentifierSchema.optional(),
 });
 
 /** Correlated, typed, append-only audit event payload. */
-export const auditEventSchema = z.strictObject({
-  eventId: canonicalIdentifierSchema,
-  eventType: z.enum(AUDIT_EVENT_TYPES),
-  occurredAt: utcSecondSchema,
-  sequence: z.number().int().positive().safe(),
-  actorType: z.enum([
-    "owner",
-    "agent",
-    "service",
-    "system",
-    "worker",
-    "adapter",
-  ]),
-  actorId: canonicalIdentifierSchema,
-  ownerId: canonicalIdentifierSchema,
-  agentId: canonicalIdentifierSchema,
-  walletId: canonicalIdentifierSchema,
-  intentId: canonicalIdentifierSchema,
-  operationId: canonicalIdentifierSchema,
-  policyId: canonicalIdentifierSchema,
-  policyVersion: z.number().int().positive().safe(),
-  traceId: z.string().regex(/^[0-9a-f]{32}$/),
-  data: auditDataSchema,
-  previousEventHash: evmHashSchema.nullable(),
-  eventHash: evmHashSchema,
-});
+export const auditEventSchema = z
+  .strictObject({
+    eventId: canonicalIdentifierSchema,
+    eventType: z.enum(AUDIT_EVENT_TYPES),
+    occurredAt: utcSecondSchema,
+    sequence: z.number().int().positive().safe(),
+    actorType: z.enum([
+      "owner",
+      "agent",
+      "service",
+      "system",
+      "worker",
+      "adapter",
+    ]),
+    actorId: canonicalIdentifierSchema,
+    ownerId: canonicalIdentifierSchema.nullable(),
+    agentId: canonicalIdentifierSchema.nullable(),
+    walletId: canonicalIdentifierSchema.nullable(),
+    intentId: canonicalIdentifierSchema.nullable(),
+    operationId: canonicalIdentifierSchema.nullable(),
+    policyId: canonicalIdentifierSchema.nullable(),
+    policyVersion: z.number().int().positive().safe().nullable(),
+    traceId: z.string().regex(/^[0-9a-f]{32}$/),
+    data: auditDataSchema,
+    previousEventHash: evmHashSchema.nullable(),
+    eventHash: evmHashSchema,
+  })
+  .superRefine((event, context) => {
+    const controlEvent = [
+      "agent.revoked",
+      "owner.revoked",
+      "policy.revoked",
+      "system.paused",
+      "system.resumed",
+    ].includes(event.eventType);
+    if (controlEvent) {
+      if (
+        event.operationId !== null ||
+        event.data.reservationId !== undefined
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["operationId"],
+          message: "control events are not operation-bound",
+        });
+      }
+      if (
+        event.data.scopeType === undefined ||
+        event.data.scopeId === undefined ||
+        event.data.fenceVersion === undefined ||
+        event.data.controlState === undefined
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["data"],
+          message: "control events require fence scope and version data",
+        });
+      }
+    } else if (
+      event.ownerId === null ||
+      event.agentId === null ||
+      event.walletId === null ||
+      event.intentId === null ||
+      event.operationId === null ||
+      event.policyId === null ||
+      event.policyVersion === null
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["operationId"],
+        message: "non-control events require operation correlation",
+      });
+    }
+  });
 
 export type AuditEvent = z.infer<typeof auditEventSchema>;
 export type AuditData = z.infer<typeof auditDataSchema>;

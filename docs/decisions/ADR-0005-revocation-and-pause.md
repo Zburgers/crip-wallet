@@ -38,6 +38,23 @@ not reversal of the audit record.
   check or equivalent fencing token.
 - The UI must distinguish blocked future authority from chain cancellation.
 
+## Phase-1 implementation profile
+
+The local authorization proof implements the fencing token as the monotonic
+`control_fences.fence_version` plus state for the `SYSTEM`, `OWNER`, `AGENT`,
+and `POLICY` scopes. Approval requests, decisions, and authorization evidence
+persist all four snapshots. Authorization consumers and control mutations take
+locks in the shared `SYSTEM -> OWNER -> AGENT -> POLICY` order before locking
+approval, operation, reservation, and budget-account rows.
+
+A committed control change appends a control audit event and transactionally
+invalidates affected pending or authorized rows. System pause produces
+`REVALIDATION_REQUIRED`; owner, agent, or policy revocation produces `REVOKED`.
+Eligible held reservations are released while preserving the budget invariant.
+Resume advances the system fence and does not resurrect old approvals. The
+Phase-1 implementation stops at this database fence and intentionally has no
+signing or broadcast consumer.
+
 ## Verification
 
 - Adversarial tests at every lifecycle point, including races at the pre-sign
@@ -47,4 +64,4 @@ not reversal of the audit record.
 ## Related
 
 - Product spec sections 17.4, 19.4, 24.2, and 25.1.
-- Risks R-006 and R-008; workstream WS-005.
+- Risks R-006, R-008, and R-015; workstream WS-005.

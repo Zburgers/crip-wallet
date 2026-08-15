@@ -115,6 +115,9 @@ const seedFixture = async (client: Queryable): Promise<void> => {
     INSERT INTO wallets (wallet_id, owner_id, display_name) VALUES ('wallet_1', 'owner_1', 'Ledger test wallet');
     INSERT INTO policies (policy_id, owner_id, agent_id, wallet_id, status) VALUES ('policy_1', 'owner_1', 'agent_1', 'wallet_1', 'active');
     INSERT INTO policy_versions (policy_id, version, document, document_hash) VALUES ('policy_1', 1, '{"schemaVersion":"1.0"}', 'sha256:0000000000000000000000000000000000000000000000000000000000000000');
+    INSERT INTO control_fences (scope_type, scope_id, state) VALUES
+      ('SYSTEM', 'system', 'ACTIVE'), ('OWNER', 'owner_1', 'ACTIVE'),
+      ('AGENT', 'agent_1', 'ACTIVE'), ('POLICY', 'policy_1', 'ACTIVE');
     INSERT INTO budget_accounts (budget_id, agent_id, wallet_id, policy_id, policy_version, asset_address, allocated, available, reserved, finalized_spend)
       VALUES ('budget_1', 'agent_1', 'wallet_1', 'policy_1', 1, '${assetAddress}', 100, 100, 0, 0);
   `);
@@ -143,7 +146,7 @@ const insertOperation = async (
 
 const reset = async (): Promise<void> => {
   await pool.query(
-    "TRUNCATE audit_events, idempotency_records, budget_reservations, budget_accounts, operations, intents, policy_decisions, execution_envelopes, policy_versions, policies, wallets, agents, owners CASCADE",
+    "TRUNCATE audit_events, idempotency_records, budget_reservations, budget_accounts, operations, intents, policy_decisions, execution_envelopes, policy_versions, policies, wallets, agents, owners, control_fences CASCADE",
   );
   await withSerializableTransaction(pool, seedFixture);
 };
@@ -175,7 +178,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     const migration = await pool.query<{ filename: string; checksum: string }>(
       "SELECT filename, checksum FROM schema_migrations ORDER BY filename",
     );
-    expect(migration.rows).toHaveLength(15);
+    expect(migration.rows).toHaveLength(16);
     expect(migration.rows.map((row) => row.filename)).toEqual([
       "0001_ws003_budget_ledger.sql",
       "0002_ws003_idempotency_binding_guard.sql",
@@ -192,6 +195,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       "0013_ws003_audit_reservation_correlation.sql",
       "0014_ws003_audit_correlation_hardening.sql",
       "0015_wp03_approval_authorization.sql",
+      "0016_wp04_control_fences.sql",
     ]);
     expect(
       migration.rows.every((row) => /^sha256:[0-9a-f]{64}$/.test(row.checksum)),
@@ -208,8 +212,10 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
           "approval_requests",
           "approval_decisions",
           "authorization_evidence",
+          "authorization_invalidations",
           "budget_accounts",
           "budget_reservations",
+          "control_fences",
           "idempotency_records",
           "audit_events",
         ],
@@ -220,8 +226,10 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       "approval_requests",
       "audit_events",
       "authorization_evidence",
+      "authorization_invalidations",
       "budget_accounts",
       "budget_reservations",
+      "control_fences",
       "execution_envelopes",
       "idempotency_records",
       "intents",

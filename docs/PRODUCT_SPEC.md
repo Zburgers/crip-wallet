@@ -1069,6 +1069,35 @@ that it can.
 System and wallet pause use the same immediate pre-sign boundary. A cancellation
 request is best effort after broadcast and never substitutes for revocation.
 
+### 19.5 Control-fence binding
+
+The authoritative control state is the `control_fences` relation. It contains
+one monotonic `fence_version` and state for the system, owner, agent, and policy
+scopes. An approval request, approval decision, and authorization evidence row
+persist the version and state snapshot for all four scopes. Database guards
+reject a new snapshot that does not match the authoritative rows.
+Fence versions are persisted as PostgreSQL `bigint` and are bounded to
+`9007199254740991` (`Number.MAX_SAFE_INTEGER`) at the database boundary; an
+attempt to advance beyond that bound fails closed.
+
+Authorization consumers and control mutations use the same serialized lock
+order: `SYSTEM`, then `OWNER`, then `AGENT`, then `POLICY`, followed by the
+approval, operation, reservation, and budget-account rows. A successful pause
+or revocation increments its fence, appends its control audit event, and in the
+same transaction invalidates affected pending or authorized work. System pause
+maps work to `REVALIDATION_REQUIRED`; owner, agent, and policy revocation maps
+work to `REVOKED`. Eligible held reservations are released in that transaction,
+preserving `allocated = available + reserved + finalized_spend`.
+
+Repeated commands for an already-applied state are idempotent and do not create
+another version or audit event. Resume increments the system fence and never
+restores a prior approval or authorization; a fresh approval and authorization
+are required. A `REVALIDATION_REQUIRED` operation is not silently reopened by
+resume; the current Phase-1 boundary requires a new envelope/operation for fresh
+authorization. This Phase-1 fence is a database authorization proof only. No
+signing or public-chain broadcast consumer is implemented; a future signer must
+perform an equivalent fence check at its immediate pre-sign boundary.
+
 ---
 
 ## 20. Transaction Construction, Decoding, and Verification
@@ -1169,6 +1198,11 @@ The approval UI must show:
 Approval must bind to the execution-envelope hash.
 
 Changing any executable field invalidates approval.
+
+Approval and authorization also bind to the four-scope control-fence snapshot.
+Any version or state change makes the snapshot stale. Stale approval cannot be
+consumed, and stale authorization evidence cannot pass revalidation after a
+pause, resume, owner revocation, agent revocation, or policy revocation.
 
 ### 22.3 Approval states
 
@@ -1506,6 +1540,8 @@ The MVP should use a transactional relational database. PostgreSQL is preferred;
 - `budget_reservations`
 - `approval_requests`
 - `approval_decisions`
+- `control_fences`
+- `authorization_invalidations`
 - `operations`
 - `transactions`
 - `transaction_receipts`
@@ -1525,6 +1561,9 @@ The MVP should use a transactional relational database. PostgreSQL is preferred;
 - Immutable execution envelopes.
 - Append-only audit-event semantics.
 - Optimistic version or locking field for mutable lifecycle entities.
+- Control changes use a monotonic versioned fence; stale authorization snapshots
+  are rejected and invalidated transactionally.
+- Resume never resurrects stale approvals or authorization evidence.
 - UTC timestamps.
 - Explicit status enums or check constraints.
 - Database migrations committed and tested.

@@ -25,7 +25,12 @@ export type AuditEventType =
   | "approval.rejected"
   | "approval.expired"
   | "approval.revoked"
-  | "operation.state.changed";
+  | "operation.state.changed"
+  | "agent.revoked"
+  | "owner.revoked"
+  | "policy.revoked"
+  | "system.paused"
+  | "system.resumed";
 
 export interface AuditCorrelation {
   reservationId: string;
@@ -53,14 +58,14 @@ export interface AuditEventInput {
   actorType: AuditActorType;
   actorId: string;
   traceId: string;
-  reservationId: string;
-  ownerId: string;
-  agentId: string;
-  walletId: string;
-  intentId: string;
-  operationId: string;
-  policyId: string;
-  policyVersion: number;
+  reservationId: string | null;
+  ownerId: string | null;
+  agentId: string | null;
+  walletId: string | null;
+  intentId: string | null;
+  operationId: string | null;
+  policyId: string | null;
+  policyVersion: number | null;
   eventType: AuditEventType;
   data: Record<string, unknown>;
 }
@@ -117,13 +122,27 @@ export const appendAuditEvent = async (
   input: AuditEventInput,
 ): Promise<void> => {
   const data = auditDataSchema.parse(input.data);
+  const isControlEvent = [
+    "agent.revoked",
+    "owner.revoked",
+    "policy.revoked",
+    "system.paused",
+    "system.resumed",
+  ].includes(input.eventType);
+  if (isControlEvent && input.operationId !== null)
+    throw new Error("control audit events cannot be operation-bound");
+  if (!isControlEvent && input.operationId === null)
+    throw new Error("non-control audit events require operation correlation");
   const previous = await client.query<{
     sequence_no: string;
     event_hash: string;
   }>(
     `SELECT sequence_no, event_hash FROM audit_events
-     WHERE operation_id = $1 ORDER BY sequence_no DESC LIMIT 1 FOR UPDATE`,
-    [input.operationId],
+     WHERE ($1::text IS NOT NULL AND operation_id = $1)
+        OR ($1::text IS NULL AND operation_id IS NULL
+            AND data ->> 'scopeType' = $2 AND data ->> 'scopeId' = $3)
+     ORDER BY sequence_no DESC LIMIT 1 FOR UPDATE`,
+    [input.operationId, data.scopeType ?? null, data.scopeId ?? null],
   );
   const sequence =
     (previous.rows[0] ? Number(previous.rows[0].sequence_no) : 0) + 1;

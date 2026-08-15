@@ -30,6 +30,13 @@ balanced ledger transitions, idempotency, and transactional audit events.
   approval/revocation authorization proof, authenticated reconciliation,
   integrated recovery, independent security review, and external acceptance.
   No autonomous authorization, signing, or real execution path exists.
+- WP-04 adds the explicit versioned control-fence proof: authoritative system,
+  owner, agent, and policy fences; persisted snapshots on approval, decision,
+  and authorization rows; deterministic revoke/pause races; transactional
+  stale-authority invalidation; held-reservation release; and audit ordering.
+  Local evidence is `tests/concurrency/control-fence.test.ts` (14 focused
+  cases), `test:db` 57/57, and `test:concurrency` 16/16. Gate S1 remains
+  blocked and no signing, broadcast, or provider consumer was added.
 
 ## Ordered tasks
 
@@ -78,7 +85,7 @@ property runs, concurrency workers `4`, concurrency rounds `32`,
 `ready/start/release` barrier, `5000 ms` barrier timeout, and loopback PostgreSQL
 loaded from the checkout's `.local/runtime.env` (`crip_wallet`, user `crip`).
 The effective port is persisted after `dev:up`; mismatches fail closed. Migration
-state is fourteen applied forward migrations with checksums recorded in
+state is sixteen applied forward migrations with checksums recorded in
 `schema_migrations`; migrations
 `0013_ws003_audit_reservation_correlation.sql` binds each audit row to its
 persisted reservation and operation relationship, and

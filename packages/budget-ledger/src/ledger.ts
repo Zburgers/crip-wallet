@@ -385,6 +385,65 @@ const getReservationBindingForReserve = async (
   return mapAuditCorrelation(row);
 };
 
+const lockReservationControlFences = async (
+  client: PoolClient,
+  operationId: string,
+): Promise<void> => {
+  const identity = await client.query<{
+    owner_id: string;
+    agent_id: string;
+    policy_id: string;
+    policy_status: string;
+  }>(
+    `SELECT ag.owner_id, o.agent_id, o.policy_id, p.status AS policy_status
+     FROM operations o
+     JOIN agents ag ON ag.agent_id = o.agent_id
+     JOIN policies p ON p.policy_id = o.policy_id
+     WHERE o.operation_id = $1`,
+    [operationId],
+  );
+  const target = identity.rows[0];
+  if (!target)
+    throw new LedgerError(
+      "RESERVATION_NOT_FOUND",
+      `operation not found: ${operationId}`,
+    );
+
+  const scopes = [
+    ["SYSTEM", "system"],
+    ["OWNER", target.owner_id],
+    ["AGENT", target.agent_id],
+    ["POLICY", target.policy_id],
+  ] as const;
+  const states: string[] = [];
+  for (const [scopeType, scopeId] of scopes) {
+    const result = await client.query<{ state: string }>(
+      `SELECT state FROM control_fences
+       WHERE scope_type = $1 AND scope_id = $2
+       FOR UPDATE`,
+      [scopeType, scopeId],
+    );
+    const state = result.rows[0]?.state;
+    if (!state)
+      throw new LedgerError(
+        "CONTROL_FENCE_INACTIVE",
+        `authoritative control fence is missing: ${scopeType}:${scopeId}`,
+      );
+    states.push(state);
+  }
+  if (
+    states[0] !== "ACTIVE" ||
+    states[1] !== "ACTIVE" ||
+    states[2] !== "ACTIVE" ||
+    states[3] !== "ACTIVE" ||
+    target.policy_status === "revoked"
+  )
+    throw new LedgerError(
+      "CONTROL_FENCE_INACTIVE",
+      `operation cannot reserve while a control fence is inactive: ${operationId}`,
+    );
+};
+
 const getReservation = async (
   client: PoolClient,
   reservationId: string,
@@ -455,6 +514,7 @@ export const reserveBudget = async (
     payload: request.idempotencyPayload,
   });
   return withSerializableTransaction(pool, async (client) => {
+    await lockReservationControlFences(client, request.operationId);
     const persistedCorrelation = await getReservationBindingForReserve(
       client,
       request.budgetId,

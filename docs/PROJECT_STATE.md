@@ -73,6 +73,13 @@ keep this as the current resume snapshot rather than an activity log.
   expiry/rejection/revocation handling, unique authorization evidence, deferred
   operation/reservation consistency guards, and serializable one-time
   consumption. It intentionally adds no owner-key or provider signing.
+- WP-04 adds the authorization safety fence required by ADR-0005: authoritative
+  `control_fences` state for system/owner/agent/policy scopes; monotonic fence
+  snapshots on approval, decision, and authorization evidence; shared lock
+  ordering; transactional invalidation of stale pending/authorized work;
+  eligible held-reservation release; and append-only control/invalidation audit
+  evidence. Resume advances the system fence and never resurrects stale
+  approvals. No signing or broadcast surface was added.
 
 ## Active blockers and risks
 
@@ -104,6 +111,9 @@ keep this as the current resume snapshot rather than an activity log.
   remains blocked on approval/revocation/pause fencing, authenticated
   reconciliation, integrated execution recovery, independent security review,
   and external acceptance of the review.
+- WS-005 approval and controls — WP-04 control-fence proof complete locally;
+  Gate S1 remains blocked on owner authentication, provider/signing boundary,
+  reconciliation/recovery, independent security review, and acceptance.
 
 ## Latest test results
 
@@ -159,6 +169,12 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   passed 2/2 including the 32-round reservation suite, invariants passed 7/7,
   and static/unit/repository/docs checks remained green. The local runtime was
   recreated from the current forward migration set; no Gate S1 pass is claimed.
+- 2026-08-15 WP-04 focused verification: migration set is 16 forward migrations;
+  `tests/concurrency/control-fence.test.ts` passed 14/14 with deterministic
+  row-lock barriers; full `npm run test:db` passed 57/57 and
+  `npm run test:concurrency` passed 16/16. Ledger rows preserved
+  `allocated = available + reserved + finalized_spend`; no Gate S1 pass is
+  claimed.
 
 ## Next integration step
 
@@ -167,6 +183,6 @@ signing, and provider consumers until Gate S1's approval,
 revocation/pause, authenticated reconciliation, integrated recovery, and
 independent-review evidence is accepted.
 
-Last updated: 2026-08-15; verified WP-03 authorization evidence, WP-02 local
-isolation, Phase-1 ledger review, CI, S0 ruleset, and MIT license state. S0/S1
-are not marked passed.
+Last updated: 2026-08-15; verified WP-04 control-fence evidence, WP-03
+authorization evidence, WP-02 local isolation, Phase-1 ledger review, CI, S0
+ruleset, and MIT license state. S0/S1 are not marked passed.

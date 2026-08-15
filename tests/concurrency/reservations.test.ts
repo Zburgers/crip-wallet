@@ -40,7 +40,7 @@ const audit = (index: number): AuditContext => ({
 
 const setup = async (): Promise<void> => {
   await pool.query(
-    "TRUNCATE audit_events, idempotency_records, budget_reservations, budget_accounts, operations, intents, policy_decisions, execution_envelopes, policy_versions, policies, wallets, agents, owners CASCADE",
+    "TRUNCATE audit_events, idempotency_records, budget_reservations, budget_accounts, operations, intents, policy_decisions, execution_envelopes, policy_versions, policies, wallets, agents, owners, control_fences CASCADE",
   );
   await withSerializableTransaction(pool, async (client) => {
     await client.query(`
@@ -49,6 +49,9 @@ const setup = async (): Promise<void> => {
       INSERT INTO wallets (wallet_id, owner_id, display_name) VALUES ('wallet_1', 'owner_1', 'Concurrent wallet');
       INSERT INTO policies (policy_id, owner_id, agent_id, wallet_id, status) VALUES ('policy_1', 'owner_1', 'agent_1', 'wallet_1', 'active');
       INSERT INTO policy_versions (policy_id, version, document, document_hash) VALUES ('policy_1', 1, '{"schemaVersion":"1.0"}', 'sha256:0000000000000000000000000000000000000000000000000000000000000000');
+      INSERT INTO control_fences (scope_type, scope_id, state) VALUES
+        ('SYSTEM', 'system', 'ACTIVE'), ('OWNER', 'owner_1', 'ACTIVE'),
+        ('AGENT', 'agent_1', 'ACTIVE'), ('POLICY', 'policy_1', 'ACTIVE');
       INSERT INTO budget_accounts (budget_id, agent_id, wallet_id, policy_id, policy_version, asset_address, allocated, available, reserved, finalized_spend)
         VALUES ('budget_1', 'agent_1', 'wallet_1', 'policy_1', 1, '0x0000000000000000000000000000000000000001', 100, 100, 0, 0);
     `);

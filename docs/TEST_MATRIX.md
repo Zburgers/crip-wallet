@@ -7,6 +7,19 @@ set `PASS`.
 
 ## Product and release requirements
 
+## WP-04 local evidence addendum
+
+The focused control-fence proof is locally evidenced by
+`tests/concurrency/control-fence.test.ts` (14 deterministic PostgreSQL tests).
+It covers revoke before consumption, revoke after authorization, owner/agent/
+policy scope revocation, pause before and after authorization, resume without
+stale resurrection, repeated commands, concurrent revoke/pause with approval
+consumption, rollback, audit ordering/correlation, and the balanced ledger
+invariant. The race cases use a database-row blocker and a ready barrier; they
+do not use sleeps. This is authorization/control-plane evidence only: it does
+not provide owner authentication, a signer, broadcast, chain reconciliation, or
+Gate S1 acceptance.
+
 ## WP-03 local evidence addendum
 
 The full product rows remain `PLANNED` where their broader E2E, browser, adapter,
@@ -37,7 +50,7 @@ execution, or integrated recovery.
 | PR-012 | Immutable envelope after reservation               | unit + DB                    | PLANNED | None                                                                                                                                                                         | WS-002/003 |
 | PR-013 | Approval envelope-bound and one-time               | DB + adversarial + E2E       | PLANNED | None                                                                                                                                                                         | WS-005     |
 | PR-014 | Owner key outside agent process                    | architecture + process/E2E   | PLANNED | None                                                                                                                                                                         | WS-004     |
-| PR-015 | Immediate revocation and pause before signing      | lifecycle + race + E2E       | PLANNED | None                                                                                                                                                                         | WS-005     |
+| PR-015 | Immediate revocation and pause before signing      | lifecycle + race + E2E       | BLOCKED | 2026-08-15 WP-04 database control-plane proof passes locally: authoritative four-scope versioned fences, deterministic revoke/pause races, stale-authorization invalidation, held-reservation release, and audit ordering; immediate provider/signing boundary and E2E remain unimplemented | WS-005     |
 | PR-016 | Native maximum network-fee ceiling                 | unit + pre-sign chain        | PLANNED | None                                                                                                                                                                         | WS-004     |
 | PR-017 | MCP, CLI, dashboard share core                     | contract + E2E + browser     | PLANNED | None                                                                                                                                                                         | WS-006     |
 | PR-018 | Minimal interfaces expose no raw signing           | schema + adversarial         | PLANNED | None                                                                                                                                                                         | WS-006     |
@@ -65,7 +78,7 @@ execution, or integrated recovery.
 | TM-009 | Fee ceiling bypass/spike              | `tests/adversarial/network-fees.spec.ts`                                           | PLANNED | None                                                                                                                                                                                                                                                 | WS-004     |
 | TM-010 | Stale or downgraded policy            | `tests/adversarial/stale-policy.spec.ts`                                           | PLANNED | None                                                                                                                                                                                                                                                 | WS-002/005 |
 | TM-011 | Expired approval/intent               | `tests/adversarial/expiry.spec.ts`                                                 | PLANNED | None                                                                                                                                                                                                                                                 | WS-005     |
-| TM-012 | Revocation/pause race                 | `tests/concurrency/control-fence.spec.ts`                                          | PLANNED | None                                                                                                                                                                                                                                                 | WS-005     |
+| TM-012 | Revocation/pause race                 | `tests/concurrency/control-fence.test.ts`                                          | BLOCKED | 2026-08-15: 14 deterministic database-fence tests pass for pre-creation held reservations, pause-before-reservation, owner/agent/policy revoke, system pause/resume, stale/expired approval, repeated commands, concurrent consume, rollback, audit correlation, and ledger invariant; provider/signing race remains unimplemented | WS-005     |
 | TM-013 | Permit/unlimited/signature abuse      | `tests/adversarial/signature-surface.spec.ts`                                      | PLANNED | None                                                                                                                                                                                                                                                 | WS-004/006 |
 | TM-014 | Delegatecall/multicall/proxy          | `tests/adversarial/hidden-authority.spec.ts`                                       | PLANNED | None                                                                                                                                                                                                                                                 | WS-004     |
 | TM-015 | Decimal/metadata manipulation         | `tests/adversarial/token-metadata.spec.ts`                                         | PLANNED | None                                                                                                                                                                                                                                                 | WS-004     |
@@ -82,7 +95,7 @@ execution, or integrated recovery.
 | TM-026 | Owner session/CSRF                    | `tests/browser/owner-security.spec.ts`                                             | PLANNED | None                                                                                                                                                                                                                                                 | WS-005/006 |
 | TM-027 | Interface bypass                      | `tests/e2e/interface-parity.spec.ts`                                               | PLANNED | None                                                                                                                                                                                                                                                 | WS-006     |
 | TM-028 | Enforcement overclaim                 | `tests/adapter-conformance/grades.spec.ts`                                         | PLANNED | None                                                                                                                                                                                                                                                 | WS-002/004 |
-| TM-029 | Migration/data loss                   | `tests/integration/migrations.spec.ts`                                             | PLANNED | 2026-08-13 local DB evidence: twelve forward migrations, concurrent runner serialization, legacy-audit fail-closed recovery, checksum-drift fail-closed recovery, and transactional DDL rollback; backup/restore drill remains                       | WS-003     |
+| TM-029 | Migration/data loss                   | `tests/integration/migrations.spec.ts`                                             | PLANNED | 2026-08-15 local DB evidence: sixteen forward migrations, concurrent runner serialization, legacy-audit fail-closed recovery, checksum-drift fail-closed recovery, and transactional DDL rollback; backup/restore drill remains                       | WS-003     |
 | TM-030 | Dependency/supply chain               | CI audit and action-pin checks                                                     | PLANNED | None                                                                                                                                                                                                                                                 | WS-001/007 |
 
 ## Phase-0 evidence

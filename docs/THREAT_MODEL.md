@@ -50,7 +50,7 @@ and race attackers; insiders with partial access; and accidental operator error.
 | T-009 | Gas ceiling bypass or fee spike | Integer max-cost check at envelope and pre-sign | TM-009 |
 | T-010 | Stale/downgraded policy | Immutable version binding and pre-sign recheck | TM-010 |
 | T-011 | Expired approval/intent | Bounded expiry and pre-sign recheck | TM-011 |
-| T-012 | Revoked credential or pause bypass | Durable control fencing immediately before sign | TM-012 |
+| T-012 | Revoked credential or pause bypass | Authoritative versioned control fences, serialized control/consumer locks, transactional stale-authority invalidation, and future immediate pre-sign recheck | TM-012 |
 | T-013 | Unlimited approval/Permit/signature abuse | MVP action allowlist; no generic sign/call surface | TM-013 |
 | T-014 | `delegatecall`, multicall, proxy hiding | Transfer-only builder/decoder; unknown denied | TM-014 |
 | T-015 | Token decimals/metadata manipulation | Trusted configured identity and on-chain verification | TM-015 |
@@ -74,7 +74,9 @@ and race attackers; insiders with partial access; and accidental operator error.
 
 The highest-risk path combines concurrent idempotency races, stale policy, and a
 signing timeout. The ledger must commit one reservation; the envelope must bind
-that reservation and policy version; the pre-sign fence must observe revocation;
+that reservation and policy version; the versioned control fence must observe
+revocation or pause under the shared lock order; the pre-sign fence must observe
+the same current snapshot;
 and ambiguous signed state must retain value rather than release it. No single
 interface or worker may bypass these controls.
 

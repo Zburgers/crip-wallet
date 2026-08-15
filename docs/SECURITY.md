@@ -76,3 +76,15 @@ Pause blocks new state-changing authorization. Revocation blocks new agent
 authorization/signatures after durable success. Neither claims to cancel an
 already-broadcast transaction. Ambiguous outcomes remain held/disputed and are
 recovered by hash/nonce evidence.
+
+## WP-04 control-fence proof
+
+The local control plane now stores authoritative system, owner, agent, and
+policy state in monotonic `control_fences`. Approval, decision, and
+authorization-evidence rows persist the complete fence snapshot. Control
+changes and authorization consumers share the `SYSTEM -> OWNER -> AGENT ->
+POLICY` lock order; committed pause/revocation invalidates stale authority and
+releases eligible held reservations in the same transaction. Resume increments
+the system fence and cannot resurrect old evidence. Deterministic local proof
+is in `tests/concurrency/control-fence.test.ts`; provider/signing and chain
+reconciliation remain outside this packet and Gate S1 remains blocked.

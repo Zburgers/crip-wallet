@@ -11,6 +11,9 @@ import {
   type ExecutionEnvelope,
 } from "@crip/schemas";
 import type { Pool, PoolClient } from "pg";
+import { lockControlFences, type ControlFenceSnapshot } from "./control.js";
+
+export * from "./control.js";
 
 export type ApprovalStatus =
   "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "REVOKED" | "CONSUMED";
@@ -113,6 +116,7 @@ export interface ApprovalSnapshot {
   revokedAt: string | null;
   consumedAt: string | null;
   reason: string | null;
+  controlFences: ControlFenceSnapshot;
 }
 
 export interface AuthorizationEvidence {
@@ -134,6 +138,7 @@ export interface AuthorizationEvidence {
   consumedAt: string;
   consumerId: string;
   consumptionNonce: string;
+  controlFences: ControlFenceSnapshot;
 }
 
 type TimestampValue = string | Date;
@@ -189,6 +194,22 @@ type ApprovalRow = {
   policy_wallet_id: string;
   policy_owner_id: string;
   wallet_owner_id: string;
+  system_fence_version: string | number;
+  system_state: "ACTIVE" | "PAUSED";
+  owner_fence_version: string | number;
+  owner_state: "ACTIVE" | "REVOKED";
+  agent_fence_version: string | number;
+  agent_state: "ACTIVE" | "REVOKED";
+  policy_fence_version: string | number;
+  policy_state: "ACTIVE" | "REVOKED";
+  current_system_fence_version: string | number;
+  current_system_state: "ACTIVE" | "PAUSED";
+  current_owner_fence_version: string | number;
+  current_owner_state: "ACTIVE" | "REVOKED";
+  current_agent_fence_version: string | number;
+  current_agent_state: "ACTIVE" | "REVOKED";
+  current_policy_fence_version: string | number;
+  current_policy_state: "ACTIVE" | "REVOKED";
 };
 
 type CommonRow = Omit<
@@ -205,6 +226,14 @@ type CommonRow = Omit<
   | "revoked_at"
   | "consumed_at"
   | "reason"
+  | "current_system_fence_version"
+  | "current_system_state"
+  | "current_owner_fence_version"
+  | "current_owner_state"
+  | "current_agent_fence_version"
+  | "current_agent_state"
+  | "current_policy_fence_version"
+  | "current_policy_state"
 >;
 
 const timestamp = (value: TimestampValue, label: string): string => {
@@ -264,6 +293,16 @@ const mapApproval = (row: ApprovalRow): ApprovalSnapshot => ({
   revokedAt: iso(row.revoked_at),
   consumedAt: iso(row.consumed_at),
   reason: row.reason,
+  controlFences: {
+    systemFenceVersion: Number(row.system_fence_version),
+    systemState: row.system_state,
+    ownerFenceVersion: Number(row.owner_fence_version),
+    ownerState: row.owner_state,
+    agentFenceVersion: Number(row.agent_fence_version),
+    agentState: row.agent_state,
+    policyFenceVersion: Number(row.policy_fence_version),
+    policyState: row.policy_state,
+  },
 });
 
 const operationCorrelation = (
@@ -314,8 +353,51 @@ const bindingData = (
     "issued_at" in row ? timestamp(row.issued_at, "issued_at") : undefined,
   expiresAt:
     "expires_at" in row ? timestamp(row.expires_at, "expires_at") : undefined,
+  systemFenceVersion: Number(row.system_fence_version),
+  systemState: row.system_state,
+  ownerFenceVersion: Number(row.owner_fence_version),
+  ownerState: row.owner_state,
+  agentFenceVersion: Number(row.agent_fence_version),
+  agentState: row.agent_state,
+  policyFenceVersion: Number(row.policy_fence_version),
+  policyState: row.policy_state,
   ...extra,
 });
+
+const fenceSnapshot = (row: CommonRow | ApprovalRow): ControlFenceSnapshot => ({
+  systemFenceVersion: Number(row.system_fence_version),
+  systemState: row.system_state,
+  ownerFenceVersion: Number(row.owner_fence_version),
+  ownerState: row.owner_state,
+  agentFenceVersion: Number(row.agent_fence_version),
+  agentState: row.agent_state,
+  policyFenceVersion: Number(row.policy_fence_version),
+  policyState: row.policy_state,
+});
+
+const fencesAreActiveAndCurrent = (row: ApprovalRow): boolean => {
+  const snapshot = fenceSnapshot(row);
+  return (
+    snapshot.systemState === "ACTIVE" &&
+    snapshot.ownerState === "ACTIVE" &&
+    snapshot.agentState === "ACTIVE" &&
+    snapshot.policyState === "ACTIVE" &&
+    snapshot.systemFenceVersion === Number(row.current_system_fence_version) &&
+    snapshot.ownerFenceVersion === Number(row.current_owner_fence_version) &&
+    snapshot.agentFenceVersion === Number(row.current_agent_fence_version) &&
+    snapshot.policyFenceVersion === Number(row.current_policy_fence_version) &&
+    row.current_system_state === "ACTIVE" &&
+    row.current_owner_state === "ACTIVE" &&
+    row.current_agent_state === "ACTIVE" &&
+    row.current_policy_state === "ACTIVE"
+  );
+};
+
+const fencesAreActive = (row: CommonRow | ApprovalRow): boolean =>
+  row.system_state === "ACTIVE" &&
+  row.owner_state === "ACTIVE" &&
+  row.agent_state === "ACTIVE" &&
+  row.policy_state === "ACTIVE";
 
 const append = async (
   client: PoolClient,
@@ -344,6 +426,8 @@ const approvalSelect = `
          a.policy_decision_hash, a.policy_id, a.policy_version, a.approver_id,
          a.issued_at, a.expires_at, a.nonce, a.status, a.approved_at,
          a.rejected_at, a.expired_at, a.revoked_at, a.consumed_at, a.reason,
+         a.system_fence_version, a.system_state, a.owner_fence_version, a.owner_state,
+         a.agent_fence_version, a.agent_state, a.policy_fence_version, a.policy_state,
          o.current_state, o.intent_id, o.agent_id, o.wallet_id,
          owner.owner_id,
          d.decision AS policy_decision_status,
@@ -418,6 +502,19 @@ const loadApproval = async (
   client: PoolClient,
   approvalId: string,
 ): Promise<ApprovalRow> => {
+  const initial = await client.query<ApprovalRow>(approvalSelect, [approvalId]);
+  const identity = initial.rows[0];
+  if (!identity)
+    throw new ApprovalError(
+      "APPROVAL_NOT_FOUND",
+      `approval not found: ${approvalId}`,
+    );
+  const currentFences = await lockControlFences(
+    client,
+    identity.owner_id,
+    identity.agent_id,
+    identity.policy_id,
+  );
   const result = await client.query<ApprovalRow>(
     `${approvalSelect} FOR UPDATE OF a, o, r, b, e, d`,
     [approvalId],
@@ -428,13 +525,41 @@ const loadApproval = async (
       "APPROVAL_NOT_FOUND",
       `approval not found: ${approvalId}`,
     );
-  return row;
+  return {
+    ...row,
+    current_system_fence_version: currentFences.systemFenceVersion,
+    current_system_state: currentFences.systemState,
+    current_owner_fence_version: currentFences.ownerFenceVersion,
+    current_owner_state: currentFences.ownerState,
+    current_agent_fence_version: currentFences.agentFenceVersion,
+    current_agent_state: currentFences.agentState,
+    current_policy_fence_version: currentFences.policyFenceVersion,
+    current_policy_state: currentFences.policyState,
+  };
 };
 
 const loadCommon = async (
   client: PoolClient,
   request: CreateApprovalRequest,
 ): Promise<CommonRow> => {
+  const initial = await client.query<CommonRow>(commonSelect, [
+    request.operationId,
+    request.envelopeId,
+    request.policyDecisionId,
+    request.reservationId,
+  ]);
+  const identity = initial.rows[0];
+  if (!identity)
+    throw new ApprovalError(
+      "REVALIDATION_REQUIRED",
+      "approval binding rows are incomplete or ambiguous",
+    );
+  const currentFences = await lockControlFences(
+    client,
+    identity.owner_id,
+    identity.agent_id,
+    identity.policy_id,
+  );
   const result = await client.query<CommonRow>(
     `${commonSelect} FOR UPDATE OF o, r, b, e, d`,
     [
@@ -450,7 +575,17 @@ const loadCommon = async (
       "REVALIDATION_REQUIRED",
       "approval binding rows are incomplete or ambiguous",
     );
-  return row;
+  return {
+    ...row,
+    system_fence_version: currentFences.systemFenceVersion,
+    system_state: currentFences.systemState,
+    owner_fence_version: currentFences.ownerFenceVersion,
+    owner_state: currentFences.ownerState,
+    agent_fence_version: currentFences.agentFenceVersion,
+    agent_state: currentFences.agentState,
+    policy_fence_version: currentFences.policyFenceVersion,
+    policy_state: currentFences.policyState,
+  };
 };
 
 const persistedEnvelope = (row: CommonRow | ApprovalRow): ExecutionEnvelope => {
@@ -628,8 +763,10 @@ const recordDecision = async (
   await client.query(
     `INSERT INTO approval_decisions
       (approval_decision_id, approval_id, decision_type, approver_id, decided_at,
-       envelope_hash, policy_decision_id, policy_version, decision_nonce, reason)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+       envelope_hash, policy_decision_id, policy_version, decision_nonce, reason,
+       system_fence_version, system_state, owner_fence_version, owner_state,
+       agent_fence_version, agent_state, policy_fence_version, policy_state)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
     [
       `${row.approval_id}:decision:${type.toLowerCase()}`,
       row.approval_id,
@@ -641,6 +778,14 @@ const recordDecision = async (
       row.policy_version,
       `${row.nonce}:decision:${type.toLowerCase()}`,
       reason ?? null,
+      row.system_fence_version,
+      row.system_state,
+      row.owner_fence_version,
+      row.owner_state,
+      row.agent_fence_version,
+      row.agent_state,
+      row.policy_fence_version,
+      row.policy_state,
     ],
   );
 };
@@ -824,6 +969,11 @@ export const createApprovalRequest = async (
     const row = await loadCommon(client, request);
     const envelope = assertCommonBinding(row);
     ensureLatestEnvelope(row);
+    if (!fencesAreActive(row))
+      throw new ApprovalError(
+        "REVALIDATION_REQUIRED",
+        "approval cannot be created while a control fence is inactive",
+      );
     if (
       request.envelopeRevision !== row.envelope_revision ||
       request.envelopeHash !== row.envelope_hash
@@ -865,8 +1015,11 @@ export const createApprovalRequest = async (
       `INSERT INTO approval_requests
         (approval_id, operation_id, reservation_id, envelope_id, envelope_revision,
          envelope_hash, policy_decision_id, policy_decision_hash, policy_id, policy_version,
-         issued_at, expires_at, nonce)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+         issued_at, expires_at, nonce,
+         system_fence_version, system_state, owner_fence_version, owner_state,
+         agent_fence_version, agent_state, policy_fence_version, policy_state)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+               $14, $15, $16, $17, $18, $19, $20, $21)`,
       [
         request.approvalId,
         request.operationId,
@@ -881,6 +1034,14 @@ export const createApprovalRequest = async (
         issuedAt,
         expiresAt,
         request.nonce,
+        row.system_fence_version,
+        row.system_state,
+        row.owner_fence_version,
+        row.owner_state,
+        row.agent_fence_version,
+        row.agent_state,
+        row.policy_fence_version,
+        row.policy_state,
       ],
     );
     const next = {
@@ -898,6 +1059,14 @@ export const createApprovalRequest = async (
       consumed_at: null,
       reason: null,
       current_state: "AWAITING_APPROVAL",
+      current_system_fence_version: row.system_fence_version,
+      current_system_state: row.system_state,
+      current_owner_fence_version: row.owner_fence_version,
+      current_owner_state: row.owner_state,
+      current_agent_fence_version: row.agent_fence_version,
+      current_agent_state: row.agent_state,
+      current_policy_fence_version: row.policy_fence_version,
+      current_policy_state: row.policy_state,
     };
     await append(
       client,
@@ -930,6 +1099,22 @@ export const approveApproval = async (
       return { kind: "snapshot" as const, value: mapApproval(row) };
     }
     if (row.status !== "PENDING") throw statusError(row.status);
+    if (!fencesAreActiveAndCurrent(row)) {
+      if (
+        row.current_state === "AWAITING_APPROVAL" &&
+        row.reservation_status === "HELD" &&
+        (row.status === "PENDING" || row.status === "APPROVED")
+      ) {
+        await invalidateStaleApproval(
+          client,
+          row,
+          request.audit,
+          now,
+          "control fence changed before approval",
+        );
+      }
+      return { kind: "revalidation" as const };
+    }
     if (Date.parse(now) < Date.parse(timestamp(row.issued_at, "issued_at")))
       throw new ApprovalError(
         "REVALIDATION_REQUIRED",
@@ -1192,6 +1377,29 @@ export const replaceExecutionEnvelope = async (
     );
 
   return withSerializableTransaction(pool, async (client) => {
+    const identityResult = await client.query<{
+      owner_id: string;
+      agent_id: string;
+      policy_id: string;
+    }>(
+      `SELECT ag.owner_id, o.agent_id, o.policy_id
+       FROM operations o
+       JOIN agents ag ON ag.agent_id = o.agent_id
+       WHERE o.operation_id = $1`,
+      [request.operationId],
+    );
+    const identity = identityResult.rows[0];
+    if (!identity)
+      throw new ApprovalError(
+        "REVALIDATION_REQUIRED",
+        "operation identity is missing",
+      );
+    await lockControlFences(
+      client,
+      identity.owner_id,
+      identity.agent_id,
+      identity.policy_id,
+    );
     const operationResult = await client.query<{
       current_state: string;
       reservation_id: string;
@@ -1200,8 +1408,9 @@ export const replaceExecutionEnvelope = async (
       `SELECT o.current_state, r.reservation_id, r.status AS reservation_status
        FROM operations o
        JOIN budget_reservations r ON r.operation_id = o.operation_id
+       JOIN budget_accounts b ON b.budget_id = r.budget_id
        WHERE o.operation_id = $1
-       FOR UPDATE OF o, r`,
+       FOR UPDATE OF o, r, b`,
       [request.operationId],
     );
     const operation = operationResult.rows[0];
@@ -1450,6 +1659,22 @@ export const consumeApproval = async (
     }
     assertCommonBinding(row);
     if (row.status !== "APPROVED") throw statusError(row.status);
+    if (!fencesAreActiveAndCurrent(row)) {
+      if (
+        row.current_state === "AWAITING_APPROVAL" &&
+        row.reservation_status === "HELD" &&
+        row.status === "APPROVED"
+      ) {
+        await invalidateStaleApproval(
+          client,
+          row,
+          request.audit,
+          now,
+          "control fence changed before authorization",
+        );
+      }
+      return { kind: "revalidation" as const };
+    }
     if (Date.parse(now) < Date.parse(timestamp(row.issued_at, "issued_at")))
       throw new ApprovalError(
         "REVALIDATION_REQUIRED",
@@ -1504,8 +1729,11 @@ export const consumeApproval = async (
         (authorization_id, approval_id, operation_id, reservation_id, envelope_id,
          envelope_revision, envelope_hash, policy_decision_id, policy_decision_hash,
          policy_id, policy_version, approver_id, issued_at, expires_at,
-         authorized_at, consumed_at, consumer_id, consumption_nonce)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15, $16, $17)`,
+         authorized_at, consumed_at, consumer_id, consumption_nonce,
+         system_fence_version, system_state, owner_fence_version, owner_state,
+         agent_fence_version, agent_state, policy_fence_version, policy_state)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+               $15, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)`,
       [
         authorizationId,
         row.approval_id,
@@ -1524,6 +1752,14 @@ export const consumeApproval = async (
         authorizedAt,
         request.consumerId,
         consumptionNonce,
+        row.system_fence_version,
+        row.system_state,
+        row.owner_fence_version,
+        row.owner_state,
+        row.agent_fence_version,
+        row.agent_state,
+        row.policy_fence_version,
+        row.policy_state,
       ],
     );
     const approvalUpdate = await client.query(
@@ -1600,6 +1836,7 @@ export const consumeApproval = async (
         consumedAt: authorizedAt,
         consumerId: request.consumerId,
         consumptionNonce,
+        controlFences: fenceSnapshot(row),
       },
     };
   });
