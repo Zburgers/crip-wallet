@@ -1152,12 +1152,15 @@ export const disputeReservation = (
     },
   );
 
+const MAX_RECOVERY_LEASE_SECONDS = 300;
+
 export interface RecoveryClaimRequest {
   attemptId: string;
   operationId: string;
   reservationId: string;
   leaseDurationSeconds: number;
-  now: string | Date;
+  /** @deprecated Recovery leases use the database clock; caller time is ignored. */
+  now?: string | Date;
   audit: AuditContext;
 }
 
@@ -1221,14 +1224,13 @@ export const claimRecoveryLease = async (
 ): Promise<RecoveryLease> => {
   if (
     !Number.isInteger(input.leaseDurationSeconds) ||
-    input.leaseDurationSeconds <= 0
+    input.leaseDurationSeconds <= 0 ||
+    input.leaseDurationSeconds > MAX_RECOVERY_LEASE_SECONDS
   )
     throw new LedgerError(
       "RECOVERY_LEASE_STALE",
-      "recovery lease duration must be a positive integer",
+      `recovery lease duration must be an integer between 1 and ${MAX_RECOVERY_LEASE_SECONDS} seconds`,
     );
-  const now = validDate(input.now);
-  const expiresAt = new Date(now.getTime() + input.leaseDurationSeconds * 1000);
   return withSerializableTransaction(pool, async (client) => {
     const binding = await getReservationForUpdate(client, input.reservationId);
     if (binding.reservation.operationId !== input.operationId)
@@ -1245,23 +1247,21 @@ export const claimRecoveryLease = async (
         attemptId: input.attemptId,
         operationId: input.operationId,
         reservationId: input.reservationId,
+        leaseDurationSeconds: input.leaseDurationSeconds,
       },
     );
     const existing = await client.query<{
       lease_version: string;
-      lease_expires_at: Date | string;
       lease_state: "ACTIVE" | "RESOLVED";
+      lease_is_live: boolean;
     }>(
-      `SELECT lease_version, lease_expires_at, lease_state
+      `SELECT lease_version, lease_state,
+              lease_expires_at > clock_timestamp() AS lease_is_live
        FROM operation_recovery_leases WHERE operation_id = $1 FOR UPDATE`,
       [input.operationId],
     );
     const current = existing.rows[0];
-    if (
-      current &&
-      current.lease_state === "ACTIVE" &&
-      new Date(current.lease_expires_at).getTime() > now.getTime()
-    )
+    if (current?.lease_state === "ACTIVE" && current.lease_is_live)
       throw new LedgerError(
         "RECOVERY_LEASE_HELD",
         "recovery operation is already leased",
@@ -1272,24 +1272,37 @@ export const claimRecoveryLease = async (
         "RECOVERY_LEASE_STALE",
         "recovery lease version exhausted",
       );
-    await client.query(
+    const persisted = await client.query<{
+      lease_expires_at: Date | string;
+    }>(
       `INSERT INTO operation_recovery_leases
          (operation_id, reservation_id, credential_id, lease_version, lease_expires_at, lease_state)
-       VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
+       VALUES (
+         $1, $2, $3, $4,
+         clock_timestamp() + ($5::integer * interval '1 second'),
+         'ACTIVE'
+       )
        ON CONFLICT (operation_id) DO UPDATE SET
          reservation_id = EXCLUDED.reservation_id,
          credential_id = EXCLUDED.credential_id,
          lease_version = EXCLUDED.lease_version,
          lease_expires_at = EXCLUDED.lease_expires_at,
-         lease_state = 'ACTIVE', updated_at = now()`,
+         lease_state = 'ACTIVE', updated_at = clock_timestamp()
+       RETURNING lease_expires_at`,
       [
         input.operationId,
         input.reservationId,
         authenticated.credentialId,
         leaseVersion.toString(),
-        expiresAt,
+        input.leaseDurationSeconds,
       ],
     );
+    const leaseExpiresAt = persisted.rows[0]?.lease_expires_at;
+    if (!leaseExpiresAt)
+      throw new LedgerError(
+        "RECOVERY_LEASE_STALE",
+        "recovery lease was not persisted",
+      );
     await writeRecoveryAudit(
       client,
       input.audit,
@@ -1305,7 +1318,7 @@ export const claimRecoveryLease = async (
       credentialId: authenticated.credentialId,
       componentId: authenticated.componentId,
       leaseVersion: leaseVersion.toString(),
-      leaseExpiresAt: expiresAt.toISOString(),
+      leaseExpiresAt: new Date(leaseExpiresAt).toISOString(),
     };
   });
 };
