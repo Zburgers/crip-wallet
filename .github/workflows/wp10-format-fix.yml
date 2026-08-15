@@ -1,0 +1,41 @@
+name: WP10 format fix
+
+on:
+  push:
+    branches: [wp10-format-fix]
+
+permissions:
+  contents: write
+
+jobs:
+  format-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.13.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Format concurrent WP-10 regression
+        run: |
+          npx prettier --write tests/concurrency/wp10-control-reservation-gap.test.ts
+          rm .github/workflows/wp10-format-fix.yml
+
+      - name: Validate repository checks
+        run: npm run check
+
+      - name: Commit formatted tree
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style(wp10): format control reservation regression"
+          git push origin HEAD:wp10-format-fix
