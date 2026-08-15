@@ -20,8 +20,9 @@ passed 16/16 with workers=4, rounds=32, ready/start/release barriers and a
 `2026081301`, `2026081302`, `2026081303` and 512 runs; and `dev:down` cleaned
 only the checkout project while preserving ignored state.
 
-Remote current-head evidence is CI `validate` run `31880041818` and Secret
-scan/Gitleaks run `31880040380`, both successful. The live `S0 main protection`
+Remote current-head evidence is the post-push CI `validate` and Secret
+scan/Gitleaks runs, both successful; their exact run IDs are recorded in the
+PR #1 review record. The live `S0 main protection`
 ruleset `20791659` is active with `validate`, deletion, and non-fast-forward
 rules, but currently reports zero required approvals and no required review
 thread resolution. PR #1 has no independent approval. These governance facts
