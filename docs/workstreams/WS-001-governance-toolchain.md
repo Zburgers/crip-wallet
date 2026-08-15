@@ -4,7 +4,9 @@
 
 Establish a reproducible, auditable, local-only repository foundation. Status:
 LOCAL COMPLETE / REMOTE CONTROLS VERIFIED on `phase-0/governance-foundation` from
-baseline `3a044ee`; required review remains open.
+baseline `3a044ee`; S0 remains open because this sole-maintainer repository
+intentionally has zero required approvals and review-thread resolution is not
+required.
 
 ## Governing sections
 
@@ -73,8 +75,10 @@ tooling/local environment; CI/security controls; verification/state.
   hash; two checkout projects received separate Docker-assigned ports; failed
   startup cleanup used project-scoped `down --remove-orphans` without volume
   deletion. S0 remains open pending independent review/acceptance.
-- 2026-08-14 remote evidence: earlier PR #1 head `081fe78` passed CI `validate` run
-  `31812303081` and Gitleaks run `31812303011`. Ruleset `20791659` is active on
-  `main`, requiring one approval and the registered `validate` check; Dependabot
-  security fixes are enabled. The only Phase-0 closeout items still external
-  is the required independent review/acceptance; ADR-0013 is accepted as MIT.
+- 2026-08-15 WP-06 remote evidence: current PR #1 head
+  `515e8e2c6fe1547ea5d0806033e024564ddd680e` passed CI `validate` run
+  `31880041818` and Secret scan/Gitleaks run `31880040380`. Ruleset `20791659`
+  is active on `main` with `validate`, deletion, and non-fast-forward rules;
+  the live API reports zero required approvals and no required review-thread
+  resolution. Dependabot security updates are enabled. The independent review
+  and acceptance criterion therefore remains open; ADR-0013 is accepted as MIT.

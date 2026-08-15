@@ -8,6 +8,17 @@ the same integration change.
 
 ### Security
 
+- WP-06 independently reproduced the current PR-head remediation evidence:
+  audit correlation, checkout/runtime isolation, failed-start cleanup, approval
+  replay/expiry/envelope invalidation, control-fence races, authenticated local
+  adapter/reconciler evidence, uncertain-outcome recovery, and duplicate
+  finalization/reconciliation all remain covered by passing local proof. The
+  live S0 ruleset intentionally has zero required approvals for this sole-
+  maintainer repository and does not require review-thread resolution, so S0 is
+  not certified under the work-packet criterion. S1 remains blocked on owner
+  authentication, integrated provider/chain reconciliation, independent
+  security review, and required acceptance.
+
 - WP-05 replaces label-only adapter/reconciler authority with pre-provisioned
   Ed25519 component credentials and canonical signed action payloads. Broadcast
   and verification evidence persist authenticated identity snapshots. Durable

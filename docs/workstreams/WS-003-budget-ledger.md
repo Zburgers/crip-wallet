@@ -56,7 +56,7 @@ closed until independent security review and full integrated rerun.
 
 ## Evidence
 
-WP-01 remediation evidence, 2026-08-15, PR #1 head
+WP-01 remediation evidence, 2026-08-15, superseded PR #1 head
 `3bebd79955642f65be0dafa0268b321a890c65a5`:
 
 - Forward migrations `0013_ws003_audit_reservation_correlation.sql` and
@@ -73,6 +73,17 @@ WP-01 remediation evidence, 2026-08-15, PR #1 head
   evidence; current remote CI and Secret scan evidence is recorded separately.
 - Gate S1 remains blocked; this remediation does not accept the independent
   review, close S1, open Phase 2, or expose WS-004.
+
+WP-06 current-head verification, 2026-08-15, PR #1 head
+`515e8e2c6fe1547ea5d0806033e024564ddd680e`:
+
+- The fresh DB gate passed 64/64 and the concurrency gate passed 16/16 across
+  32 rounds with four workers and ready/start/release barriers. Invariants
+  passed 7/7 with the documented three seeds and 512 generated runs. Audit
+  correlation, runtime-port isolation, and the database reservation invariant
+  remain local implementation evidence; integrated E2E remains open.
+- Gate S1 remains blocked on owner authentication, integrated provider/chain
+  reconciliation, independent security review, and required acceptance.
 
 WP-02 isolation evidence, 2026-08-15:
 

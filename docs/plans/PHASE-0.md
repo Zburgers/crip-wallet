@@ -78,18 +78,20 @@ checks, and traps partial-start failures with project-scoped `down
 --remove-orphans` cleanup. `dev:status`, `dev:down`, the DB gate, and the
 concurrency gate consume that state; conflicting environment overrides and
 copied/stale runtime files fail closed. This strengthens P0-005's local proof;
-it does not close S0, which still requires independent human review/acceptance.
-The final local proof used loopback PostgreSQL `127.0.0.1:32777` and Anvil
-`127.0.0.1:32776`; the values are evidence only and are not fixed defaults.
+it does not close S0. The 2026-08-15 WP-06 proof used loopback PostgreSQL
+`127.0.0.1:32820` and Anvil `127.0.0.1:32821`; the values are evidence only
+and are not fixed defaults.
 
 ## Exit gate
 
 Phase 0 may hand off to Phase 1 when P0-001 through P0-006 pass locally, the
 governance sources agree, and no real-funds/configuration or critical security
-finding exists. The active `S0 main protection` ruleset and protected remote
-CI now provide the previously missing remote evidence. Required human review
-remains the only explicit external closeout item and does not
-authorize Phase 2.
+finding exists. The active `S0 main protection` ruleset and protected remote CI
+provide remote evidence, but the live ruleset intentionally has zero required
+approvals for this sole-maintainer repository and does not require review-thread
+resolution. Therefore S0 is not certified under the work packet's independent
+approval criterion; this limitation is recorded rather than changing the
+repository setting. It does not authorize Phase 2.
 
 ## Verification status
 
@@ -99,13 +101,16 @@ authorize Phase 2.
   locked install, 15 repository tests, 41 schema tests, dependency audit, live
   PostgreSQL 17.10 and Anvil 31337 inspection, permission/log checks, baseline
   diff check, and digest-pinned Gitleaks history/candidate scans.
-- 2026-08-14 remote closeout: earlier PR #1 head `081fe78` passed CI run
-  `31812303081` and Gitleaks run `31812303011`; ruleset `20791659` is active
-  on `main` with one required approval and the registered `validate` check;
-  Dependabot security fixes are enabled. ADR-0013 is accepted as MIT with a
+- 2026-08-15 WP-06 remote closeout: current PR #1 head
+  `515e8e2c6fe1547ea5d0806033e024564ddd680e` passed CI run `31880041818` and
+  Secret scan/Gitleaks run `31880040380`; ruleset `20791659` is active on
+  `main` with the registered `validate`, deletion, and non-fast-forward rules,
+  but the live API reports zero required approvals and no required thread
+  resolution. Dependabot security updates are enabled. ADR-0013 is accepted as MIT with a
   root `LICENSE`, package metadata, README, and contribution guidance updated.
   The lockfile dependency metadata was reviewed and reports Apache-2.0,
   BSD-2-Clause, BSD-3-Clause, BlueOak-1.0.0, ISC, MIT, and MPL-2.0 licenses;
   no dependency license required changing the repository license decision.
-  The remaining S0 closeout item is required independent human review/
-  acceptance of PR #1. Phase 2 remains intentionally unopened.
+  The remaining S0 closeout items are the missing independent approval under
+  the work-packet criterion and unresolved review-thread governance. Phase 2
+  remains intentionally unopened.

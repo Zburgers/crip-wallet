@@ -45,8 +45,8 @@ Threat Model T-012; ADR-0005; Phase-1 plan; risks R-006, R-008, and R-015.
 - `tests/concurrency/control-fence.test.ts`
 
 The focused suite has 14 deterministic tests using a ready barrier and
-database-row blocker rather than sleeps. The full local DB gate passed 57/57;
-the combined concurrency gate passed 16/16; invariants remained green. No
+database-row blocker rather than sleeps. The current WP-06 local DB gate passed
+64/64; the combined concurrency gate passed 16/16; invariants remained green. No
 signing, broadcast, owner-key, or public-chain consumer is in this workstream.
 
 ## WP-05 authenticated recovery proof
@@ -61,3 +61,10 @@ recoverers serialize; conflicting evidence fails closed; and AMBIGUOUS/
 CONFLICT outcomes remain DISPUTED with reserved funds. The focused proof is
 `tests/db/wp05-recovery.test.ts` (7/7). It uses local fakes and deliberately
 does not open signing, RPC, provider, testnet, mainnet, or real-funds scope.
+
+WP-06 verification on current PR head `515e8e2c6fe1547ea5d0806033e024564ddd680e`
+reproduced the replay, expiry, envelope-mutation, revocation-race, pause-race,
+authenticated-evidence, uncertain-outcome, and duplicate-finalization controls.
+These results do not close S1: ADR-0008 owner authentication, integrated
+provider/chain reconciliation, independent security review, and required
+acceptance remain outstanding.

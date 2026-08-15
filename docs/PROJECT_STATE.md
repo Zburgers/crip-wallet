@@ -12,23 +12,25 @@ keep this as the current resume snapshot rather than an activity log.
   manifests, local databases, build output, generated junk, or secret-pattern
   findings in the current tree or two-commit history.
 - Working branch: `phase-0/governance-foundation`
-- Last integrated implementation: Phase-1 local proof, Anvil CI startup
-  hardening, and MIT license closeout at `cd88c1a`; remote CI and the active
-  main ruleset are verified, while required human review remains open.
+- Last integrated implementation: WP-05 authenticated recovery proof at
+  `515e8e2`; remote CI and Secret scan are green at the current PR head, while
+  repository approval controls and required human review remain open.
 
 ## Current phase and status
 
 - Phase: 1 — canonical core and local ledger (WS-002/WS-003 locally frozen)
-- Status: LOCAL IMPLEMENTATION COMPLETE; S0 is ready for final external closeout and Gate S1 remains open
-- Gate S0: OPEN pending required review/acceptance of PR #1. GitHub ruleset
-  `20791659` (`S0 main protection`) is
-  active, requires one approval and `validate`, and the remote CI/security
-  checks for PR #1 are green. Secret scanning, push protection, and Dependabot
-  security fixes are enabled.
-- Gate S1: BLOCKED pending independent acceptance of approval/revocation/pause fencing,
-  independent security review, and required human acceptance. WP-05 now supplies
-  local authenticated adapter/reconciler and deterministic recovery evidence;
-  provider/chain reconciliation remains out of scope.
+- Status: LOCAL IMPLEMENTATION COMPLETE; S0 remains open under the sole-maintainer
+  approval limitation and Gate S1 remains blocked
+- Gate S0: OPEN. GitHub ruleset `20791659` (`S0 main protection`) is active and
+  enforces pull requests, `validate`, deletion protection, and non-fast-forward
+  protection, but the live API reports `required_approving_review_count=0` and
+  `required_review_thread_resolution=false`; PR #1 has no independent approval
+  (`reviewDecision=null`). Current-head CI and Secret scan are green. Secret
+  scanning, push protection, and Dependabot security updates are enabled.
+- Gate S1: BLOCKED pending owner authentication, independent security review,
+  required human acceptance, and integrated provider/chain reconciliation. WP-05
+  now supplies local authenticated adapter/reconciler and deterministic recovery
+  evidence; provider/chain reconciliation remains out of scope.
 - Gate S2: BLOCKED; no local end-to-end transaction vertical slice exists.
 
 ## Implemented and verified
@@ -43,9 +45,9 @@ keep this as the current resume snapshot rather than an activity log.
   effective runtime state, per-checkout container/database isolation, and
   defensive lifecycle scripts with project-scoped partial-start cleanup.
 - CI, secret scanning, CODEOWNERS, Dependabot, and contribution templates are
-  implemented locally. Earlier PR #1 head `081fe78` passed `validate` run
-  `31812303081` and Gitleaks run `31812303011`; the active main ruleset is
-  verified remotely.
+  implemented locally. Current PR #1 head `515e8e2` passed `validate` run
+  `31880041818` and Secret scan/Gitleaks run `31880040380`; the live ruleset
+  and repository security settings were rechecked for this review.
 - WS-002 is locally frozen without any signing surface: the canonical enforcement-grade
   schema/order plus strict read/transfer intent and uint256 atomic-money leaf
   contracts are implemented and unit tested. P1-002 now also validates the
@@ -89,8 +91,11 @@ keep this as the current resume snapshot rather than an activity log.
 
 ## Active blockers and risks
 
-- External: obtain the required independent approval for PR #1 and merge only
-  after human review confirms the local-only boundary and Phase-1 evidence.
+- External: the sole-maintainer ruleset intentionally has zero required
+  approvals. Obtain independent review capacity and enable the required approval
+  and review-thread controls before claiming S0 under the work-packet criterion.
+  Merge only after human review confirms the local-only boundary and Phase-1
+  evidence.
 - Security: local implementation proof gates are green, but external security
   acceptance and execution-boundary gates remain open; no autonomous execution
   or signing surface may be exposed.
@@ -122,7 +127,7 @@ keep this as the current resume snapshot rather than an activity log.
 
 ## Latest test results
 
-- `npm ci`: 133 packages installed; 135 audited; 0 vulnerabilities (2026-08-10).
+- `npm ci`: 156 packages installed; 163 audited; 0 vulnerabilities (2026-08-15).
 - Prior `npm run check`: exit 0; format, ESLint, strict typecheck, 15/15 Node
   repository tests, 41/41 schema Vitest tests, 15 required docs, and repository
   policy checks passed. The Node suite imports `@crip/schemas` through its built
@@ -139,12 +144,12 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   `npm run test:invariants` passed 7/7 with seeds 2026081301, 2026081302, and
   2026081303 (512 generated runs). Final concurrency rows were allocated=100,
   available=10, reserved=90, finalized_spend=0 with three audit rows.
-- The full unit/repository suite passed 118 Vitest tests across 8 files plus 16
-  Node tests. `npm audit --audit-level=high` reported 0 vulnerabilities on the
-  current lockfile.
-- `npm run dev:up` and `npm run dev:status`: PostgreSQL 17.10 ready on loopback
-  `127.0.0.1:32777`; deterministic quiet Anvil ready on loopback
-  `127.0.0.1:32776`, chain `0x7a69`; effective values are persisted in
+- Current WP-06 `npm run check` passed 118 Vitest tests across 8 files plus 20
+  Node repository tests. `npm audit --audit-level=high` reported 0
+  vulnerabilities on the current lockfile.
+- Current WP-06 `npm run dev:up` and `npm run dev:status`: PostgreSQL 17.10 ready
+  on loopback `127.0.0.1:32820`; deterministic quiet Anvil ready on loopback
+  `127.0.0.1:32821`, chain `0x7a69`; effective values are persisted in
   `.local/runtime.env`.
 - Generated runtime/Anvil configs are Git-ignored, mode `0600`; Anvil log output
   is empty. The Anvil config inode is created at `0600` before container startup.
@@ -156,13 +161,10 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   same image using `gitleaks dir`: no leaks. Ignored `.local/` runtime state was
   excluded because it contains the generated disposable database password by
   design; no scan result for that directory is claimed.
-- 2026-08-14 remote PR verification: CI `validate` run `31812303081` and
-  Gitleaks run `31812303011` passed at head `081fe78`. The isolated fake-money
-  service step now succeeds on the GitHub Linux runner after Anvil moved its
-  transient config write into container `/tmp`; the host copy is restored to
-  mode `0600` and Anvil remains chain `0x7a69`.
-- PR #1 remediation work started from head `a200e84` and is now at
-  `3bebd799`; no post-remediation merge or S0/S1 acceptance is claimed here.
+- 2026-08-15 current-head remote PR verification: CI `validate` run
+  `31880041818` and Secret scan/Gitleaks run `31880040380` passed at head
+  `515e8e2c6fe1547ea5d0806033e024564ddd680e`. The isolated fake-money service
+  step, mode `0600`, and quiet signer-log checks passed remotely.
 - 2026-08-15 WP-02 focused verification: 20 Node repository tests and 118
   package tests passed; DB 36/36 and concurrency 1/1 across 32 rounds passed
   against the persisted 32777 runtime; invariants passed 7/7; a wrong-port
@@ -185,6 +187,13 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   acceptance/rejection, uncertain-outcome recovery, crash/retry idempotency,
   simultaneous/stale workers, conflicting evidence, protected funds, and
   exactly-once finalization. No Gate S1 pass is claimed.
+- 2026-08-15 WP-06 fresh required-command verification at current head: local
+  PostgreSQL `127.0.0.1:32820` and Anvil `127.0.0.1:32821` were healthy on
+  chain `0x7a69`; DB passed 64/64, concurrency passed 16/16 with workers=4,
+  rounds=32 and the ready/start/release barriers, and invariants passed 7/7
+  with seeds `2026081301`, `2026081302`, `2026081303` and `numRuns=512`.
+  `dev:down` removed only this checkout's containers/network and preserved
+  ignored state. No S0/S1 pass is claimed.
 
 ## Next integration step
 
@@ -193,6 +202,6 @@ signing, and provider consumers until Gate S1's approval,
 revocation/pause, independent security review, owner authentication, and
 provider/chain reconciliation acceptance is complete.
 
-Last updated: 2026-08-15; verified WP-04 control-fence evidence, WP-03
-authorization evidence, WP-02 local isolation, Phase-1 ledger review, CI, S0
-ruleset, and MIT license state. S0/S1 are not marked passed.
+Last updated: 2026-08-15; verified WP-05/WP-06 evidence, current PR-head CI and
+Secret scan, live S0 ruleset/security settings, local isolation, Phase-1 ledger
+review, and MIT license state. S0/S1 are not marked passed.

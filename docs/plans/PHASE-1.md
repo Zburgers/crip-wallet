@@ -26,16 +26,17 @@ balanced ledger transitions, idempotency, and transactional audit events.
   fail-closed indeterminate input. Tasks 1 through 10 and the local Task 11
   integration review are complete. The independent review's implementation
   blockers were remediated and rerun locally; remote CI and the active main
-  protection ruleset are now verified. Gate S1 remains blocked on the wider
-  approval/revocation authorization proof, authenticated reconciliation,
-  integrated recovery, independent security review, and external acceptance.
+  protection ruleset are now verified. Gate S1 remains blocked on owner
+  authentication, integrated signing/provider/chain reconciliation, independent
+  security review, and external acceptance.
   No autonomous authorization, signing, or real execution path exists.
 - WP-04 adds the explicit versioned control-fence proof: authoritative system,
   owner, agent, and policy fences; persisted snapshots on approval, decision,
   and authorization rows; deterministic revoke/pause races; transactional
   stale-authority invalidation; held-reservation release; and audit ordering.
   Local evidence is `tests/concurrency/control-fence.test.ts` (14 focused
-  cases), `test:db` 57/57, and `test:concurrency` 16/16. Gate S1 remains
+  cases), and the current WP-06 rerun is `test:db` 64/64 and
+  `test:concurrency` 16/16. Gate S1 remains
   blocked and no signing, broadcast, or provider consumer was added.
 - WP-05 adds the local authenticated adapter/reconciler boundary, immutable
   component-authenticated evidence snapshots, PostgreSQL recovery leases and
@@ -101,6 +102,6 @@ down-migration or destructive migration API exists.
 WP-02 closes the PR #1 concurrency isolation finding: the DB and concurrency
 suites use the same runtime loader, while ledger audit correlation is derived
 from locked reservation/operation/intent/identity/policy rows. This is local
-implementation evidence only. The final local run passed DB 36/36,
-concurrency 1/1 across 32 rounds, and invariants 7/7 against the persisted
+implementation evidence only. The current WP-06 run passed DB 64/64,
+concurrency 16/16 across 32 rounds, and invariants 7/7 against the persisted
 loopback runtime; Gate S1 remains blocked and Phase 2 is not open.
