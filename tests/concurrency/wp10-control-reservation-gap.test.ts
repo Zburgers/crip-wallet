@@ -2,12 +2,16 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import { Pool } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-
 import {
-  changeControlFence,
-  type ApprovalAuditContext,
-} from "@crip/approvals";
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "vitest";
+
+import { changeControlFence, type ApprovalAuditContext } from "@crip/approvals";
 import { applyMigrations, reserveBudget } from "@crip/budget-ledger";
 import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
 
@@ -25,10 +29,7 @@ const pool = new Pool({
 const asset = "0x0000000000000000000000000000000000000001";
 const decisionHash = `0x${"7".repeat(64)}`;
 
-const audit = (
-  operationId: string,
-  suffix: string,
-): ApprovalAuditContext => ({
+const audit = (operationId: string, suffix: string): ApprovalAuditContext => ({
   eventId: `evt:${operationId}:${suffix}`,
   actorType: "owner",
   actorId: "owner_1",
@@ -129,130 +130,133 @@ const expectInvariant = (row: {
   );
 };
 
-describe.sequential("WP-10 pre-envelope reservation control invalidation", () => {
-  beforeAll(async () => applyMigrations(pool));
-  beforeEach(reset);
-  afterAll(async () => pool.end());
+describe.sequential(
+  "WP-10 pre-envelope reservation control invalidation",
+  () => {
+    beforeAll(async () => applyMigrations(pool));
+    beforeEach(reset);
+    afterAll(async () => pool.end());
 
-  test("reserve then revoke releases the actual post-reservation state without an envelope", async () => {
-    const operationId = "op_wp10_revoke";
-    await reserveWithoutEnvelope(operationId);
+    test("reserve then revoke releases the actual post-reservation state without an envelope", async () => {
+      const operationId = "op_wp10_revoke";
+      await reserveWithoutEnvelope(operationId);
 
-    const before = await lifecycle(operationId);
-    expect(before).toMatchObject({
-      current_state: "POLICY_FINALIZED",
-      reservation_status: "HELD",
-      available: "90",
-      reserved: "10",
-      envelope_count: 0,
-      approval_count: 0,
+      const before = await lifecycle(operationId);
+      expect(before).toMatchObject({
+        current_state: "POLICY_FINALIZED",
+        reservation_status: "HELD",
+        available: "90",
+        reserved: "10",
+        envelope_count: 0,
+        approval_count: 0,
+      });
+      expectInvariant(before);
+
+      await changeControlFence(pool, {
+        scopeType: "AGENT",
+        scopeId: "agent_1",
+        command: "REVOKE",
+        audit: audit(operationId, "agent-revoke"),
+      });
+
+      const after = await lifecycle(operationId);
+      expect(after).toMatchObject({
+        current_state: "REVOKED",
+        reservation_status: "RELEASED",
+        allocated: "100",
+        available: "100",
+        reserved: "0",
+        finalized_spend: "0",
+        envelope_count: 0,
+        approval_count: 0,
+      });
+      expectInvariant(after);
+
+      await expect(
+        reserveBudget(pool, {
+          reservationId: `reservation_${operationId}_retry`,
+          budgetId: "budget_1",
+          operationId,
+          idempotencyKey: `reserve-key-${operationId}-retry`,
+          idempotencyPayload: { operationId, amount: "10", retry: true },
+          amountAtomic: "10",
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          audit: audit(operationId, "reserve-after-revoke"),
+        }),
+      ).rejects.toMatchObject({ code: "CONTROL_FENCE_INACTIVE" });
     });
-    expectInvariant(before);
 
-    await changeControlFence(pool, {
-      scopeType: "AGENT",
-      scopeId: "agent_1",
-      command: "REVOKE",
-      audit: audit(operationId, "agent-revoke"),
-    });
-
-    const after = await lifecycle(operationId);
-    expect(after).toMatchObject({
-      current_state: "REVOKED",
-      reservation_status: "RELEASED",
-      allocated: "100",
-      available: "100",
-      reserved: "0",
-      finalized_spend: "0",
-      envelope_count: 0,
-      approval_count: 0,
-    });
-    expectInvariant(after);
-
-    await expect(
-      reserveBudget(pool, {
-        reservationId: `reservation_${operationId}_retry`,
-        budgetId: "budget_1",
-        operationId,
-        idempotencyKey: `reserve-key-${operationId}-retry`,
-        idempotencyPayload: { operationId, amount: "10", retry: true },
-        amountAtomic: "10",
-        expiresAt: "2099-01-01T00:00:00.000Z",
-        audit: audit(operationId, "reserve-after-revoke"),
-      }),
-    ).rejects.toMatchObject({ code: "CONTROL_FENCE_INACTIVE" });
-  });
-
-  test("reserve then pause releases canonical BUDGET_RESERVED state and requires revalidation", async () => {
-    const operationId = "op_wp10_pause";
-    await reserveWithoutEnvelope(operationId);
-    await pool.query(
-      `UPDATE operations
+    test("reserve then pause releases canonical BUDGET_RESERVED state and requires revalidation", async () => {
+      const operationId = "op_wp10_pause";
+      await reserveWithoutEnvelope(operationId);
+      await pool.query(
+        `UPDATE operations
        SET current_state = 'BUDGET_RESERVED', version = version + 1, updated_at = now()
        WHERE operation_id = $1`,
-      [operationId],
-    );
+        [operationId],
+      );
 
-    const before = await lifecycle(operationId);
-    expect(before).toMatchObject({
-      current_state: "BUDGET_RESERVED",
-      reservation_status: "HELD",
-      available: "90",
-      reserved: "10",
-      envelope_count: 0,
-      approval_count: 0,
+      const before = await lifecycle(operationId);
+      expect(before).toMatchObject({
+        current_state: "BUDGET_RESERVED",
+        reservation_status: "HELD",
+        available: "90",
+        reserved: "10",
+        envelope_count: 0,
+        approval_count: 0,
+      });
+      expectInvariant(before);
+
+      await changeControlFence(pool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "PAUSE",
+        audit: audit(operationId, "system-pause"),
+      });
+
+      const paused = await lifecycle(operationId);
+      expect(paused).toMatchObject({
+        current_state: "REVALIDATION_REQUIRED",
+        reservation_status: "RELEASED",
+        allocated: "100",
+        available: "100",
+        reserved: "0",
+        finalized_spend: "0",
+        envelope_count: 0,
+        approval_count: 0,
+      });
+      expectInvariant(paused);
+
+      await expect(
+        reserveBudget(pool, {
+          reservationId: `reservation_${operationId}_while_paused`,
+          budgetId: "budget_1",
+          operationId,
+          idempotencyKey: `reserve-key-${operationId}-while-paused`,
+          idempotencyPayload: { operationId, amount: "10", paused: true },
+          amountAtomic: "10",
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          audit: audit(operationId, "reserve-while-paused"),
+        }),
+      ).rejects.toMatchObject({ code: "CONTROL_FENCE_INACTIVE" });
+
+      await changeControlFence(pool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "RESUME",
+        audit: audit(operationId, "system-resume"),
+      });
+
+      const resumed = await lifecycle(operationId);
+      expect(resumed).toMatchObject({
+        current_state: "REVALIDATION_REQUIRED",
+        reservation_status: "RELEASED",
+        allocated: "100",
+        available: "100",
+        reserved: "0",
+        finalized_spend: "0",
+      });
+      expectInvariant(resumed);
     });
-    expectInvariant(before);
-
-    await changeControlFence(pool, {
-      scopeType: "SYSTEM",
-      scopeId: "system",
-      command: "PAUSE",
-      audit: audit(operationId, "system-pause"),
-    });
-
-    const paused = await lifecycle(operationId);
-    expect(paused).toMatchObject({
-      current_state: "REVALIDATION_REQUIRED",
-      reservation_status: "RELEASED",
-      allocated: "100",
-      available: "100",
-      reserved: "0",
-      finalized_spend: "0",
-      envelope_count: 0,
-      approval_count: 0,
-    });
-    expectInvariant(paused);
-
-    await expect(
-      reserveBudget(pool, {
-        reservationId: `reservation_${operationId}_while_paused`,
-        budgetId: "budget_1",
-        operationId,
-        idempotencyKey: `reserve-key-${operationId}-while-paused`,
-        idempotencyPayload: { operationId, amount: "10", paused: true },
-        amountAtomic: "10",
-        expiresAt: "2099-01-01T00:00:00.000Z",
-        audit: audit(operationId, "reserve-while-paused"),
-      }),
-    ).rejects.toMatchObject({ code: "CONTROL_FENCE_INACTIVE" });
-
-    await changeControlFence(pool, {
-      scopeType: "SYSTEM",
-      scopeId: "system",
-      command: "RESUME",
-      audit: audit(operationId, "system-resume"),
-    });
-
-    const resumed = await lifecycle(operationId);
-    expect(resumed).toMatchObject({
-      current_state: "REVALIDATION_REQUIRED",
-      reservation_status: "RELEASED",
-      allocated: "100",
-      available: "100",
-      reserved: "0",
-      finalized_spend: "0",
-    });
-    expectInvariant(resumed);
-  });
-});
+  },
+);
