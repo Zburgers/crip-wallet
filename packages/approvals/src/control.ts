@@ -80,11 +80,11 @@ type ControlOperationRow = {
   reservation_id: string;
   budget_id: string;
   amount_atomic: string;
-  envelope_id: string;
-  envelope_revision: number;
-  envelope_hash: string;
-  policy_decision_id: string;
-  policy_decision_hash: string;
+  envelope_id: string | null;
+  envelope_revision: number | null;
+  envelope_hash: string | null;
+  policy_decision_id: string | null;
+  policy_decision_hash: string | null;
   policy_version: number;
   approver_id: string | null;
   nonce: string;
@@ -161,11 +161,19 @@ const operationAudit = async (
     data: {
       reservationId: row.reservation_id,
       ...(row.approval_id ? { approvalId: row.approval_id } : {}),
-      envelopeId: row.envelope_id,
-      envelopeRevision: row.envelope_revision,
-      envelopeHash: row.envelope_hash,
-      policyDecisionId: row.policy_decision_id,
-      policyDecisionHash: row.policy_decision_hash,
+      ...(row.envelope_id
+        ? {
+            envelopeId: row.envelope_id,
+            envelopeRevision: row.envelope_revision,
+            envelopeHash: row.envelope_hash,
+          }
+        : {}),
+      ...(row.policy_decision_id
+        ? {
+            policyDecisionId: row.policy_decision_id,
+            policyDecisionHash: row.policy_decision_hash,
+          }
+        : {}),
       policyVersion: row.policy_version,
       ...(row.issued_at ? { issuedAt: iso(row.issued_at) } : {}),
       ...(row.expires_at ? { expiresAt: iso(row.expires_at) } : {}),
@@ -384,7 +392,8 @@ const invalidateHeldBeforeApproval = async (
     request.scopeType === "SYSTEM" ? "REVALIDATION_REQUIRED" : "REVOKED";
   const operation = await client.query(
     `UPDATE operations SET current_state = $1, version = version + 1, updated_at = now()
-     WHERE operation_id = $2 AND current_state IN ('ENVELOPE_FINALIZED', 'AWAITING_APPROVAL')`,
+     WHERE operation_id = $2
+       AND current_state IN ('POLICY_FINALIZED', 'BUDGET_RESERVED', 'ENVELOPE_FINALIZED', 'AWAITING_APPROVAL')`,
     [nextState, row.operation_id],
   );
   if (operation.rowCount !== 1)
@@ -432,7 +441,8 @@ const invalidateAffectedAuthorizations = async (
     `SELECT NULL::text AS approval_id, o.operation_id, r.reservation_id, r.budget_id,
             r.amount_atomic, e.envelope_id, e.revision AS envelope_revision, e.envelope_hash,
             pd.decision_id AS policy_decision_id, pd.decision_hash AS policy_decision_hash,
-            pd.policy_version, NULL::text AS approver_id, o.operation_id AS nonce,
+            o.policy_version AS policy_version, NULL::text AS approver_id,
+            o.operation_id AS nonce,
             NULL::timestamptz AS issued_at, NULL::timestamptz AS expires_at,
             NULL::text AS authorization_id,
             ag.owner_id, o.agent_id, o.wallet_id, o.intent_id, o.policy_id,
@@ -441,21 +451,21 @@ const invalidateAffectedAuthorizations = async (
      JOIN budget_reservations r ON r.operation_id = o.operation_id
      JOIN budget_accounts b ON b.budget_id = r.budget_id
      JOIN agents ag ON ag.agent_id = o.agent_id
-     JOIN LATERAL (
+     LEFT JOIN LATERAL (
        SELECT envelope_id, revision, envelope_hash
        FROM execution_envelopes
        WHERE operation_id = o.operation_id
        ORDER BY revision DESC
        LIMIT 1
      ) e ON TRUE
-     JOIN LATERAL (
-       SELECT decision_id, decision_hash, policy_version
+     LEFT JOIN LATERAL (
+       SELECT decision_id, decision_hash
        FROM policy_decisions
        WHERE operation_id = o.operation_id
        ORDER BY created_at DESC, decision_id DESC
        LIMIT 1
      ) pd ON TRUE
-     WHERE o.current_state IN ('ENVELOPE_FINALIZED', 'AWAITING_APPROVAL')
+     WHERE o.current_state IN ('POLICY_FINALIZED', 'BUDGET_RESERVED', 'ENVELOPE_FINALIZED', 'AWAITING_APPROVAL')
        AND r.status = 'HELD'
        AND NOT EXISTS (
          SELECT 1 FROM approval_requests active
