@@ -12,9 +12,15 @@ import {
 } from "vitest";
 
 import {
+  approveApproval,
+  consumeApproval,
+  createApprovalRequest,
+  type ApprovalAuditContext,
+} from "@crip/approvals";
+import {
   applyMigrations,
   appendAuditEvent,
-  authorizeReservation,
+  authorizeReservation as verifyAuthorizedReservation,
   disputeReservation,
   expireReservation,
   finalizeReservation,
@@ -28,6 +34,7 @@ import {
   type AuditContext,
   type AuditEventInput,
 } from "@crip/budget-ledger";
+import { attachEnvelopeHash } from "@crip/schemas";
 import {
   generateComponentCredential,
   signComponentAction,
@@ -36,6 +43,7 @@ import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
 
 const repositoryRoot = join(import.meta.dirname, "../..");
 const assetAddress = "0x0000000000000000000000000000000000000001";
+const zeroHash = `0x${"1".repeat(64)}`;
 const adapterCredential = generateComponentCredential({
   credentialId: "credential_adapter_test",
   componentId: "adapter_test",
@@ -64,6 +72,17 @@ const auditContext = (operationId: string): AuditContext => ({
   actorType: "system",
   actorId: "ledger-test",
   traceId: createHash("md5").update(operationId).digest("hex"),
+});
+
+const approvalAudit = (
+  operationId: string,
+  suffix: string,
+  actorType: ApprovalAuditContext["actorType"] = "system",
+): ApprovalAuditContext => ({
+  eventId: `evt:${operationId}:${suffix}`,
+  actorType,
+  actorId: actorType === "owner" ? "owner_1" : "authorization-test",
+  traceId: createHash("md5").update(`${operationId}:${suffix}`).digest("hex"),
 });
 
 const assertedCorrelation = (
@@ -212,6 +231,142 @@ const reserve = (
     audit: auditContext(operationId),
   });
 
+const authorizeReservation = async (
+  targetPool: Pool,
+  input: { reservationId: string; audit: AuditContext },
+) => {
+  if (input.audit.assertedCorrelation)
+    return verifyAuthorizedReservation(targetPool, input);
+
+  const reservationResult = await targetPool.query<{
+    operation_id: string;
+    amount_atomic: string;
+    status: string;
+  }>(
+    `SELECT operation_id, amount_atomic, status
+     FROM budget_reservations
+     WHERE reservation_id = $1`,
+    [input.reservationId],
+  );
+  const reservation = reservationResult.rows[0];
+  if (!reservation)
+    return verifyAuthorizedReservation(targetPool, input);
+  if (reservation.status === "AUTHORIZED")
+    return verifyAuthorizedReservation(targetPool, input);
+  if (reservation.status !== "HELD")
+    return verifyAuthorizedReservation(targetPool, input);
+
+  const operationId = reservation.operation_id;
+  const decisionId = `decision_${operationId}`;
+  await targetPool.query(
+    `INSERT INTO policy_decisions
+      (decision_id, operation_id, policy_id, policy_version, decision, decision_hash, payload)
+     VALUES ($1, $2, 'policy_1', 1, 'REQUIRE_APPROVAL', $3, $4::jsonb)`,
+    [
+      decisionId,
+      operationId,
+      zeroHash,
+      JSON.stringify({ decision: "REQUIRE_APPROVAL", policyVersion: 1 }),
+    ],
+  );
+  const envelope = attachEnvelopeHash({
+    schemaVersion: "1.0",
+    envelopeHash: zeroHash,
+    envelopeId: `env_${operationId}_1`,
+    revision: 1,
+    intentId: `intent_${operationId}`,
+    intentHash: `sha256:${createHash("sha256").update(operationId).digest("hex")}`,
+    agentId: "agent_1",
+    walletId: "wallet_1",
+    adapterId: "local-anvil",
+    adapterVersion: "0.1.0",
+    chainId: "eip155:31337",
+    from: "0x0000000000000000000000000000000000000010",
+    to: assetAddress,
+    value: "0",
+    calldata: "0xa9059cbb",
+    decodedFunction: "erc20.transfer",
+    decodedArguments: {
+      assetAddress,
+      recipient: "0x0000000000000000000000000000000000000020",
+      amountAtomic: String(reservation.amount_atomic),
+    },
+    expectedAssetDeltas: [
+      {
+        assetAddress,
+        from: "0x0000000000000000000000000000000000000010",
+        to: "0x0000000000000000000000000000000000000020",
+        amountAtomic: String(reservation.amount_atomic),
+      },
+    ],
+    simulationBlockReference: "100",
+    simulationResultHash: zeroHash,
+    nonceStrategy: "pending",
+    gasLimit: "21000",
+    maximumFeeConstraints: {
+      asset: "native",
+      maxFeePerGas: "1",
+      maximumNetworkFeeAtomic: "21000",
+    },
+    policyId: "policy_1",
+    policyVersion: 1,
+    policyDecisionHash: zeroHash,
+    budgetReservationId: input.reservationId,
+    createdAt: "2020-01-01T10:00:00Z",
+    expiresAt: "2099-01-01T10:10:00Z",
+    riskDecision: "REVIEW",
+    approvalRequirement: "owner",
+  });
+  await targetPool.query(
+    `INSERT INTO execution_envelopes
+      (envelope_id, operation_id, revision, envelope_hash, payload)
+     VALUES ($1, $2, 1, $3, $4::jsonb)`,
+    [
+      envelope.envelopeId,
+      operationId,
+      envelope.envelopeHash,
+      JSON.stringify(envelope),
+    ],
+  );
+  await targetPool.query(
+    `UPDATE operations
+     SET current_state = 'ENVELOPE_FINALIZED', version = version + 1
+     WHERE operation_id = $1 AND current_state = 'POLICY_FINALIZED'`,
+    [operationId],
+  );
+  const approvalId = `approval_${operationId}`;
+  await createApprovalRequest(targetPool, {
+    approvalId,
+    operationId,
+    reservationId: input.reservationId,
+    envelopeId: envelope.envelopeId,
+    envelopeRevision: envelope.revision,
+    envelopeHash: envelope.envelopeHash,
+    policyDecisionId: decisionId,
+    issuedAt: "2020-01-01T10:00:00Z",
+    expiresAt: "2099-01-01T10:05:00Z",
+    nonce: `nonce_${operationId}`,
+    audit: approvalAudit(operationId, "requested"),
+  });
+  await approveApproval(targetPool, {
+    approvalId,
+    approverId: "owner_1",
+    now: "2099-01-01T10:01:00Z",
+    audit: approvalAudit(operationId, "approved", "owner"),
+  });
+  await consumeApproval(targetPool, {
+    approvalId,
+    operationId,
+    envelopeId: envelope.envelopeId,
+    envelopeRevision: envelope.revision,
+    envelopeHash: envelope.envelopeHash,
+    consumerId: "authorization-service",
+    now: "2099-01-01T10:02:00Z",
+    audit: approvalAudit(operationId, "consumed"),
+  });
+  return verifyAuthorizedReservation(targetPool, input);
+};
+
 describe.sequential("WS-003 PostgreSQL budget ledger", () => {
   beforeAll(async () => applyMigrations(pool));
   beforeEach(reset);
@@ -221,7 +376,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     const migration = await pool.query<{ filename: string; checksum: string }>(
       "SELECT filename, checksum FROM schema_migrations ORDER BY filename",
     );
-    expect(migration.rows).toHaveLength(18);
+    expect(migration.rows).toHaveLength(19);
     expect(migration.rows.map((row) => row.filename)).toEqual([
       "0001_ws003_budget_ledger.sql",
       "0002_ws003_idempotency_binding_guard.sql",
@@ -241,6 +396,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       "0016_wp04_control_fences.sql",
       "0017_wp05_authenticated_recovery.sql",
       "0018_wp05_evidence_trigger_fix.sql",
+      "0019_wp07_canonical_authorization_guard.sql",
     ]);
     expect(
       migration.rows.every((row) => /^sha256:[0-9a-f]{64}$/.test(row.checksum)),
@@ -856,6 +1012,67 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     });
   });
 
+  test("direct ledger calls cannot manufacture authorization or broadcast", async () => {
+    await insertOperation(pool, "op_authorization_bypass");
+    await reserve(
+      "op_authorization_bypass",
+      "res_authorization_bypass",
+      "authorization-bypass-key",
+      "40",
+    );
+    await expect(
+      verifyAuthorizedReservation(pool, {
+        reservationId: "res_authorization_bypass",
+        audit: auditContext("op_authorization_bypass"),
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RESERVATION_TRANSITION" });
+    await expect(
+      pool.query(
+        "UPDATE budget_reservations SET status = 'AUTHORIZED' WHERE reservation_id = $1",
+        ["res_authorization_bypass"],
+      ),
+    ).rejects.toThrow(/current canonical authorization evidence/i);
+    const evidence = {
+      transactionHash: `0x${"4".repeat(64)}`,
+      nonce: "4",
+      receiptReference: "receipt:authorization-bypass",
+    };
+    await expect(
+      markReservationBroadcast(pool, {
+        reservationId: "res_authorization_bypass",
+        audit: adapterAuditContext(
+          "op_authorization_bypass",
+          "res_authorization_bypass",
+          evidence,
+        ),
+        evidence,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RESERVATION_TRANSITION" });
+    await expect(
+      pool.query(
+        `SELECT r.status,
+                count(be.reservation_id)::int AS broadcast_evidence_count,
+                count(ae.authorization_id)::int AS authorization_evidence_count
+         FROM budget_reservations r
+         LEFT JOIN reservation_broadcast_evidence be
+           ON be.reservation_id = r.reservation_id
+         LEFT JOIN authorization_evidence ae
+           ON ae.reservation_id = r.reservation_id
+         WHERE r.reservation_id = $1
+         GROUP BY r.status`,
+        ["res_authorization_bypass"],
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          status: "HELD",
+          broadcast_evidence_count: 0,
+          authorization_evidence_count: 0,
+        },
+      ],
+    });
+  });
+
   test("finalizes actual spend and releases unused reservation", async () => {
     await insertOperation(pool, "op_finalize");
     await reserve("op_finalize", "res_finalize", "finalize-key", "40");
@@ -1049,7 +1266,10 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     expect(
       (
         await pool.query(
-          "SELECT event_type FROM audit_events WHERE operation_id = $1 ORDER BY sequence_no",
+          `SELECT event_type FROM audit_events
+           WHERE operation_id = $1
+             AND event_type LIKE 'budget.reservation.%'
+           ORDER BY sequence_no`,
           ["op_lifecycle"],
         )
       ).rows.map((row) => row.event_type),
