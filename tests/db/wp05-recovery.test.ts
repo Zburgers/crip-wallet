@@ -155,6 +155,7 @@ const claimAudit = (
   operationId: string,
   reservationId: string,
   attemptId: string,
+  leaseDurationSeconds: number,
 ): AuditContext => ({
   ...audit(operationId, `claim:${attemptId}`),
   actorType: "worker",
@@ -163,6 +164,7 @@ const claimAudit = (
     attemptId,
     operationId,
     reservationId,
+    leaseDurationSeconds,
   }),
 });
 
@@ -329,6 +331,23 @@ const reserve = async (
   await authorizeCanonically(operationId, reservationId, amount);
 };
 
+const reserveForRecoveryClaim = async (
+  operationId: string,
+  reservationId: string,
+  amount = "20",
+): Promise<void> => {
+  await reserveBudget(pool, {
+    reservationId,
+    budgetId: "budget_1",
+    operationId,
+    idempotencyKey: `reserve-key-${operationId}`,
+    idempotencyPayload: { operationId, amount },
+    amountAtomic: amount,
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    audit: audit(operationId, "reserve"),
+  });
+};
+
 const setup = async (): Promise<void> => {
   await pool.query(`
     INSERT INTO owners (owner_id, display_name) VALUES ('owner_1', 'WP05 owner');
@@ -388,7 +407,12 @@ const claim = async (
     reservationId,
     leaseDurationSeconds,
     now: now(),
-    audit: claimAudit(operationId, reservationId, attemptId),
+    audit: claimAudit(
+      operationId,
+      reservationId,
+      attemptId,
+      leaseDurationSeconds,
+    ),
   });
 
 describe.sequential("WP-05 authenticated reconciliation and recovery", () => {
@@ -460,6 +484,96 @@ describe.sequential("WP-05 authenticated reconciliation and recovery", () => {
       verification_component_id: "reconciler_wp05",
       verification_status: "VERIFIED",
     });
+  });
+
+  test("binds lease duration into recovery claim authentication", async () => {
+    await insertOperation("op_claim_duration");
+    await reserveForRecoveryClaim("op_claim_duration", "res_claim_duration");
+    const signedAudit = claimAudit(
+      "op_claim_duration",
+      "res_claim_duration",
+      "attempt_claim_duration",
+      60,
+    );
+    await expect(
+      claimRecoveryLease(pool, {
+        attemptId: "attempt_claim_duration",
+        operationId: "op_claim_duration",
+        reservationId: "res_claim_duration",
+        leaseDurationSeconds: 61,
+        now: "9999-01-01T00:00:00Z",
+        audit: signedAudit,
+      }),
+    ).rejects.toMatchObject({ code: "COMPONENT_AUTHENTICATION_FAILED" });
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS count FROM operation_recovery_leases WHERE operation_id = $1",
+          ["op_claim_duration"],
+        )
+      ).rows[0]?.count,
+    ).toBe(0);
+  });
+
+  test("uses the database clock and bounds recovery lease duration", async () => {
+    await insertOperation("op_claim_clock");
+    await reserveForRecoveryClaim("op_claim_clock", "res_claim_clock");
+    const lease = await claimRecoveryLease(pool, {
+      attemptId: "attempt_claim_clock",
+      operationId: "op_claim_clock",
+      reservationId: "res_claim_clock",
+      leaseDurationSeconds: 120,
+      now: "1900-01-01T00:00:00Z",
+      audit: claimAudit(
+        "op_claim_clock",
+        "res_claim_clock",
+        "attempt_claim_clock",
+        120,
+      ),
+    });
+    const timing = await pool.query<{
+      lease_is_live: boolean;
+      remaining_seconds: string;
+    }>(
+      `SELECT lease_expires_at > clock_timestamp() AS lease_is_live,
+            extract(epoch FROM (lease_expires_at - clock_timestamp()))::text AS remaining_seconds
+     FROM operation_recovery_leases WHERE operation_id = $1`,
+      ["op_claim_clock"],
+    );
+    expect(timing.rows[0]?.lease_is_live).toBe(true);
+    expect(Number(timing.rows[0]?.remaining_seconds)).toBeGreaterThan(100);
+    expect(lease.leaseExpiresAt).not.toContain("1900");
+
+    await expect(
+      claimRecoveryLease(pool, {
+        attemptId: "attempt_claim_steal",
+        operationId: "op_claim_clock",
+        reservationId: "res_claim_clock",
+        leaseDurationSeconds: 120,
+        now: "9999-01-01T00:00:00Z",
+        audit: claimAudit(
+          "op_claim_clock",
+          "res_claim_clock",
+          "attempt_claim_steal",
+          120,
+        ),
+      }),
+    ).rejects.toMatchObject({ code: "RECOVERY_LEASE_HELD" });
+
+    await expect(
+      claimRecoveryLease(pool, {
+        attemptId: "attempt_claim_unbounded",
+        operationId: "op_claim_clock",
+        reservationId: "res_claim_clock",
+        leaseDurationSeconds: 301,
+        audit: claimAudit(
+          "op_claim_clock",
+          "res_claim_clock",
+          "attempt_claim_unbounded",
+          301,
+        ),
+      }),
+    ).rejects.toMatchObject({ code: "RECOVERY_LEASE_STALE" });
   });
 
   test("response loss is replay-safe and ambiguous recovery retains funds", async () => {
