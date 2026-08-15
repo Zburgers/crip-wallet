@@ -73,6 +73,22 @@ BEGIN
 END;
 $$;
 
+-- WP-03's original reservation consistency trigger required an AUTHORIZED
+-- operation to keep the reservation at exactly AUTHORIZED forever. Phase-1
+-- execution advances that reservation to BROADCAST and FINALIZED while the
+-- operation remains at the pre-signing AUTHORIZED boundary. For those
+-- downstream reservation states, the canonical guard below is the stronger
+-- invariant: immutable consumed authorization evidence must still match the
+-- current envelope, policy decision, and control-fence generation.
+DROP TRIGGER reservations_approval_state_consistency ON budget_reservations;
+
+CREATE CONSTRAINT TRIGGER reservations_approval_state_consistency
+  AFTER INSERT OR UPDATE ON budget_reservations
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  WHEN (NEW.status NOT IN ('BROADCAST', 'FINALIZED', 'DISPUTED'))
+  EXECUTE FUNCTION enforce_approval_operation_consistency();
+
 CREATE CONSTRAINT TRIGGER budget_reservations_canonical_authorization_guard
   AFTER INSERT OR UPDATE OF status ON budget_reservations
   DEFERRABLE INITIALLY DEFERRED

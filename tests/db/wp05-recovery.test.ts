@@ -12,8 +12,14 @@ import {
 } from "vitest";
 
 import {
+  approveApproval,
+  consumeApproval,
+  createApprovalRequest,
+  type ApprovalAuditContext,
+} from "@crip/approvals";
+import {
   applyMigrations,
-  authorizeReservation,
+  authorizeReservation as verifyAuthorizedReservation,
   claimRecoveryLease,
   getBudget,
   markReservationBroadcast,
@@ -25,6 +31,7 @@ import {
   type RecoveryLease,
   type RecoveryResolution,
 } from "@crip/budget-ledger";
+import { attachEnvelopeHash } from "@crip/schemas";
 import {
   generateComponentCredential,
   signComponentAction,
@@ -42,6 +49,7 @@ const pool = new Pool({
   max: 8,
 });
 const asset = "0x0000000000000000000000000000000000000001";
+const zeroHash = `0x${"1".repeat(64)}`;
 const adapter = generateComponentCredential({
   credentialId: "credential_wp05_adapter",
   componentId: "adapter_wp05",
@@ -61,6 +69,16 @@ const audit = (operationId: string, suffix: string): AuditContext => ({
   actorType: "system",
   actorId: "untrusted-caller-label",
   traceId: trace(`${operationId}:${suffix}`),
+});
+const approvalAudit = (
+  operationId: string,
+  suffix: string,
+  actorType: ApprovalAuditContext["actorType"] = "system",
+): ApprovalAuditContext => ({
+  eventId: `evt:${operationId}:approval:${suffix}`,
+  actorType,
+  actorId: actorType === "owner" ? "owner_1" : "authorization-test",
+  traceId: trace(`${operationId}:approval:${suffix}`),
 });
 
 const evidence = (suffix: string): BroadcastEvidence => ({
@@ -161,6 +179,124 @@ const insertOperation = async (operationId: string): Promise<void> => {
   );
 };
 
+const authorizeCanonically = async (
+  operationId: string,
+  reservationId: string,
+  amount: string,
+): Promise<void> => {
+  const decisionId = `decision_${operationId}`;
+  await pool.query(
+    `INSERT INTO policy_decisions
+      (decision_id, operation_id, policy_id, policy_version, decision, decision_hash, payload)
+     VALUES ($1, $2, 'policy_1', 1, 'REQUIRE_APPROVAL', $3, $4::jsonb)`,
+    [
+      decisionId,
+      operationId,
+      zeroHash,
+      JSON.stringify({ decision: "REQUIRE_APPROVAL", policyVersion: 1 }),
+    ],
+  );
+  const envelope = attachEnvelopeHash({
+    schemaVersion: "1.0",
+    envelopeHash: zeroHash,
+    envelopeId: `env_${operationId}_1`,
+    revision: 1,
+    intentId: `intent_${operationId}`,
+    intentHash: `sha256:${createHash("sha256").update(operationId).digest("hex")}`,
+    agentId: "agent_1",
+    walletId: "wallet_1",
+    adapterId: "local-anvil",
+    adapterVersion: "0.1.0",
+    chainId: "eip155:31337",
+    from: "0x0000000000000000000000000000000000000010",
+    to: asset,
+    value: "0",
+    calldata: "0xa9059cbb",
+    decodedFunction: "erc20.transfer",
+    decodedArguments: {
+      assetAddress: asset,
+      recipient: "0x0000000000000000000000000000000000000020",
+      amountAtomic: amount,
+    },
+    expectedAssetDeltas: [
+      {
+        assetAddress: asset,
+        from: "0x0000000000000000000000000000000000000010",
+        to: "0x0000000000000000000000000000000000000020",
+        amountAtomic: amount,
+      },
+    ],
+    simulationBlockReference: "100",
+    simulationResultHash: zeroHash,
+    nonceStrategy: "pending",
+    gasLimit: "21000",
+    maximumFeeConstraints: {
+      asset: "native",
+      maxFeePerGas: "1",
+      maximumNetworkFeeAtomic: "21000",
+    },
+    policyId: "policy_1",
+    policyVersion: 1,
+    policyDecisionHash: zeroHash,
+    budgetReservationId: reservationId,
+    createdAt: "2020-01-01T10:00:00Z",
+    expiresAt: "2099-01-01T10:10:00Z",
+    riskDecision: "REVIEW",
+    approvalRequirement: "owner",
+  });
+  await pool.query(
+    `INSERT INTO execution_envelopes
+      (envelope_id, operation_id, revision, envelope_hash, payload)
+     VALUES ($1, $2, 1, $3, $4::jsonb)`,
+    [
+      envelope.envelopeId,
+      operationId,
+      envelope.envelopeHash,
+      JSON.stringify(envelope),
+    ],
+  );
+  await pool.query(
+    `UPDATE operations
+     SET current_state = 'ENVELOPE_FINALIZED', version = version + 1
+     WHERE operation_id = $1 AND current_state = 'POLICY_FINALIZED'`,
+    [operationId],
+  );
+  const approvalId = `approval_${operationId}`;
+  await createApprovalRequest(pool, {
+    approvalId,
+    operationId,
+    reservationId,
+    envelopeId: envelope.envelopeId,
+    envelopeRevision: envelope.revision,
+    envelopeHash: envelope.envelopeHash,
+    policyDecisionId: decisionId,
+    issuedAt: "2020-01-01T10:00:00Z",
+    expiresAt: "2099-01-01T10:05:00Z",
+    nonce: `nonce_${operationId}`,
+    audit: approvalAudit(operationId, "requested"),
+  });
+  await approveApproval(pool, {
+    approvalId,
+    approverId: "owner_1",
+    now: "2099-01-01T10:01:00Z",
+    audit: approvalAudit(operationId, "approved", "owner"),
+  });
+  await consumeApproval(pool, {
+    approvalId,
+    operationId,
+    envelopeId: envelope.envelopeId,
+    envelopeRevision: envelope.revision,
+    envelopeHash: envelope.envelopeHash,
+    consumerId: "authorization-service",
+    now: "2099-01-01T10:02:00Z",
+    audit: approvalAudit(operationId, "consumed"),
+  });
+  await verifyAuthorizedReservation(pool, {
+    reservationId,
+    audit: audit(operationId, "authorize-verified"),
+  });
+};
+
 const reserve = async (
   operationId: string,
   reservationId: string,
@@ -176,10 +312,7 @@ const reserve = async (
     expiresAt: "2099-01-01T00:00:00.000Z",
     audit: audit(operationId, "reserve"),
   });
-  await authorizeReservation(pool, {
-    reservationId,
-    audit: audit(operationId, "authorize"),
-  });
+  await authorizeCanonically(operationId, reservationId, amount);
 };
 
 const setup = async (): Promise<void> => {
