@@ -762,6 +762,51 @@ const writeTransitionAudit = async (
     ),
   });
 
+const assertCanonicalAuthorizationEvidence = async (
+  client: PoolClient,
+  reservation: ReservationSnapshot,
+): Promise<void> => {
+  const result = await client.query<{ authorization_id: string }>(
+    `SELECT ae.authorization_id
+     FROM authorization_evidence ae
+     JOIN operations o ON o.operation_id = ae.operation_id
+     JOIN execution_envelopes e
+       ON e.operation_id = ae.operation_id
+      AND e.envelope_id = ae.envelope_id
+      AND e.revision = ae.envelope_revision
+     JOIN policy_decisions pd
+       ON pd.operation_id = ae.operation_id
+      AND pd.decision_id = ae.policy_decision_id
+     LEFT JOIN authorization_invalidations ai
+       ON ai.authorization_id = ae.authorization_id
+     WHERE ae.reservation_id = $1
+       AND ae.operation_id = $2
+       AND o.current_state = 'AUTHORIZED'
+       AND ai.authorization_id IS NULL
+       AND e.envelope_hash = ae.envelope_hash
+       AND pd.decision_hash = ae.policy_decision_hash
+       AND pd.policy_id = ae.policy_id
+       AND pd.policy_version = ae.policy_version
+       AND NOT EXISTS (
+         SELECT 1
+         FROM execution_envelopes latest
+         WHERE latest.operation_id = ae.operation_id
+           AND latest.revision > ae.envelope_revision
+       )
+     FOR SHARE OF ae, o, e, pd`,
+    [reservation.reservationId, reservation.operationId],
+  );
+  if (result.rowCount !== 1)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "canonical authorization evidence is missing, invalidated, stale, or inconsistent",
+    );
+};
+
+/**
+ * Verify a reservation that was authorized by the canonical authorization
+ * service. This function intentionally cannot manufacture AUTHORIZED state.
+ */
 export const authorizeReservation = (
   pool: Pool,
   input: TransitionInput,
@@ -769,26 +814,14 @@ export const authorizeReservation = (
   transitionReservation(
     pool,
     input,
-    async (client, reservation, correlation) => {
-      if (reservation.status === "AUTHORIZED") return reservation;
-      if (reservation.status !== "HELD")
+    async (client, reservation) => {
+      if (reservation.status !== "AUTHORIZED")
         throw new LedgerError(
           "INVALID_RESERVATION_TRANSITION",
-          `cannot authorize ${reservation.status} reservation`,
+          "reservation authorization must be committed by the canonical authorization path",
         );
-      await client.query(
-        "UPDATE budget_reservations SET status = 'AUTHORIZED', updated_at = now() WHERE reservation_id = $1",
-        [reservation.reservationId],
-      );
-      const next = { ...reservation, status: "AUTHORIZED" as const };
-      await writeTransitionAudit(
-        client,
-        input.audit,
-        "budget.reservation.authorized",
-        next,
-        correlation,
-      );
-      return next;
+      await assertCanonicalAuthorizationEvidence(client, reservation);
+      return reservation;
     },
   );
 
@@ -813,6 +846,12 @@ export const markReservationBroadcast = (
           receiptReference: evidence.receiptReference,
         },
       );
+      if (reservation.status !== "AUTHORIZED" && reservation.status !== "BROADCAST")
+        throw new LedgerError(
+          "INVALID_RESERVATION_TRANSITION",
+          `cannot mark ${reservation.status} reservation as broadcast`,
+        );
+      await assertCanonicalAuthorizationEvidence(client, reservation);
       if (reservation.status === "BROADCAST") {
         const existing = await getBroadcastEvidence(
           client,
@@ -829,11 +868,6 @@ export const markReservationBroadcast = (
           );
         return reservation;
       }
-      if (reservation.status !== "AUTHORIZED")
-        throw new LedgerError(
-          "INVALID_RESERVATION_TRANSITION",
-          `cannot mark ${reservation.status} reservation as broadcast`,
-        );
       await client.query(
         `INSERT INTO reservation_broadcast_evidence
        (reservation_id, transaction_hash, nonce, receipt_reference, verification_source,
