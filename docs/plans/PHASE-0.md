@@ -101,7 +101,7 @@ repository setting. It does not authorize Phase 2.
   locked install, 15 repository tests, 41 schema tests, dependency audit, live
   PostgreSQL 17.10 and Anvil 31337 inspection, permission/log checks, baseline
   diff check, and digest-pinned Gitleaks history/candidate scans.
-- 2026-08-15 WP-06 remote closeout: current PR #1 head
+- 2026-08-15 WP-06 remote closeout: implementation parent
   `515e8e2c6fe1547ea5d0806033e024564ddd680e` passed CI run `31880041818` and
   Secret scan/Gitleaks run `31880040380`; ruleset `20791659` is active on
   `main` with the registered `validate`, deletion, and non-fast-forward rules,

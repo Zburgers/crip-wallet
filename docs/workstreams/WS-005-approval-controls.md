@@ -62,7 +62,8 @@ CONFLICT outcomes remain DISPUTED with reserved funds. The focused proof is
 `tests/db/wp05-recovery.test.ts` (7/7). It uses local fakes and deliberately
 does not open signing, RPC, provider, testnet, mainnet, or real-funds scope.
 
-WP-06 verification on current PR head `515e8e2c6fe1547ea5d0806033e024564ddd680e`
+WP-06 verification on the current PR head (this documentation-only closeout
+commit; implementation parent `515e8e2c6fe1547ea5d0806033e024564ddd680e`)
 reproduced the replay, expiry, envelope-mutation, revocation-race, pause-race,
 authenticated-evidence, uncertain-outcome, and duplicate-finalization controls.
 These results do not close S1: ADR-0008 owner authentication, integrated

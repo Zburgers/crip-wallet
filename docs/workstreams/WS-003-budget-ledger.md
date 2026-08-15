@@ -74,8 +74,9 @@ WP-01 remediation evidence, 2026-08-15, superseded PR #1 head
 - Gate S1 remains blocked; this remediation does not accept the independent
   review, close S1, open Phase 2, or expose WS-004.
 
-WP-06 current-head verification, 2026-08-15, PR #1 head
-`515e8e2c6fe1547ea5d0806033e024564ddd680e`:
+WP-06 current-head verification, 2026-08-15, PR #1 current head (this
+documentation-only closeout commit; implementation parent
+`515e8e2c6fe1547ea5d0806033e024564ddd680e`):
 
 - The fresh DB gate passed 64/64 and the concurrency gate passed 16/16 across
   32 rounds with four workers and ready/start/release barriers. Invariants

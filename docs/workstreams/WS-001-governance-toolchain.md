@@ -75,7 +75,7 @@ tooling/local environment; CI/security controls; verification/state.
   hash; two checkout projects received separate Docker-assigned ports; failed
   startup cleanup used project-scoped `down --remove-orphans` without volume
   deletion. S0 remains open pending independent review/acceptance.
-- 2026-08-15 WP-06 remote evidence: current PR #1 head
+- 2026-08-15 WP-06 remote evidence: implementation parent
   `515e8e2c6fe1547ea5d0806033e024564ddd680e` passed CI `validate` run
   `31880041818` and Secret scan/Gitleaks run `31880040380`. Ruleset `20791659`
   is active on `main` with `validate`, deletion, and non-fast-forward rules;

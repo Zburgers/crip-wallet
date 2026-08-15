@@ -13,7 +13,8 @@ keep this as the current resume snapshot rather than an activity log.
   findings in the current tree or two-commit history.
 - Working branch: `phase-0/governance-foundation`
 - Last integrated implementation: WP-05 authenticated recovery proof at
-  `515e8e2`; remote CI and Secret scan are green at the current PR head, while
+  `515e8e2`; the current PR head is a documentation-only WP-06 closeout commit;
+  remote CI and Secret scan for the implementation parent are green, while
   repository approval controls and required human review remain open.
 
 ## Current phase and status
@@ -45,7 +46,7 @@ keep this as the current resume snapshot rather than an activity log.
   effective runtime state, per-checkout container/database isolation, and
   defensive lifecycle scripts with project-scoped partial-start cleanup.
 - CI, secret scanning, CODEOWNERS, Dependabot, and contribution templates are
-  implemented locally. Current PR #1 head `515e8e2` passed `validate` run
+  implemented locally. Implementation parent `515e8e2` passed `validate` run
   `31880041818` and Secret scan/Gitleaks run `31880040380`; the live ruleset
   and repository security settings were rechecked for this review.
 - WS-002 is locally frozen without any signing surface: the canonical enforcement-grade
@@ -161,10 +162,11 @@ test:concurrency` passed 1/1 across 32 rounds and 4 workers;
   same image using `gitleaks dir`: no leaks. Ignored `.local/` runtime state was
   excluded because it contains the generated disposable database password by
   design; no scan result for that directory is claimed.
-- 2026-08-15 current-head remote PR verification: CI `validate` run
-  `31880041818` and Secret scan/Gitleaks run `31880040380` passed at head
+- 2026-08-15 implementation-parent remote PR verification: CI `validate` run
+  `31880041818` and Secret scan/Gitleaks run `31880040380` passed at parent
   `515e8e2c6fe1547ea5d0806033e024564ddd680e`. The isolated fake-money service
-  step, mode `0600`, and quiet signer-log checks passed remotely.
+  step, mode `0600`, and quiet signer-log checks passed remotely; current-head
+  post-push runs are reported separately.
 - 2026-08-15 WP-02 focused verification: 20 Node repository tests and 118
   package tests passed; DB 36/36 and concurrency 1/1 across 32 rounds passed
   against the persisted 32777 runtime; invariants passed 7/7; a wrong-port
