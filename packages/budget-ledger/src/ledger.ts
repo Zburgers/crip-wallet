@@ -846,7 +846,10 @@ export const markReservationBroadcast = (
           receiptReference: evidence.receiptReference,
         },
       );
-      if (reservation.status !== "AUTHORIZED" && reservation.status !== "BROADCAST")
+      if (
+        reservation.status !== "AUTHORIZED" &&
+        reservation.status !== "BROADCAST"
+      )
         throw new LedgerError(
           "INVALID_RESERVATION_TRANSITION",
           `cannot mark ${reservation.status} reservation as broadcast`,
