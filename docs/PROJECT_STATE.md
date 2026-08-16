@@ -10,6 +10,7 @@ Update rule: at every meaningful integration point; keep this as the current res
 - Governing product authority: `docs/PRODUCT_SPEC.md`
 - Current implementation baseline entering WP-11: `de9cac0cc19fb17b6964074878d4916cb30899ef`
 - WP-11 CI/governance integration parent: `a37074b3623d05db67b2e7bbe3cb592bd9a85d13`
+- WP-11 living-document contract correction: `6757dfdd545970aa8dbbe75e6a7c6fb0f57e49e8`
 
 ## Gate status
 
