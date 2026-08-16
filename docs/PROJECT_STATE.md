@@ -8,6 +8,7 @@ Owner: lead orchestrator. This file is the current resume snapshot, not an activ
 - Working branch / PR: `phase-0/governance-foundation` / PR #1
 - Governing product authority: `docs/PRODUCT_SPEC.md`
 - Current implementation baseline entering WP-11: `de9cac0cc19fb17b6964074878d4916cb30899ef`
+- WP-11 CI/governance integration parent: `a37074b3623d05db67b2e7bbe3cb592bd9a85d13`
 
 ## Gate status
 
