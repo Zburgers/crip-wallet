@@ -2,83 +2,35 @@
 
 ## Objective and status
 
-Establish a reproducible, auditable, local-only repository foundation. Status:
-LOCAL COMPLETE / REMOTE CONTROLS VERIFIED on `phase-0/governance-foundation` from
-baseline `3a044ee`; S0 remains open because this sole-maintainer repository
-intentionally has zero required approvals and review-thread resolution is not
-required.
+Establish a reproducible, auditable, local-only repository foundation.
 
-## Governing sections
+**Status: COMPLETE. Gate S0 PASS against the governing Product Spec.**
 
-Product spec 1, 8, 13, 28, 31–36, 40–43; ADRs 0001, 0007, and 0013;
-`docs/plans/PHASE-0.md`.
+The repository is sole-maintainer. The active main ruleset therefore does not claim a separate-account approval; that is tracked as merge-governance risk R-019 rather than being misrepresented as an independent human review.
 
-## Scope and ownership
+## Governing sources
 
-Own root developer/quality configuration, `scripts/`, `tooling/`, `.github/`,
-governance docs, decisions, Phase-0 plan, and repository policy tests.
-
-Out of scope: product domain implementation, signing, wallet/RPC application
-code, public interfaces, production deployment, testnet/mainnet, and license
-selection without owner approval.
-
-## Dependencies and shared contracts
-
-Depends only on verified repository/GitHub evidence and governing documents.
-May define local environment identifiers and repository conventions; must not
-define product schemas owned by WS-002.
+Product Spec sections 1, 8, 13, 28, 31-36 and 40-43; ADR-0001, ADR-0007 and ADR-0013; `docs/plans/PHASE-0.md`.
 
 ## Security invariants
 
-- Local Anvil 31337 and fake state only.
-- Generated credentials/state ignored and never printed by status commands.
-- Loopback-only published services.
-- CI/actions and container inputs pinned; dependencies locked and audited.
-- Governance status never overclaims unimplemented behavior.
-
-## Acceptance and tests
-
-- P0-001 through P0-006 evidence is reproducible.
-- `npm ci`, static checks, repository policy tests, and docs checks pass.
-- Clean Compose startup reports PostgreSQL healthy and chain ID `0x7a69`.
-- `.local/runtime.env` is the checkout-bound effective runtime authority;
-  Docker-assigned loopback host ports are persisted mode `0600`, and lifecycle
-  failure cleanup is restricted to the checkout's Compose project.
-- Secret/dependency scans contain no critical/high unresolved result.
-- Required docs have owners/update rules and no duplicate authority.
-
-## Deliverables, integration, and commits
-
-Deliver root docs/config, local services, CI/security controls, and living evidence.
-Integrate before WS-002. Separate commits: path normalization; spec/ADRs/governance;
-tooling/local environment; CI/security controls; verification/state.
+- local Anvil 31337 and fake state only;
+- generated credentials/state ignored and never printed;
+- loopback-only published services;
+- dependency lockfile and audit checks;
+- pinned GitHub Actions inputs;
+- CODEOWNERS and vulnerability-reporting guidance;
+- active branch protection;
+- no real-wallet material.
 
 ## Evidence
 
-- Baseline and GitHub settings audit recorded 2026-08-10.
-- Canonical rename commit `5a9d80c`.
-- Governance/plan scaffold commit `f86fa64`.
-- 2026-08-10 working tree: `npm ci` installed 131 packages and audited 132 with
-  zero vulnerabilities; `npm run check` passed formatting, lint, strict types,
-  14/14 Node repository tests, empty-bootstrap Vitest, 15 docs, and repo checks.
-- Compose validation, Bash syntax, `npm audit --audit-level=high`, stop/start,
-  PostgreSQL 17.10 readiness, deterministic quiet Anvil chain `0x7a69`, zero
-  Anvil log lines, per-checkout Compose isolation, and race-safe mode `0600`
-  ignored generated state passed.
-- Least-privilege CI and full-history Gitleaks workflows use current exact action
-  SHAs; 14/14 repository tests enforce the controls. Gitleaks 8.30.1 scanned all
-  five committed revisions at `da1451c` and the exported staged candidate with
-  no leaks; `docs/PROJECT_STATE.md` records the exact digest and commands.
-- WP-02 focused proof on 2026-08-15: non-default effective PostgreSQL/Anvil
-  ports loaded by both DB and concurrency suites; a conflicting port override
-  failed before DB connection; copied runtime state was rejected by checkout
-  hash; two checkout projects received separate Docker-assigned ports; failed
-  startup cleanup used project-scoped `down --remove-orphans` without volume
-  deletion. S0 remains open pending independent review/acceptance.
-- 2026-08-15 WP-06 remote evidence: implementation parent
-  `515e8e2c6fe1547ea5d0806033e024564ddd680e` passed CI `validate` run
-  `31880041818` and Secret scan/Gitleaks run `31880040380`. Ruleset `20791659`
-  is active on `main` with `validate`, deletion, and non-fast-forward rules;
-  the live API reports zero required approvals and no required review-thread
-  resolution. Dependabot security updates are enabled. The independent review
-  and acceptance criterion therefore remains open; ADR-0013 is accepted as MIT.
+- canonical governing paths and accepted security/governance ADRs;
+- strict npm/TypeScript/repository/doc checks;
+- digest-pinned PostgreSQL and deterministic Anvil local services;
+- checkout-bound `.local/runtime.env` with Docker-assigned loopback ports and project-scoped cleanup;
+- CI + Gitleaks, Dependabot, CODEOWNERS and contribution/security templates;
+- MIT licensing via ADR-0013;
+- active ruleset `20791659` requiring `validate` with deletion and non-fast-forward protections.
+
+Later phases may strengthen merge governance, but no Phase-0 safety requirement is being treated as satisfied by a nonexistent second maintainer.

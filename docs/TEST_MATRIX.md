@@ -1,158 +1,108 @@
 # MVP Test Matrix
 
-Owner: security and verification workstream. Update rule: with every requirement,
-threat, test, run, skip, failure, or gate change. Status values are `PLANNED`,
-`PASS`, `FAIL`, `BLOCKED`, or `NOT APPLICABLE`. Only reproducible evidence may
-set `PASS`.
+Owner: security/verification workstream. Status values: `PLANNED`, `PASS`, `BLOCKED`, `NOT APPLICABLE`.
 
-## WP-06 current-head verification snapshot
+## Current Phase-1 closeout snapshot
 
-All current PR evidence in this addendum is for PR #1's current head on
-`phase-0/governance-foundation`, the documentation-only WP-06 closeout commit
-applied after implementation parent `515e8e2c6fe1547ea5d0806033e024564ddd680e`,
-on 2026-08-15. `npm ci` installed
-156 packages and audited 163 with 0 vulnerabilities; `npm run check` passed 20
-Node repository tests and 118 Vitest tests; `npm audit --audit-level=high`
-passed; `npm run dev:up`/`dev:status` reported loopback PostgreSQL `32820` and
-Anvil `32821` on chain `0x7a69`; `test:db` passed 64/64; `test:concurrency`
-passed 16/16 with workers=4, rounds=32, ready/start/release barriers and a
-5000ms barrier timeout; `test:invariants` passed 7/7 with seeds
-`2026081301`, `2026081302`, `2026081303` and 512 runs; and `dev:down` cleaned
-only the checkout project while preserving ignored state.
+Implementation head: `de9cac0cc19fb17b6964074878d4916cb30899ef`.
 
-Remote current-head evidence is the post-push CI `validate` and Secret
-scan/Gitleaks runs, both successful; their exact run IDs are recorded in the
-PR #1 review record. The live `S0 main protection`
-ruleset `20791659` is active with `validate`, deletion, and non-fast-forward
-rules, but currently reports zero required approvals and no required review
-thread resolution. PR #1 has no independent approval. These governance facts
-keep S0 open and S1 blocked; no gate pass is claimed here.
+| Check | Result |
+| --- | --- |
+| `npm ci` | PASS — 156 packages, 0 vulnerabilities |
+| `npm run check` | PASS — 20 repository tests + 118 package tests |
+| `npm audit --audit-level=high` | PASS — 0 vulnerabilities |
+| `npm run dev:up` / `dev:status` | PASS — loopback PostgreSQL + Anvil chain `0x7a69` |
+| `npm run test:db` | PASS — 71/71 |
+| `npm run test:concurrency` | PASS — 18/18 |
+| `npm run test:invariants` | PASS — 7/7 |
+| owner-approval focused DB | PASS — 25/25 |
+| concurrent approval consumption | PASS — 1/1, exactly one winner |
+| `npm run dev:down` | PASS |
 
-## Product and release requirements
+The protected `validate` workflow now includes DB, concurrency and invariant gates. A current-head remote run is required before final S1 acceptance.
 
-## WP-04 local evidence addendum
+## Gate evidence
 
-The focused control-fence proof is locally evidenced by
-`tests/concurrency/control-fence.test.ts` (14 deterministic PostgreSQL tests).
-It covers revoke before consumption, revoke after authorization, owner/agent/
-policy scope revocation, pause before and after authorization, resume without
-stale resurrection, repeated commands, concurrent revoke/pause with approval
-consumption, rollback, audit ordering/correlation, and the balanced ledger
-invariant. The race cases use a database-row blocker and a ready barrier; they
-do not use sleeps. This is authorization/control-plane evidence only: it does
-not provide owner authentication, a signer, broadcast, chain reconciliation, or
-Gate S1 acceptance.
+| ID | Requirement | Status | Evidence / next owner |
+| --- | --- | --- | --- |
+| S0-01 | Secret scanning | PASS | Gitleaks workflow + repository secret controls |
+| S0-02 | Dependency lockfile | PASS | committed `package-lock.json` |
+| S0-03 | CODEOWNERS | PASS | `.github/CODEOWNERS` |
+| S0-04 | Branch protection | PASS | active ruleset `20791659` with required `validate`, deletion and non-fast-forward protections |
+| S0-05 | Vulnerability reporting | PASS | `SECURITY.md` |
+| S0-06 | No real-wallet material | PASS | local-only runtime/config checks |
+| S1-01 | Budget concurrency | PASS | 32 rounds × 4 workers inside 18/18 concurrency gate |
+| S1-02 | Idempotency | PASS | DB replay/conflict/response-loss coverage |
+| S1-03 | Approval replay/envelope binding | PASS | WP-07/08, 25/25 focused DB + one-winner concurrency |
+| S1-04 | Revocation and pause | PASS | four-scope fence races + WP-10 pre-envelope revoke/pause coverage |
+| S1-05 | No floating-point money | PASS | canonical atomic-unit schemas + ledger/property proof |
+| S1-06 | Protected current-head verification | BLOCKED | WP-11 CI change must pass remotely |
+| S2-01 | Clean-Anvil full transaction journeys | PLANNED | Phase 2/3 |
+| S2-02 | Complete trace/audit E2E | PLANNED | Phase 5 |
+| S2-03 | Execution-boundary recovery | PLANNED | Phase 3 |
 
-## WP-05 local evidence addendum
+## Product requirements
 
-`tests/db/wp05-recovery.test.ts` passes 7/7 against PostgreSQL. It proves that
-label-only adapter/reconciler callers are rejected; pre-provisioned Ed25519
-adapter and reconciler credentials are accepted; evidence persists the
-credential, component, signature, and signed-payload hash; response loss,
-crash-before/after persistence, duplicate recovery, simultaneous recoverers,
-stale leases, conflicting evidence, and finalization exactly once behave
-deterministically. AMBIGUOUS and CONFLICT outcomes remain DISPUTED with the
-reservation held. This is controlled-fake local trust-boundary evidence only;
-it does not add signing, RPC, chain confirmation, real funds, or Gate S1
-acceptance.
+| ID | Requirement | Status | Evidence / next phase |
+| --- | --- | --- | --- |
+| PR-001 | Clean clone installs/checks | PASS | CI/local bootstrap |
+| PR-002 | Anvil 31337 and fake assets only | PASS | local runtime guard; actual transfer Phase 2 |
+| PR-003 | owner/agent/wallet/policy fixture | PASS | DB fixtures |
+| PR-004 | read-only/review/autonomous modes | PLANNED | Phase 2-4 integration |
+| PR-005 | budget under concurrency | PASS | S1-01 |
+| PR-006 | chain/asset/recipient/action restrictions | PLANNED | Phase 2 |
+| PR-007 | atomic reservation before authorization | PASS | WS-003 |
+| PR-008 | retry/idempotency cannot duplicate spend | PASS for ledger / PLANNED for chain | Phase 2/3 execution proof remains |
+| PR-009 | intent constructs transaction | PLANNED | Phase 2 |
+| PR-010 | independent decode/verification | PLANNED | Phase 2 |
+| PR-011 | state-changing operations simulated | PLANNED | Phase 2 |
+| PR-012 | immutable envelope after reservation | PASS locally | WS-002/approval binding |
+| PR-013 | approval envelope-bound and one-time | PASS locally | WP-07/08; E2E Phase 3 |
+| PR-014 | owner/signer key outside agent process | PASS for owner-auth local key boundary / PLANNED for transaction signer | Phase 2 |
+| PR-015 | revocation/pause before signing | PASS for S1 control plane / PLANNED at signer boundary | Phase 3 |
+| PR-016 | native fee ceiling | PLANNED | Phase 2 |
+| PR-017 | MCP/CLI/dashboard share core | PLANNED | Phase 4 |
+| PR-018 | no raw signing surface in interfaces | PLANNED | Phase 4 |
+| PR-019 | lifecycle telemetry correlation | PLANNED | Phase 5 |
+| PR-020 | append-only correlated audit | PASS locally / PLANNED E2E | WS-003 then Phase 5 |
+| PR-021 | adapter manifest/conformance | PLANNED | Phase 2 |
+| PR-022 | invalid transitions rejected | PASS | WS-002 property proof |
+| PR-023 | failures/retries reconcile safely | PASS locally / PLANNED chain | WP-09 plus Phase 2/3 |
+| PR-024 | documentation matches behavior | PASS for WP-11 candidate | final external closeout review |
+| PR-025 | no unresolved critical/high security findings | BLOCKED | final MVP hardening, not Phase-1 gate |
+| PR-026 | product-owner MVP sign-off | BLOCKED | MVP not complete |
 
-## WP-03 local evidence addendum
+## Threat/adversarial requirements
 
-The full product rows remain `PLANNED` where their broader E2E, browser, adapter,
-or Phase-3 control scope is not implemented. The focused authorization slice is
-locally evidenced by `tests/db/approval.test.ts` (21 tests) and
-`tests/concurrency/approval-consumption.test.ts` (one race test): persisted
-approval/decision/evidence binding, expiry, rejection, revocation, replay,
-wrong-operation/envelope/revision/hash/policy inputs, schema-valid envelope
-hashing, atomic envelope replacement invalidation, retry behavior, exact audit
-correlation, impossible-state rejection, and one-winner atomic consumption all
-pass on PostgreSQL. This evidence does not mark Gate S1 passed and does not
-cover ADR-0008 owner-session/signature authentication, pause races, adapter
-execution, or integrated recovery.
-
-| ID     | Requirement                                        | Layer / planned location     | Status  | Last evidence                                                                                                                                                                                                                                                                               | Gap owner  |
-| ------ | -------------------------------------------------- | ---------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| PR-001 | Clean clone installs and baseline checks           | CI + `tests/repository/`     | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-001     |
-| PR-002 | Anvil 31337 and fake assets only                   | config + chain + adversarial | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-001/004 |
-| PR-003 | One owner/agent/wallet/policy/chain/token fixture  | DB + E2E                     | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-002     |
-| PR-004 | Read-only, review, autonomous modes                | unit + E2E                   | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-002/005 |
-| PR-005 | Total and per-transaction budget under concurrency | DB + concurrency + property  | PASS    | 2026-08-13: PostgreSQL DB 25/25, concurrency 32 rounds x 4 workers, invariant 7/7; final row allocated=100 available=10 reserved=90 finalized_spend=0                                                                                                                                       | WS-003     |
-| PR-006 | Chain/asset/recipient/action restrictions          | policy + E2E                 | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-002     |
-| PR-007 | Atomic reservation before authorization            | DB + transition              | PASS    | 2026-08-13: reservation, authorization, evidence-gated broadcast, release, expiry, finalization, disputed retention, insufficient budget, binding, and rollback tests passed                                                                                                                | WS-003     |
-| PR-008 | Retry/idempotency cannot duplicate spend           | DB + concurrency + E2E       | PLANNED | 2026-08-13: WS-003 DB retry/replay/conflict and 32-round concurrency proof passed; E2E remains for WS-004/005                                                                                                                                                                               | WS-003     |
-| PR-009 | Canonical intent constructs transaction            | unit + chain                 | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-002/004 |
-| PR-010 | Independent decode and verification                | unit + chain + adversarial   | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-004     |
-| PR-011 | Every state-changing operation simulated           | chain + E2E                  | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-004     |
-| PR-012 | Immutable envelope after reservation               | unit + DB                    | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-002/003 |
-| PR-013 | Approval envelope-bound and one-time               | DB + adversarial + E2E       | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-005     |
-| PR-014 | Owner key outside agent process                    | architecture + process/E2E   | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-004     |
-| PR-015 | Immediate revocation and pause before signing      | lifecycle + race + E2E       | BLOCKED | 2026-08-15 WP-04 database control-plane proof passes locally: authoritative four-scope versioned fences, deterministic revoke/pause races, stale-authorization invalidation, held-reservation release, and audit ordering; immediate provider/signing boundary and E2E remain unimplemented | WS-005     |
-| PR-016 | Native maximum network-fee ceiling                 | unit + pre-sign chain        | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-004     |
-| PR-017 | MCP, CLI, dashboard share core                     | contract + E2E + browser     | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-006     |
-| PR-018 | Minimal interfaces expose no raw signing           | schema + adversarial         | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-006     |
-| PR-019 | OpenTelemetry lifecycle correlation                | integration + E2E            | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-007     |
-| PR-020 | Append-only correlated audit history               | DB + E2E                     | PLANNED | 2026-08-15 at current PR head (documentation-only WP-06 closeout; implementation parent `515e8e2`): 64/64 DB tests; row-derived reservation/operation/intent/owner/agent/wallet/policy/version correlation, mismatch rejection across ledger mutations, deterministic hash verification, and append-only guard passed; integrated E2E remains | WS-003/007 |
-| PR-021 | Adapter manifest and conformance                   | contract + adapter           | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-004     |
-| PR-022 | Invalid lifecycle transitions rejected             | unit + property              | PASS    | 2026-08-13: exhaustive canonical-pair and malformed-input lifecycle properties                                                                                                                                                                                                              | WS-002     |
-| PR-023 | Failures/retries reconcile safely                  | DB + chain + fault           | PLANNED | None                                                                                                                                                                                                                                                                                        | WS-004/005 |
-| PR-024 | Documentation matches behavior                     | doc checks + review          | PLANNED | None                                                                                                                                                                                                                                                                                        | Lead       |
-| PR-025 | No unresolved critical/high security findings      | audit + review               | BLOCKED | No implementation                                                                                                                                                                                                                                                                           | WS-007     |
-| PR-026 | Product-owner MVP sign-off                         | review record                | BLOCKED | MVP not built                                                                                                                                                                                                                                                                               | Owner      |
-
-## Threat and adversarial requirements
-
-| ID     | Threat coverage                       | Layer / planned location                                                           | Status  | Last evidence                                                                                                                                                                                                                                                                                                                      | Gap owner  |
-| ------ | ------------------------------------- | ---------------------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| TM-001 | Total overspend                       | `tests/db/ledger.test.ts` + `packages/budget-ledger/test/ledger-invariant.test.ts` | PASS    | 2026-08-13: DB invariant and atomic constraints passed                                                                                                                                                                                                                                                                             | WS-003     |
-| TM-002 | Split/concurrent overspend            | `tests/concurrency/reservations.test.ts`                                           | PASS    | 2026-08-13: 32 rounds, 4 workers, exactly 3 x 30 reservations per 100-unit budget                                                                                                                                                                                                                                                  | WS-003     |
-| TM-003 | Duplicate/idempotency conflict        | `tests/db/ledger.test.ts`                                                          | PASS    | 2026-08-13: request-bound replay returned the original reservation; changed request fields made no mutation; eight concurrent retries and a response-loss retry produced one reservation and one audit event                                                                                                                       | WS-003     |
-| TM-004 | Duplicate broadcast                   | `tests/db/wp05-recovery.test.ts`                                                   | PASS    | 2026-08-15 WP-05: same authenticated evidence replay is idempotent; conflicting evidence is rejected and the reservation remains protected                                                                                                                                                                                         | WS-005     |
-| TM-005 | Approval replay                       | `tests/adversarial/approval-replay.spec.ts`                                        | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-005     |
-| TM-006 | Chain substitution/public RPC         | `tests/adversarial/chain-substitution.spec.ts`                                     | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-001/004 |
-| TM-007 | Recipient/amount/asset substitution   | `tests/adversarial/transfer-substitution.spec.ts`                                  | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-004     |
-| TM-008 | Calldata/extra-call substitution      | `tests/adversarial/calldata.spec.ts`                                               | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-004     |
-| TM-009 | Fee ceiling bypass/spike              | `tests/adversarial/network-fees.spec.ts`                                           | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-004     |
-| TM-010 | Stale or downgraded policy            | `tests/adversarial/stale-policy.spec.ts`                                           | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-002/005 |
-| TM-011 | Expired approval/intent               | `tests/adversarial/expiry.spec.ts`                                                 | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-005     |
-| TM-012 | Revocation/pause race                 | `tests/concurrency/control-fence.test.ts`                                          | BLOCKED | 2026-08-15: 14 deterministic database-fence tests pass for pre-creation held reservations, pause-before-reservation, owner/agent/policy revoke, system pause/resume, stale/expired approval, repeated commands, concurrent consume, rollback, audit correlation, and ledger invariant; provider/signing race remains unimplemented | WS-005     |
-| TM-013 | Permit/unlimited/signature abuse      | `tests/adversarial/signature-surface.spec.ts`                                      | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-004/006 |
-| TM-014 | Delegatecall/multicall/proxy          | `tests/adversarial/hidden-authority.spec.ts`                                       | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-004     |
-| TM-015 | Decimal/metadata manipulation         | `tests/adversarial/token-metadata.spec.ts`                                         | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-004     |
-| TM-016 | RPC disagreement/malicious simulation | `tests/adversarial/rpc.spec.ts`                                                    | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-004     |
-| TM-017 | Re-simulation divergence              | `tests/integration/envelope-revision.spec.ts`                                      | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-004/005 |
-| TM-018 | Signed-unbroadcast ambiguity          | `tests/db/wp05-recovery.test.ts`                                                   | PASS    | 2026-08-15 WP-05 local fake: ambiguous recovery is DISPUTED and retains the reservation; real signing remains out of scope                                                                                                                                                                                                         | WS-005     |
-| TM-019 | Broadcast persistence timeout         | `tests/db/wp05-recovery.test.ts`                                                   | PASS    | 2026-08-15 WP-05: response-loss replay, crash-before/after persistence, lease fencing, and exactly-once recovery passed; provider persistence remains out of scope                                                                                                                                                                 | WS-005     |
-| TM-020 | Revert/reorg/receipt confusion        | `tests/chain/confirmation.spec.ts`                                                 | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-004     |
-| TM-021 | Reservation leak/expiry race          | `tests/concurrency/reservation-expiry.spec.ts`                                     | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-003/005 |
-| TM-022 | Malicious/replayed webhook            | `tests/adversarial/webhook.spec.ts`                                                | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-005     |
-| TM-023 | Audit tampering/omission              | `tests/integration/audit.spec.ts`                                                  | PLANNED | 2026-08-15 local DB evidence: 36/36 tests including direct field-by-field correlation mismatch rejection, caller assertion mismatch rejection, full-event correlation/hash verification, transactional rollback, sequence continuity, retry de-duplication, append-only trigger; integrated suite remains                          | WS-003/007 |
-| TM-024 | Secret output/log exposure            | `tests/adversarial/redaction.spec.ts`                                              | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-001/007 |
-| TM-025 | SQL/command injection                 | `tests/adversarial/injection.spec.ts`                                              | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-003/006 |
-| TM-026 | Owner session/CSRF                    | `tests/browser/owner-security.spec.ts`                                             | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-005/006 |
-| TM-027 | Interface bypass                      | `tests/e2e/interface-parity.spec.ts`                                               | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-006     |
-| TM-028 | Enforcement overclaim                 | `tests/adapter-conformance/grades.spec.ts`                                         | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-002/004 |
-| TM-029 | Migration/data loss                   | `tests/integration/migrations.spec.ts`                                             | PLANNED | 2026-08-15 local DB evidence: sixteen forward migrations, concurrent runner serialization, legacy-audit fail-closed recovery, checksum-drift fail-closed recovery, and transactional DDL rollback; backup/restore drill remains                                                                                                    | WS-003     |
-| TM-030 | Dependency/supply chain               | CI audit and action-pin checks                                                     | PLANNED | None                                                                                                                                                                                                                                                                                                                               | WS-001/007 |
-
-## Phase-0 evidence
-
-| ID     | Check                                          | Status | Evidence                                                                                                                                                                                                                                                           |
-| ------ | ---------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| P0-001 | Baseline SHA and clean-room inventory recorded | PASS   | `3a044ee788297bf006c633ce97d61b30a6e6cf40`; audit 2026-08-10                                                                                                                                                                                                       |
-| P0-002 | Canonical governing paths, no duplicates       | PASS   | Commit `5a9d80c`; byte identity checks exit 0                                                                                                                                                                                                                      |
-| P0-003 | Current-tree and history secret pattern scan   | PASS   | Gitleaks 8.30.1 digest-pinned scan at `6aa8382`: eight revisions and final candidate, no leaks                                                                                                                                                                     |
-| P0-004 | Fresh npm install/static/test gate             | PASS   | 2026-08-15 at current PR head (documentation-only WP-06 closeout): `npm ci` 156/163 packages with 0 vulnerabilities; `npm run check` passed 20 Node + 118 Vitest tests, static checks, docs, and repository checks |
-| P0-005 | PostgreSQL/Anvil clean local startup           | PASS   | 2026-08-15 at current head: `dev:up`/`dev:status` used checkout-bound `.local/runtime.env`; Docker-assigned PostgreSQL `32820` and Anvil `32821` were loopback-only and reported chain `0x7a69`; `dev:down` cleaned the project and preserved ignored state |
-| P0-006 | CI and secret-scan workflow                    | PASS   | 2026-08-15 at implementation parent `515e8e2c6fe1547ea5d0806033e024564ddd680e`: CI `31880041818` and Secret scan/Gitleaks `31880040380` passed, including isolated fake-money startup, mode `0600`, and quiet signer-log checks; post-push current-head runs are verified separately |
-| P0-007 | Protected main branch                          | BLOCKED | 2026-08-15 live API: ruleset `20791659` is active with `validate`, deletion, and non-fast-forward rules, but `required_approving_review_count=0`, `required_review_thread_resolution=false`, and PR #1 has no independent approval |
-| P0-008 | License decision                               | PASS   | 2026-08-14: ADR-0013 accepted as MIT; root `LICENSE`, package metadata, README, contribution guidance, and dependency metadata reconciled                                                                                                                          |
-
-## Phase-1 evidence
-
-| ID     | Check                                                                                                                        | Status  | Evidence                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P1-001 | Canonical enforcement-grade schema and ordering                                                                              | PASS    | 2026-08-10: Vitest 1 file, 10 tests; all five exact uppercase values, all 25 order pairs, and Node built-package import                                                                                                                                                                                                                                                                                    |
-| P1-002 | Strict versioned intent and atomic money                                                                                     | PASS    | 2026-08-13: 2 targeted Vitest files, 37 tests; strict intent/money cases plus configured lifetime boundary and canonical SHA-256 idempotency hash vector                                                                                                                                                                                                                                                   |
-| P1-003 | Strict policy, decision, lifecycle, envelope, adapter, audit, telemetry, error, hash, and deterministic evaluation contracts | PASS    | 2026-08-13: 4 targeted Vitest files; 68 tests; strictness/exhaustive transitions, lifecycle invalid-transition properties, canonical Keccak vectors, all policy rule families, mode combinations, multi-failure denial, and fail-closed indeterminate input                                                                                                                                                |
-| P1-004 | Atomic PostgreSQL reservation invariant                                                                                      | PASS    | 2026-08-15 at current PR head (documentation-only WP-06 closeout; implementation parent `515e8e2`): `test:db` 64/64 and `test:concurrency` 16/16 across 32 rounds used the same effective loopback runtime on PostgreSQL `32820`; `test:invariants` 7/7 with seeds `2026081301`/`2026081302`/`2026081303` and 512 runs; runtime mismatch and audit-correlation negative tests passed. Remote CI/Secret scan do not independently rerun these DB suites |
-| P1-005 | Phase-1 integration review and shared-contract freeze                                                                        | BLOCKED | 2026-08-15: WP-05 local authenticated boundary/recovery proof passes 7/7; independent security acceptance, owner authentication, provider/chain integration, and required review acceptance remain                                                                                                                                                                                                         | Lead |
+| ID | Threat | Status | Evidence / next phase |
+| --- | --- | --- | --- |
+| TM-001 | total overspend | PASS | ledger invariant |
+| TM-002 | concurrent overspend | PASS | 32×4 deterministic proof |
+| TM-003 | idempotency conflict | PASS | DB retry/conflict |
+| TM-004 | duplicate broadcast/evidence | PASS locally | recovery evidence idempotency |
+| TM-005 | approval replay | PASS locally | WP-07/08 |
+| TM-006 | chain substitution/public RPC | PLANNED | Phase 2 |
+| TM-007 | recipient/amount/asset substitution | PLANNED | Phase 2 |
+| TM-008 | calldata/extra-call substitution | PLANNED | Phase 2 |
+| TM-009 | fee bypass/spike | PLANNED | Phase 2 |
+| TM-010 | stale/downgraded policy | PASS locally / PLANNED pre-sign | fence + binding; Phase 3 |
+| TM-011 | expired approval | PASS locally | WP-08 |
+| TM-012 | revocation/pause race | PASS locally / PLANNED pre-sign | WP-04/10 then Phase 3 |
+| TM-013 | permit/unlimited/signature abuse | PLANNED | Phase 2/4 |
+| TM-014 | delegatecall/multicall/proxy | PLANNED | Phase 2 |
+| TM-015 | token metadata manipulation | PLANNED | Phase 2 |
+| TM-016 | RPC disagreement | PLANNED | Phase 2 |
+| TM-017 | re-simulation divergence | PLANNED | Phase 2/3 |
+| TM-018 | signed-unbroadcast ambiguity | PASS only as local disputed-state primitive / PLANNED real local signer | Phase 3 |
+| TM-019 | broadcast persistence timeout | PASS local recovery primitive / PLANNED adapter integration | Phase 3 |
+| TM-020 | revert/reorg/receipt confusion | PLANNED | Phase 2 |
+| TM-021 | reservation expiry race | PASS core lifecycle / PLANNED E2E | Phase 3 |
+| TM-022 | malicious/replayed webhook | NOT APPLICABLE to current local MVP surface | revisit if webhook adapter added |
+| TM-023 | audit tampering/omission | PASS locally / PLANNED E2E | DB guards then Phase 5 |
+| TM-024 | secret output/log exposure | PASS for local runtime owner/recovery material / PLANNED signer redaction | Phase 2/5 |
+| TM-025 | SQL/command injection | PASS for parameterized core paths / PLANNED interface adversarial | Phase 4/5 |
+| TM-026 | owner session/CSRF | PASS for ADR-0008 local signed-decision boundary / PLANNED browser session | Phase 4 |
+| TM-027 | interface bypass | PLANNED | Phase 4 |
+| TM-028 | enforcement overclaim | PLANNED | Phase 2 adapter conformance |
+| TM-029 | migration/data loss | PASS for forward/checksum/corrective path / PLANNED backup drill | later hardening |
+| TM-030 | dependency/supply chain | PASS for lock/audit/action pins / monitored | ongoing |

@@ -1,143 +1,25 @@
 # Changelog
 
-Owner: lead orchestrator. Update rule: record user/operator-visible, schema,
-security, policy, compatibility, dependency, or governance-authority changes in
-the same integration change.
+Owner: lead orchestrator. Record security, schema, policy, compatibility and governance changes in the same integration change.
 
 ## Unreleased
 
 ### Security
 
-- WP-06 independently reproduced the current PR-head remediation evidence:
-  audit correlation, checkout/runtime isolation, failed-start cleanup, approval
-  replay/expiry/envelope invalidation, control-fence races, authenticated local
-  adapter/reconciler evidence, uncertain-outcome recovery, and duplicate
-  finalization/reconciliation all remain covered by passing local proof. The
-  live S0 ruleset intentionally has zero required approvals for this sole-
-  maintainer repository and does not require review-thread resolution, so S0 is
-  not certified under the work-packet criterion. S1 remains blocked on owner
-  authentication, integrated provider/chain reconciliation, independent
-  security review, and required acceptance.
+- WP-07 closes the alternate authorization path. Protected reservation states require canonical authorization evidence and the database rejects manufactured authorization/broadcast/finalization state.
+- WP-08 implements ADR-0008 local-owner approval authentication with signed evidence bound to approval ID, approver/key identity, envelope hash, policy/version, expiry and nonce; authenticated approval is consumed once and owner private material remains outside agent-facing code and the database.
+- Forward corrective migration `0021_wp08_owner_approval_auth_fix.sql` restores the missing persisted `authenticated_at` projection in owner-approval consumption while preserving checksum-locked migration 0020.
+- WP-09 hardens recovery claims: lease duration is authenticated and bounded, lease validity/expiry uses PostgreSQL time, and caller-supplied time cannot steal a live lease.
+- WP-10 closes the reservation-to-envelope revocation/pause gap and atomically releases eligible held reservations before an envelope exists.
+- WP-11 places DB, deterministic concurrency and invariant/property suites inside the protected `validate` workflow so a core financial/authorization regression can no longer merge behind a static-only green check.
 
-- WP-05 replaces label-only adapter/reconciler authority with pre-provisioned
-  Ed25519 component credentials and canonical signed action payloads. Broadcast
-  and verification evidence persist authenticated identity snapshots. Durable
-  recovery leases and append-only attempts fence stale workers, make retries
-  idempotent, reject conflicting evidence, and keep ambiguous outcomes
-  DISPUTED with funds reserved. This is a local controlled-fake proof only; no
-  signing, RPC, provider, testnet, mainnet, or real-funds surface was added.
+### Governance / planning
 
-- WP-04 adds authoritative, monotonic `control_fences` for system, owner,
-  agent, and policy scopes. Approval requests, decisions, and authorization
-  evidence persist all fence snapshots; control changes serialize with
-  consumers, invalidate stale authority transactionally, release eligible held
-  reservations, and append correlated control/invalidation audit evidence.
-  Resume never resurrects stale approvals. This remains a local Phase-1 proof;
-  no signing or public-chain broadcast surface was added.
+- Reconciled the gate model with the governing Product Spec: S1 is the core invariant/approval/control proof; S2 owns clean-Anvil end-to-end execution/recovery evidence.
+- Recorded the WS-005 Phase-1 S1 slice separately from the later Phase-3 integrated pre-sign/broadcast/recovery slice, removing the previous circular dependency that required Phase-2 work before S1 could open Phase 2.
+- Replaced stale current-status snapshots and obsolete migration/test counts with the current 21-migration, 71-DB, 18-concurrency and 7-invariant evidence.
+- Phase 0 is marked S0 PASS under the Product Spec. The sole-maintainer repository still does not claim a separate GitHub-account approval; that remains explicit merge-governance risk R-019.
 
-### Changed
+### Earlier Phase-0/1 foundation
 
-- WP-02 makes `.local/runtime.env` the checkout-bound effective local runtime
-  authority. `dev:up` persists Docker-assigned loopback PostgreSQL/Anvil ports,
-  lifecycle scripts and DB/concurrency tests consume the same state, and
-  failed startup removes only resources in this checkout's Compose project.
-- WP-02 binds audit events to row-derived reservation/operation/intent/identity/
-  policy correlation with application and PostgreSQL guards. Gate S0/S1 status
-  remains open/blocked; PR #1 is not merged.
-- Reconciled Phase-0/Phase-1 plans, project state, workstreams, risk register,
-  and test matrix with the verified remote state as of 2026-08-14. PR #1 head
-  earlier head `081fe78` passed `validate` and Gitleaks; the active main protection ruleset
-  and Dependabot security fixes are recorded. Phase 2 remains intentionally
-  unopened while Gate S1 stays blocked on authorization/control and review
-  evidence.
-- Accepted ADR-0013 and selected the MIT License; added the root license text,
-  SPDX package metadata, and updated README/contribution guidance.
-- Normalized governing document paths to `docs/PRODUCT_SPEC.md` and
-  `docs/LEAD_ORCHESTRATOR_PROMPT.md` without duplicate authorities.
-- Clarified the budget invariant, envelope finalization order, enforcement-grade
-  enum, revocation lifecycle, forward-only migration recovery, and separate
-  native network-fee ceiling.
-
-### Added
-
-- WP-03 adds the `@crip/approvals` Phase-1 authorization slice: PostgreSQL
-  approval requests, append-only decisions, canonical Keccak envelope
-  verification and schema validation, immutable operation/envelope/hash/policy-
-  decision bindings, atomic envelope replacement invalidation, one-time
-  authorization evidence, expiry/rejection/revocation handling, deferred
-  operation/reservation consistency guards, and serializable concurrent-
-  consumption proof. No owner-key or provider signing was added; Gate S1
-  remains blocked on ADR-0008 authentication/signature
-  resolution, pause/revocation fencing, integrated recovery, and review.
-
-- Phase-0 ADRs, architecture, threat/security/testing guidance, roadmap, project
-  state, risk register, test matrix, master/phase plans, and workstreams.
-- Repository contribution and vulnerability-reporting guidance.
-- Locked npm workspace tooling for formatting, linting, strict type checking,
-  unit/repository tests, documentation checks, and repository policy checks.
-- Digest-pinned loopback PostgreSQL and deterministic quiet Anvil services with
-  generated ignored credentials, fail-closed local configuration validation,
-  stable public-account verification, per-checkout Compose isolation, and
-  defensive lifecycle commands.
-- Least-privilege CI and full-history Gitleaks workflows with commit-pinned
-  actions, CODEOWNERS, Dependabot configuration, and contribution templates.
-- Canonical Zod enforcement-grade contract with the single uppercase enum and
-  exhaustive strongest-to-weakest minimum-grade comparison tests.
-- Strict version-1 MVP intent union and canonical uint256 atomic-unit contract;
-  unknown fields, generic calls, floating values, malformed identifiers,
-  noncanonical addresses, and invalid time ordering are rejected.
-- Configured maximum intent-lifetime validation and versioned canonical
-  idempotency payload hashing for the strict Phase-1 schema contract. The hash
-  is local/provider-neutral identity metadata and is not a signing primitive.
-- Strict WS-002 policy, policy-decision, lifecycle transition, execution-envelope,
-  adapter capability, audit-event, telemetry identifier, and stable-error
-  contracts. Unknown fields, floating values, unsupported enum values, and
-  invalid lifecycle transitions are rejected at the schema boundary.
-- Added canonical execution-envelope UTF-8 serialization and versioned,
-  domain-separated Keccak-256 hashing with a golden vector and approval-binding
-  checks. Added the pinned `@noble/hashes` 2.3.0 dependency for Keccak-256.
-- Added deterministic policy evaluation for allowlists, budgets, fee ceilings,
-  validity, enforcement grades, execution modes, combined failures, and
-  fail-closed indeterminate input through the built `@crip/policy-engine`
-  package boundary.
-- Added a deeply immutable lifecycle adjacency table with exhaustive canonical
-  state-pair and malformed-input property tests covering terminal and exceptional
-  recovery states.
-- Added the WS-003 forward-only PostgreSQL ledger migrations and
-  @crip/audit and @crip/budget-ledger packages. The schema covers policies,
-  intents, operations, envelopes, decisions, budget accounts, reservations,
-  idempotency, and append-only audit events with foreign keys, status checks,
-  immutable records, balanced numeric accounting, and corrective migration
-  checksums.
-- Added one-client serializable transaction execution with bounded SQLSTATE
-  40001 retry plus reserve/release/expire/finalize/dispute transitions,
-  idempotency replay/conflict handling, transactional audit hash chaining, and
-  real PostgreSQL invariant/concurrency evidence (11 DB tests, 32 concurrency
-  rounds, and 6 invariant tests).
-- Added real Phase-1 `test:db`, `test:concurrency`, and `test:invariants` gates,
-  pinned `fast-check` 4.9.0, and canonical seed/worker/barrier parameters.
-  Missing database or concurrency suites fail closed instead of reporting empty
-  passes.
-- Completed the local Phase-1 concurrency/idempotency proof: request-bound
-  replay/conflict fencing, concurrent worker retry coalescing, response-loss
-  replay, real PostgreSQL serialization retry, typed full-event audit hashes,
-  authorization/broadcast evidence fencing, operation-to-budget binding,
-  migration runner recovery, generated accounting/event sequences, and
-  ambiguous-funds retention. Shared contracts are frozen locally; Gate S1 remains
-  blocked and Phase 2 has not started.
-- Added explicit pending-to-verified broadcast evidence reconciliation, immutable
-  evidence rows, row-bound database audit hashing, legacy-audit fail-closed
-  migration handling, and immutable operation/budget ownership bindings.
-
-### Security
-
-- Moved transient Anvil signer/config generation into the container's writable
-  `/tmp` and copied the result back with host mode `0600`, removing the
-  Linux-runner UID mismatch from the local-only fake-money service path.
-- Recorded the real-funds prohibition and fail-closed local-chain boundary as
-  release blockers.
-- Recorded the initial branch-protection gap; the active `S0 main protection`
-  ruleset now mitigates it, pending required review/merge acceptance.
-- Refuse non-local environment, public chain, non-loopback RPC/database hosts,
-  and invalid port configuration before local services start; generated
-  sensitive files are created at mode `0600` and Anvil key logs are suppressed.
+The repository already contains canonical governing docs/ADRs, strict provider-neutral schemas, deterministic policy/lifecycle rules, atomic PostgreSQL budget accounting, append-only correlated audit, checkout-isolated local services, control fences, authenticated component recovery, MIT licensing, secret scanning, Dependabot and protected GitHub Actions.

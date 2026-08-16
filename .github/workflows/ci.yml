@@ -16,7 +16,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,7 +32,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Run static, test, documentation, and repository checks
+      - name: Run static, unit, documentation, and repository checks
         run: npm run check
 
       - name: Audit production and development dependencies
@@ -43,8 +43,20 @@ jobs:
         env:
           CRIP_POSTGRES_PASSWORD: ci-configuration-only
 
-      - name: Exercise isolated local fake-money services
+      - name: Start isolated local fake-money services
         run: npm run dev:up
+
+      - name: Verify local service state
+        run: npm run dev:status
+
+      - name: Run PostgreSQL integration gate
+        run: npm run test:db
+
+      - name: Run deterministic concurrency gate
+        run: npm run test:concurrency
+
+      - name: Run invariant and property gate
+        run: npm run test:invariants
 
       - name: Verify generated-state permissions and quiet signer logs
         run: |

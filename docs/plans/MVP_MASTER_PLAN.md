@@ -1,150 +1,101 @@
 # Crip Wallet Local MVP Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use shipyard:shipyard-executing-plans to implement this plan task-by-task.
+> **For implementation agents:** use the repository's Shipyard execution skill and treat `docs/PRODUCT_SPEC.md` as the governing product authority.
 
-**Goal:** Deliver the governing-spec local fake-money MVP with reproducible proof
-that no request, retry, race, policy change, or failure can authorize beyond the
-active owner policy.
+**Goal:** deliver a provider-neutral, fake-money local MVP whose authorization, budget, approval, execution and recovery boundaries are reproducibly proven.
 
-**Architecture:** Provider-neutral contracts feed one deterministic authorization
-service, PostgreSQL serializes budgets and lifecycle state, and a restricted local
-adapter alone reaches Anvil 31337. Approval and autonomous authorization bind to
-immutable post-reservation envelopes; every interface consumes the same core.
+## Gate model
 
-**Tech Stack:** Node.js 24 LTS, strict TypeScript, npm workspaces, PostgreSQL 17,
-node-postgres, Zod, Vitest/fast-check, Viem, Foundry/Anvil, Solidity, OpenTelemetry,
-MCP TypeScript SDK, React/Next.js and Playwright when their phases begin.
-
----
-
-Owner: lead orchestrator. Update rule: after accepted scope/ADR changes, phase
-gate review, integration reordering, or material evidence. Each phase receives a
-detailed `PHASE-N.md` plan before its implementation starts.
-
-## Release-backward gates
+The governing Product Spec controls the gates:
 
 ```text
-MVP sign-off
-<- Phase 5 adversarial/telemetry evidence and no critical/high findings
-<- Phase 4 interface parity and truthful browser UX
-<- Phase 3 approval/revocation/pause/recovery proof
-<- Phase 2 fake ERC-20 construct/verify/simulate/sign/reconcile proof
-<- Phase 1 deterministic schemas/policy/ledger concurrency proof (Gate S1)
-<- Phase 0 reproducible repository, local services, CI and governance (Gate S0)
+S0 — repository safety
+  secret scanning, lockfile, CODEOWNERS, branch protection,
+  vulnerability reporting, no real-wallet material
+
+S1 — core invariant proof
+  budget concurrency, idempotency, approval replay protection,
+  revocation/pause proof, integer-only money
+
+S2 — local end-to-end
+  clean-Anvil MVP journeys, complete trace/audit evidence,
+  recovery paths exercised across the execution boundary
 ```
 
-No later gate may substitute for an earlier one. Synthetic unit checks do not
-promote database, chain, E2E, browser, or production claims.
-
-## Shared contracts and change control
-
-Intent, policy, decision, enforcement grade, operation state, envelope, adapter
-manifest, error, audit, telemetry, database IDs, MCP schemas, and CLI JSON are
-shared. Their owner is WS-002 until stable, then the lead. A change requires an
-affected-workstream list, schema/migration tests, compatibility notes, and a
-security ADR when it changes authority or trust.
+A later gate cannot substitute for an earlier one. Local DB proof must not be represented as chain/E2E proof.
 
 ## Integration sequence
 
-| Order | Phase/workstream | Entry                   | Exit evidence                                       | Parallelism                                          |
-| ----- | ---------------- | ----------------------- | --------------------------------------------------- | ---------------------------------------------------- |
-| 1     | Phase 0 / WS-001 | Verified baseline       | Fresh install/check, services, CI, S0 report        | Single owner                                         |
-| 2     | Phase 1 / WS-002 | Accepted ADRs           | Canonical schemas, lifecycle/hash vectors           | Single owner                                         |
-| 3     | Phase 1 / WS-003 | WS-002 contracts frozen | DB migration, ledger concurrency/property proof     | One security-critical owner                          |
-| 4     | Phase 2 / WS-004 | Gate S1                 | Mock token and full local transaction pipeline      | Split contracts/adapter only after interfaces freeze |
-| 5     | Phase 3 / WS-005 | Stable envelope/adapter | Approval, controls and recovery proof               | Single owner across shared lifecycle                 |
-| 6     | Phase 4 / WS-006 | Core API stable         | MCP/CLI/dashboard parity and browser evidence       | Interfaces may parallelize by non-overlap            |
-| 7     | Phase 5 / WS-007 | Integrated product      | Telemetry, adversarial/fault evidence, audit report | Reviewer independent from feature authors            |
+| Order | Phase / workstream | Entry | Exit evidence |
+| --- | --- | --- | --- |
+| 1 | Phase 0 / WS-001 | Verified baseline | S0 repository and local-runtime proof |
+| 2 | Phase 1 / WS-002 | Accepted ADRs | Canonical contracts, lifecycle and hash vectors |
+| 3 | Phase 1 / WS-003 | WS-002 contracts | Atomic ledger, idempotency, DB/concurrency/property proof |
+| 4 | Phase 1 / WS-005 S1 slice | WS-002/003 stable | Canonical authorization, authenticated local-owner approval, replay, revocation/pause and local recovery safety proof |
+| 5 | Gate S1 | Steps 2-4 complete | Protected current-head S1 verification |
+| 6 | Phase 2 / WS-004 | Gate S1 | Construct/verify/simulate/sign/broadcast/confirm/reconcile one fake ERC-20 transfer on Anvil |
+| 7 | Phase 3 / WS-005 integration | Stable WS-004 boundary | Approval/control/recovery rechecked at pre-sign, signed-unbroadcast and broadcast-unknown lifecycle points |
+| 8 | Phase 4 / WS-006 | Stable core API | MCP/CLI/dashboard parity and browser evidence |
+| 9 | Phase 5 / WS-007 | Integrated local product | Telemetry, adversarial/fault evidence and MVP review |
 
-## Workstream contract
-
-Every workstream document owns objective, governing sections, files, dependencies,
-shared contracts, out-of-scope, invariants, acceptance tests, integration order,
-documentation, evidence, and atomic commit expectations. Agents receive a
-self-contained prompt grounded in those files and the exact base SHA. The lead
-independently reruns verification and reviews the integrated diff.
+The Phase-1 WS-005 slice was deliberately pulled forward because the governing S1 definition explicitly requires approval replay and revocation/pause proof. This does **not** mean the Phase-3 integrated execution-boundary work is complete.
 
 ## Phase 0 — Foundation
 
-Objective: reproducible repository and local-only development boundary. Execute
-`docs/plans/PHASE-0.md` and WS-001.
+Objective: reproducible repository and local-only development boundary.
 
 Acceptance:
+- canonical governing documents and accepted blocking ADRs;
+- locked dependencies, strict checks, CI, secret scanning and CODEOWNERS;
+- loopback-only PostgreSQL and Anvil with generated ignored state;
+- branch protection and vulnerability-reporting controls;
+- no real-wallet material.
 
-- Canonical single governing spec and accepted blocking ADRs.
-- Real governance docs with current evidence and update rules.
-- Committed lockfile, strict static tooling, CI, secret scanning, CODEOWNERS.
-- Digest-pinned loopback PostgreSQL and Anvil start from ignored generated state.
-- `npm ci && npm run check` and local service health run from this branch.
-- External review and acceptance gaps remain explicit; they do not become false
-  local passes.
+## Phase 1 — Canonical core, ledger and S1 authorization controls
 
-## Phase 1 — Canonical core and ledger
-
-Objective: prove policy and budget authority without any signing. Execute
-`docs/plans/PHASE-1.md`, WS-002, then WS-003.
+Objective: prove S1 without opening transaction signing or provider/chain execution.
 
 Acceptance:
-
-- Strict versioned schemas reject unknown fields and non-canonical grades.
-- Deterministic policy and lifecycle transition tables pass golden tests.
-- PostgreSQL forward migration enforces monetary and idempotency constraints.
-- Ledger invariant holds under release, expiry, finalization, dispute, retries,
-  and deterministic concurrent reservations.
-- Transactional audit records correlate every decision.
-- No signing, broadcast, arbitrary-call, MCP, or dashboard surface lands.
+- strict schemas and deterministic policy/lifecycle behavior;
+- forward-only PostgreSQL migrations and balanced reservation accounting;
+- deterministic budget concurrency and idempotency proof;
+- no alternate authorization path;
+- authenticated ADR-0008 local-owner approval evidence bound to approval/envelope/policy/expiry/nonce and consumed once;
+- deterministic revocation/pause fencing including the reservation-to-envelope gap;
+- hardened local recovery leases using authoritative DB time and authenticated security-relevant fields;
+- protected CI executes DB, concurrency and invariant suites.
 
 ## Phase 2 — Local EVM vertical slice
 
-Objective: on clean Anvil, construct, independently decode/verify, simulate,
-finalize, authorize, locally sign, broadcast, confirm, and reconcile one fake
-ERC-20 transfer.
+Objective: construct, independently decode/verify, simulate, finalize, authorize, locally sign, broadcast, confirm and reconcile one fake ERC-20 transfer on clean Anvil.
 
-Required modules: `contracts/mock-token/`, `packages/transaction-pipeline/`,
-`packages/simulation/`, `packages/adapter-sdk/`, `adapters/local-anvil/`, and
-chain/fault tests. Use TDD and current Context7 docs for Viem/Foundry before code.
+Required modules remain `contracts/mock-token/`, `packages/transaction-pipeline/`, `packages/simulation/`, `packages/adapter-sdk/`, `adapters/local-anvil/` and chain/fault tests.
 
-Acceptance: mismatches, reverts, insufficient balances/gas, fee ceiling, stale
-simulation, broadcast ambiguity, and receipt discrepancies fail or reconcile
-safely; signer secrets never cross the adapter boundary.
+Acceptance includes safe handling of mismatch, revert, insufficient balance/gas, fee ceilings, stale simulation, broadcast ambiguity and receipt discrepancies. Signer secrets must never cross the adapter boundary.
 
-## Phase 3 — Approval and controls
+## Phase 3 — Integrated approval, controls and recovery
 
-Objective: implement local owner approval, one-time consumption, pause,
-revocation, lifecycle fencing, leased recovery, and uncertain outcomes.
+Objective: carry the already-proven S1 approval/control primitives across the real local execution lifecycle.
 
-Acceptance: changed envelopes cannot reuse approval; revocation/pause races lose
-before signing; signed-unbroadcast and broadcast-unknown cases retain/dispute
-reservations; retry never duplicates execution.
+Acceptance:
+- approval revalidated immediately before signing;
+- revocation/pause wins before signing;
+- changed envelopes cannot reuse approval;
+- signed-unbroadcast and broadcast-unknown cases retain/dispute reservations safely;
+- retries never duplicate execution;
+- recovery evidence is reconciled against the actual local adapter/chain boundary.
 
 ## Phase 4 — Interfaces
 
-Objective: expose the shared core via minimal MCP, strict JSON CLI, loopback API,
-dashboard, and Agent Skill.
-
-Acceptance: same intent yields the same decision through every interface; no raw
-signing/policy expansion; owner UX shows envelope, simulation, fee, grade,
-uncertainty, and local-test warnings; Playwright verifies approval, denial,
-revocation, pause, replay, and failure journeys.
+Expose the shared core via minimal MCP, strict JSON CLI, loopback API, dashboard and Agent Skill. No interface may bypass the canonical authorization service.
 
 ## Phase 5 — Hardening and release review
 
-Objective: complete OpenTelemetry evidence, adversarial/property/conformance
-suites, fault injection, recovery proof, dependency/security audit, clean-room
-setup, and the formal MVP review.
+Complete telemetry, adversarial/property/conformance suites, fault injection, clean-room setup and the formal local-MVP review. Real funds remain prohibited.
 
-Acceptance: Gate S1 and S2 pass with exact artifacts; every matrix row is PASS or
-explicitly approved not-applicable; no critical/high finding remains; documents
-match behavior; product owner signs off. Real funds remain prohibited.
+## Verification commands
 
-## Commit expectations
-
-Each TDD cycle and coherent governance/tooling unit is a focused commit with its
-tests/docs. Security-critical changes never share commits with unrelated cleanup.
-Every phase ends with an integration-state commit containing plan, workstream,
-risk, matrix, changelog, and exact test evidence updates.
-
-## Master verification commands
+Phase-1 closeout requires:
 
 ```bash
 npm ci
@@ -155,11 +106,7 @@ npm run dev:status
 npm run test:db
 npm run test:concurrency
 npm run test:invariants
-npm run test:chain
-npm run test:adversarial
-npm run test:e2e
-npm run test:browser
+npm run dev:down
 ```
 
-Commands are added to the full gate only when implemented; missing suites remain
-visible gaps and never become no-op passes.
+Later suites are added only when their phase exists; missing chain/E2E/browser suites must remain visible rather than becoming no-op passes.
