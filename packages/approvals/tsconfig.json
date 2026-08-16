@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false,
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "tsBuildInfoFile": "../../.local/tsbuild/approvals.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "references": [
+    { "path": "../schemas" },
+    { "path": "../audit" },
+    { "path": "../budget-ledger" }
+  ]
+}

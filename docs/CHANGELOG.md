@@ -1,0 +1,26 @@
+# Changelog
+
+Owner: lead orchestrator.
+Update rule: record user/operator-visible, schema, security, policy, compatibility, dependency, or governance-authority changes in the same integration change.
+
+## Unreleased
+
+### Security
+
+- WP-07 closes the alternate authorization path. Protected reservation states require canonical authorization evidence and the database rejects manufactured authorization/broadcast/finalization state.
+- WP-08 implements ADR-0008 local-owner approval authentication with signed evidence bound to approval ID, approver/key identity, envelope hash, policy/version, expiry and nonce; authenticated approval is consumed once and owner private material remains outside agent-facing code and the database.
+- Forward corrective migration `0021_wp08_owner_approval_auth_fix.sql` restores the missing persisted `authenticated_at` projection in owner-approval consumption while preserving checksum-locked migration 0020.
+- WP-09 hardens recovery claims: lease duration is authenticated and bounded, lease validity/expiry uses PostgreSQL time, and caller-supplied time cannot steal a live lease.
+- WP-10 closes the reservation-to-envelope revocation/pause gap and atomically releases eligible held reservations before an envelope exists.
+- WP-11 places DB, deterministic concurrency and invariant/property suites inside the protected `validate` workflow so a core financial/authorization regression can no longer merge behind a static-only green check.
+
+### Governance / planning
+
+- Reconciled the gate model with the governing Product Spec: S1 is the core invariant/approval/control proof; S2 owns clean-Anvil end-to-end execution/recovery evidence.
+- Recorded the WS-005 Phase-1 S1 slice separately from the later Phase-3 integrated pre-sign/broadcast/recovery slice, removing the previous circular dependency that required Phase-2 work before S1 could open Phase 2.
+- Replaced stale current-status snapshots and obsolete migration/test counts with the current 21-migration, 71-DB, 18-concurrency and 7-invariant evidence.
+- Phase 0 is marked S0 PASS under the Product Spec. The sole-maintainer repository still does not claim a separate GitHub-account approval; that remains explicit merge-governance risk R-019.
+
+### Earlier Phase-0/1 foundation
+
+The repository already contains canonical governing docs/ADRs, strict provider-neutral schemas, deterministic policy/lifecycle rules, atomic PostgreSQL budget accounting, append-only correlated audit, checkout-isolated local services, control fences, authenticated component recovery, MIT licensing, secret scanning, Dependabot and protected GitHub Actions.

@@ -3,8 +3,9 @@
 **Document status:** Governing authority for MVP design and implementation  
 **Product name:** Crip Wallet  
 **Repository working name:** `crip-wallet`  
-**Version:** 0.1.0  
+**Version:** 0.1.1
 **Baseline date:** 2026-08-06  
+**Last clarification:** 2026-08-10
 **Primary milestone:** Working, security-bounded local MVP  
 **Audience:** Product owners, lead orchestrator, implementation agents, reviewers, security engineers, and contributors  
 **Change authority:** Product owner approval is required for material scope, security-model, or trust-boundary changes
@@ -174,12 +175,15 @@ Unknown calldata, unrecognized signatures, opaque proxies, unlimited approvals, 
 
 Crip must distinguish:
 
-- On-chain enforced
-- Signer enforced
-- Control-plane enforced
-- Advisory only
+- `ONCHAIN`
+- `SIGNER`
+- `CONTROL_PLANE`
+- `ADVISORY`
+- `UNSUPPORTED`
 
 The UI and API must not imply that all adapters provide equal guarantees.
+These uppercase values are the canonical representation in schemas, persistence,
+adapter manifests, APIs, telemetry, tests, examples, and UI comparison logic.
 
 ### 6.8 Every financial action must be traceable
 
@@ -358,7 +362,8 @@ A human authorization bound to an execution envelope.
 
 ### Enforcement grade
 
-The strongest layer at which a rule is guaranteed: on-chain, signer, control plane, or advisory.
+The strongest layer at which a rule is guaranteed. The canonical enum is
+`ONCHAIN`, `SIGNER`, `CONTROL_PLANE`, `ADVISORY`, or `UNSUPPORTED`.
 
 ### Reconciliation
 
@@ -702,7 +707,15 @@ No generic arbitrary contract call is required for MVP.
 
 ## 16. Execution Envelope
 
-The execution envelope is the exact object that policy and approval bind to after construction and simulation.
+The execution envelope is the exact immutable object that authorization and
+approval bind to. Before reservation, construction, decoding, verification,
+simulation, and policy evaluation operate on a mutable execution candidate; that
+candidate is not an execution envelope and cannot be approved or signed.
+
+The immutable envelope is finalized only after the final policy decision and
+atomic budget reservation exist, so every required field is present before the
+envelope hash is computed. Envelope serialization and hashing must be canonical
+and versioned. No field included in the envelope may be mutated in place.
 
 It must include:
 
@@ -733,7 +746,14 @@ It must include:
 - Approval requirement
 - Envelope hash
 
-Any change to one of these values creates a new envelope and invalidates prior approval.
+Any change to one of these values creates a new envelope revision and invalidates
+the prior envelope and any approval or autonomous authorization bound to it. A
+re-simulation that changes an envelope-bound block reference, result, expected
+delta, gas limit, fee constraint, or risk decision is such a change. The system
+must return to explicit revalidation and may not sign until the new envelope is
+authorized. The existing asset reservation may be retained only when its policy,
+asset, amount, owner, agent, wallet, and expiry remain valid; otherwise it must be
+released and atomically replaced.
 
 ---
 
@@ -813,8 +833,8 @@ transactions:
   denyUnlimitedApprovals: true
 
 enforcement:
-  minimumBudgetGrade: control-plane
-  minimumRecipientGrade: control-plane
+  minimumBudgetGrade: CONTROL_PLANE
+  minimumRecipientGrade: CONTROL_PLANE
 ```
 
 ### 17.3 Policy decision
@@ -840,7 +860,7 @@ A policy evaluation returns:
     }
   ],
   "requiredEnforcement": {
-    "budget": "control-plane"
+    "budget": "CONTROL_PLANE"
   },
   "decisionHash": "0x..."
 }
@@ -881,10 +901,22 @@ Policy reductions may be owner-initiated and should take effect immediately wher
 For each agent-wallet-asset-policy tuple:
 
 ```text
-allocated = available + reserved + finalized_spend + released_or_expired_adjustments
+allocated = available + reserved + finalized_spend
 ```
 
-The implementation must define the exact accounting equation and test it under all state transitions.
+`available`, `reserved`, and `finalized_spend` are non-negative current balances
+in the same atomic asset unit. A release or expiry atomically decreases
+`reserved` and increases `available` by the same amount; it does not add a fourth
+current-balance term. Append-only release, expiry, correction, and reconciliation
+events preserve history but are not summed again into this current-value
+invariant. Corrections that change current value must post explicit balanced
+ledger entries and preserve `allocated` unless a new owner-authorized policy
+version changes the allocation.
+
+The invariant must hold at transaction commit for every transition and under
+concurrency, retry, idempotency, expiry, release, finalization, and dispute
+handling. Autonomous execution remains gated until unit, database transaction,
+concurrency, property/invariant, and retry/idempotency tests prove it.
 
 ### 18.2 No floating-point monetary values
 
@@ -935,6 +967,23 @@ After confirmation:
 - Mark ambiguous outcomes `DISPUTED`.
 - Never silently assume a timed-out transaction failed.
 
+### 18.7 Native network-fee semantics
+
+ERC-20 delegated spending and native network fees are different assets and must
+never share an accounting tuple. The MVP policy must enforce a per-transaction
+maximum native network-fee ceiling even if it does not maintain a rolling native
+fee budget. For a legacy transaction the authorized maximum is
+`gasLimit * gasPrice`; for an EIP-1559 transaction it is
+`gasLimit * maxFeePerGas`. The result must be less than or equal to both the
+intent and active-policy ceilings before envelope finalization and again before
+signing.
+
+Actual native fees must not be subtracted from an ERC-20 allocation. If a later
+phase reserves or budgets native fees, it must use a separate
+agent-wallet-native-asset-policy account and its own balanced reservation and
+reconciliation events. Blob fees and other fee dimensions are unsupported in
+the MVP and must fail closed.
+
 ---
 
 ## 19. Transaction Lifecycle
@@ -947,9 +996,11 @@ DRAFT
   → POLICY_PRECHECKED
   → CONSTRUCTED
   → DECODED
+  → VERIFIED
   → SIMULATED
   → POLICY_FINALIZED
   → BUDGET_RESERVED
+  → ENVELOPE_FINALIZED
   → AWAITING_APPROVAL | AUTHORIZED
   → SIGNING
   → SIGNED
@@ -971,6 +1022,7 @@ Terminal or exceptional states:
 - `CANCELLED`
 - `DISPUTED`
 - `REVOKED`
+- `REVALIDATION_REQUIRED`
 
 ### 19.2 Transition rules
 
@@ -982,12 +1034,69 @@ Terminal or exceptional states:
 - Broadcast recovery must search by known hash and nonce.
 - Policy, pause, expiry, and credential state must be rechecked immediately before signing.
 - Approval must be revalidated immediately before signing.
+- `AWAITING_APPROVAL` or `AUTHORIZED` may move to
+  `REVALIDATION_REQUIRED` only when an envelope-bound precondition changes. The
+  old envelope is superseded, any approval is invalidated, and the operation
+  must repeat verification, simulation, final policy evaluation, reservation
+  validation, envelope finalization, and authorization.
+- No executable field may change after `SIGNING` begins. A required change after
+  that point creates a new operation; signed bytes are never rewritten.
 
 ### 19.3 Asynchronous operation
 
 Long-running actions must return an operation ID.
 
 The agent may poll status without retaining a long blocking tool call.
+
+### 19.4 Immediate revocation semantics
+
+Successful agent revocation means the revocation record is durably committed and
+all authorization and signing entry points will reject that agent before any new
+authorization or signature is produced. Revocation cannot cancel or reverse an
+already-broadcast blockchain transaction and the UI, API, and logs must not claim
+that it can.
+
+| Operation point                       | Required behavior after revocation                                                                                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prepared or pre-reservation intent    | Stop progression and mark `REVOKED`; no reservation is created.                                                                                                                       |
+| Held reservation before authorization | Mark the operation `REVOKED` and atomically release the reservation.                                                                                                                  |
+| Pending approval                      | Revoke the approval, mark the operation `REVOKED`, and atomically release the reservation.                                                                                            |
+| Authorized but unsigned               | Reject signing, invalidate authorization, mark `REVOKED`, and atomically release the reservation.                                                                                     |
+| Signed but unbroadcast                | Never broadcast; quarantine and discard signer-local bytes. Keep the reservation held as `DISPUTED` until non-execution is proven by the adapter recovery procedure, then release it. |
+| Broadcast or pending confirmation     | Continue monitoring and reconciliation; retain the reservation and disclose that cancellation is not guaranteed.                                                                      |
+| Confirmed                             | Reconcile actual spend normally; revocation only prevents later authorization.                                                                                                        |
+
+System and wallet pause use the same immediate pre-sign boundary. A cancellation
+request is best effort after broadcast and never substitutes for revocation.
+
+### 19.5 Control-fence binding
+
+The authoritative control state is the `control_fences` relation. It contains
+one monotonic `fence_version` and state for the system, owner, agent, and policy
+scopes. An approval request, approval decision, and authorization evidence row
+persist the version and state snapshot for all four scopes. Database guards
+reject a new snapshot that does not match the authoritative rows.
+Fence versions are persisted as PostgreSQL `bigint` and are bounded to
+`9007199254740991` (`Number.MAX_SAFE_INTEGER`) at the database boundary; an
+attempt to advance beyond that bound fails closed.
+
+Authorization consumers and control mutations use the same serialized lock
+order: `SYSTEM`, then `OWNER`, then `AGENT`, then `POLICY`, followed by the
+approval, operation, reservation, and budget-account rows. A successful pause
+or revocation increments its fence, appends its control audit event, and in the
+same transaction invalidates affected pending or authorized work. System pause
+maps work to `REVALIDATION_REQUIRED`; owner, agent, and policy revocation maps
+work to `REVOKED`. Eligible held reservations are released in that transaction,
+preserving `allocated = available + reserved + finalized_spend`.
+
+Repeated commands for an already-applied state are idempotent and do not create
+another version or audit event. Resume increments the system fence and never
+restores a prior approval or authorization; a fresh approval and authorization
+are required. A `REVALIDATION_REQUIRED` operation is not silently reopened by
+resume; the current Phase-1 boundary requires a new envelope/operation for fresh
+authorization. This Phase-1 fence is a database authorization proof only. No
+signing or public-chain broadcast consumer is implemented; a future signer must
+perform an equivalent fence check at its immediate pre-sign boundary.
 
 ---
 
@@ -1090,6 +1199,11 @@ Approval must bind to the execution-envelope hash.
 
 Changing any executable field invalidates approval.
 
+Approval and authorization also bind to the four-scope control-fence snapshot.
+Any version or state change makes the snapshot stale. Stale approval cannot be
+consumed, and stale authorization evidence cannot pass revalidation after a
+pause, resume, owner revocation, agent revocation, or policy revocation.
+
 ### 22.3 Approval states
 
 - `PENDING`
@@ -1150,12 +1264,12 @@ operations:
   typedData: false
 
 enforcement:
-  totalBudget: control-plane
-  perTransactionBudget: control-plane
-  chainAllowlist: control-plane
-  recipientAllowlist: control-plane
-  functionAllowlist: control-plane
-  expiry: control-plane
+  totalBudget: CONTROL_PLANE
+  perTransactionBudget: CONTROL_PLANE
+  chainAllowlist: CONTROL_PLANE
+  recipientAllowlist: CONTROL_PLANE
+  functionAllowlist: CONTROL_PLANE
+  expiry: CONTROL_PLANE
 
 approvals:
   asynchronous: true
@@ -1426,6 +1540,8 @@ The MVP should use a transactional relational database. PostgreSQL is preferred;
 - `budget_reservations`
 - `approval_requests`
 - `approval_decisions`
+- `control_fences`
+- `authorization_invalidations`
 - `operations`
 - `transactions`
 - `transaction_receipts`
@@ -1445,9 +1561,15 @@ The MVP should use a transactional relational database. PostgreSQL is preferred;
 - Immutable execution envelopes.
 - Append-only audit-event semantics.
 - Optimistic version or locking field for mutable lifecycle entities.
+- Control changes use a monotonic versioned fence; stale authorization snapshots
+  are rejected and invalidated transactionally.
+- Resume never resurrects stale approvals or authorization evidence.
 - UTC timestamps.
 - Explicit status enums or check constraints.
 - Database migrations committed and tested.
+- Migrations are ordered and forward-only. Financial-state recovery uses
+  application rollback, backup/restore, or a new forward corrective migration;
+  casual destructive down migrations are prohibited.
 
 ### 26.3 Audit event shape
 
@@ -1841,7 +1963,7 @@ Required for:
 - Worker retry
 - Immutable policy versions
 - Audit append behavior
-- Migration upgrade and rollback strategy
+- Migration upgrade, application rollback, forward-correction, and backup/restore strategy
 
 ### 34.3 Chain integration tests
 
@@ -2353,7 +2475,8 @@ These questions do not block Phase 0 unless noted:
 - Whether API and MCP server are separate processes
 - Policy expression language versus typed policy object
 - Formal verification scope for smart-contract modules
-- License choice
+- License choice — resolved by accepted ADR-0013 as MIT; superseding changes
+  require a new ADR.
 - Hosted-service boundary
 - Safe allowance versus ERC-7710 delegation for first testnet adapter
 - How to attest adapter conformance
