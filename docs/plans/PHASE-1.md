@@ -22,23 +22,9 @@ Phase 1 does **not** own transaction construction, signing, RPC submission, chai
 - Corrective forward migration `0021_wp08_owner_approval_auth_fix.sql` restores the persisted `authenticated_at` field required by consumption while preserving checksum-locked migration 0020.
 - WP-09 uses PostgreSQL time for recovery lease validity, bounds lease duration to 300 seconds and authenticates the duration in the recovery claim.
 - WP-10 closes the reservation-to-envelope revocation/pause gap and releases eligible held reservations atomically across `POLICY_FINALIZED`, `BUDGET_RESERVED`, `ENVELOPE_FINALIZED` and `AWAITING_APPROVAL`.
+- WP-11 moves DB, concurrency and invariant suites into the protected `validate` workflow and reconciles gate/phase documentation with the governing Product Spec.
 
-## Current evidence
-
-Full clean local verification at implementation head `de9cac0cc19fb17b6964074878d4916cb30899ef`:
-- `npm ci` — PASS, 156 packages, 0 vulnerabilities;
-- `npm run check` — PASS, 20 repository tests + 118 package tests;
-- `npm audit --audit-level=high` — PASS, 0 vulnerabilities;
-- local PostgreSQL/Anvil startup and status — PASS, chain `0x7a69`;
-- `npm run test:db` — PASS, 71/71;
-- `npm run test:concurrency` — PASS, 18/18;
-- `npm run test:invariants` — PASS, 7/7;
-- targeted owner-approval proof — PASS, 25/25 DB plus 1/1 concurrent one-winner consumption;
-- `npm run dev:down` — PASS.
-
-The migration lineage is 21 forward-only checksum-locked migrations.
-
-## Gate S1 interpretation
+## Gate S1 — ACCEPTED
 
 The governing Product Spec defines S1 as:
 - budget concurrency tests pass;
@@ -47,6 +33,19 @@ The governing Product Spec defines S1 as:
 - revocation and pause tests pass;
 - no floating-point money paths.
 
-All five criteria are satisfied by the local implementation evidence above. Final S1 closeout additionally requires the protected current-head `validate` workflow to execute the DB, concurrency and invariant suites and pass remotely.
+Protected evidence head `85545348d369c7860742872acb4da100a5842152` passed CI run `31919254466` and Secret Scan run `31919254475`.
 
-Integrated signing/provider/chain reconciliation is **not** an S1 prerequisite; it belongs to Phase 2 / S2 evidence.
+The protected CI run proved:
+- `npm ci` — 156 packages installed, 0 vulnerabilities;
+- repository/unit/docs checks — 20 repository tests + 118 package tests;
+- dependency audit — 0 vulnerabilities;
+- local PostgreSQL/Anvil startup/status — PASS, Anvil chain `0x7a69`;
+- DB gate — 71/71;
+- concurrency gate — 18/18 with 4 workers × 32 rounds;
+- invariant/property gate — 7/7 with 512 property runs per configured seed;
+- generated-state permissions and quiet signer logs — PASS;
+- local runtime cleanup — PASS.
+
+**Gate S1 is accepted. Phase 1 is complete.**
+
+Integrated signing/provider/chain reconciliation remains Phase 2 / S2 evidence and was not used to close S1.

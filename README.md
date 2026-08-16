@@ -10,16 +10,18 @@ Anvil chain `31337` with a mock ERC-20.
 
 ## Current status
 
-Phase 0 repository/governance foundations and the Phase 1 S1 core-invariant
-implementation are present on PR #1. Phase 1 now includes the deliberately
-pulled-forward local authorization/control slice needed by Gate S1: canonical
-authorization evidence, authenticated local-owner approval, replay protection,
-revocation/pause fencing, and hardened recovery leases. Phase 2 transaction
-construction/signing/provider/chain integration remains unopened until the
-Phase 1 closeout evidence is accepted.
+Phase 0 repository/governance foundations and Gate S0 are complete. Phase 1 and
+Gate S1 are accepted: the protected `validate` workflow now proves the core
+budget, idempotency, authenticated approval/replay, revocation/pause and
+integer-money invariants on PostgreSQL, with deterministic concurrency and
+property tests on the merge path.
 
-See [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md) for the current gate status
-and exact evidence.
+PR #1 is the Phase 0/1 closeout PR. After its final documentation-only closeout
+head remains green and the PR is merged/closed out, Phase 2 / WS-004 is ready to
+open for the local fake-ERC-20 Anvil transaction vertical slice.
+
+See [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md) for exact gate evidence and
+phase ownership.
 
 ## Authority
 

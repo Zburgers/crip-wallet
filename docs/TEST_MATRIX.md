@@ -4,50 +4,53 @@ Owner: security/verification workstream.
 Update rule: with every requirement, threat, test, run, skip, failure, or gate change.
 Status values: `PLANNED`, `PASS`, `BLOCKED`, `NOT APPLICABLE`.
 
-## Current Phase-1 closeout snapshot
+## Phase-1 closeout snapshot
 
-Implementation head: `de9cac0cc19fb17b6964074878d4916cb30899ef`.
+Protected evidence head: `85545348d369c7860742872acb4da100a5842152`.
+Protected CI: `31919254466` — PASS.
+Secret Scan: `31919254475` — PASS.
 
 | Check | Result |
 | --- | --- |
 | `npm ci` | PASS — 156 packages, 0 vulnerabilities |
-| `npm run check` | PASS — 20 repository tests + 118 package tests |
+| `npm run check` | PASS — 20 repository tests + 118 package tests; docs/repository checks pass |
 | `npm audit --audit-level=high` | PASS — 0 vulnerabilities |
 | `npm run dev:up` / `dev:status` | PASS — loopback PostgreSQL + Anvil chain `0x7a69` |
 | `npm run test:db` | PASS — 71/71 |
-| `npm run test:concurrency` | PASS — 18/18 |
-| `npm run test:invariants` | PASS — 7/7 |
-| owner-approval focused DB | PASS — 25/25 |
-| concurrent approval consumption | PASS — 1/1, exactly one winner |
+| `npm run test:concurrency` | PASS — 18/18; 4 workers × 32 rounds |
+| `npm run test:invariants` | PASS — 7/7; property `numRuns=512` |
+| generated-state permission / quiet signer check | PASS |
 | `npm run dev:down` | PASS |
 
-The protected `validate` workflow now includes DB, concurrency and invariant gates. A current-head remote run is required before final S1 acceptance.
+These DB, concurrency and invariant suites run inside the protected `validate` workflow required by main ruleset `20791659`.
 
 ## Gate evidence
 
 | ID | Requirement | Status | Evidence / next owner |
 | --- | --- | --- | --- |
-| S0-01 | Secret scanning | PASS | Gitleaks workflow + repository secret controls |
+| S0-01 | Secret scanning | PASS | current-head Secret Scan + repository secret controls |
 | S0-02 | Dependency lockfile | PASS | committed `package-lock.json` |
 | S0-03 | CODEOWNERS | PASS | `.github/CODEOWNERS` |
 | S0-04 | Branch protection | PASS | active ruleset `20791659` with required `validate`, deletion and non-fast-forward protections |
 | S0-05 | Vulnerability reporting | PASS | `SECURITY.md` |
 | S0-06 | No real-wallet material | PASS | local-only runtime/config checks |
-| S1-01 | Budget concurrency | PASS | 32 rounds × 4 workers inside 18/18 concurrency gate |
-| S1-02 | Idempotency | PASS | DB replay/conflict/response-loss coverage |
-| S1-03 | Approval replay/envelope binding | PASS | WP-07/08, 25/25 focused DB + one-winner concurrency |
+| S1-01 | Budget concurrency | PASS | protected 4-worker × 32-round concurrency proof |
+| S1-02 | Idempotency | PASS | protected DB replay/conflict/response-loss coverage |
+| S1-03 | Approval replay/envelope binding | PASS | WP-07/08 DB + one-winner concurrent consumption |
 | S1-04 | Revocation and pause | PASS | four-scope fence races + WP-10 pre-envelope revoke/pause coverage |
 | S1-05 | No floating-point money | PASS | canonical atomic-unit schemas + ledger/property proof |
-| S1-06 | Protected current-head verification | BLOCKED | WP-11 CI change must pass remotely |
+| S1-06 | Protected current-head verification | PASS | CI `31919254466` on `85545348...` |
 | S2-01 | Clean-Anvil full transaction journeys | PLANNED | Phase 2/3 |
 | S2-02 | Complete trace/audit E2E | PLANNED | Phase 5 |
 | S2-03 | Execution-boundary recovery | PLANNED | Phase 3 |
+
+**Gate S1: PASS / ACCEPTED. Phase 2 may open after PR #1 closeout.**
 
 ## Product requirements
 
 | ID | Requirement | Status | Evidence / next phase |
 | --- | --- | --- | --- |
-| PR-001 | Clean clone installs/checks | PASS | CI/local bootstrap |
+| PR-001 | Clean clone installs/checks | PASS | protected CI/local bootstrap |
 | PR-002 | Anvil 31337 and fake assets only | PASS | local runtime guard; actual transfer Phase 2 |
 | PR-003 | owner/agent/wallet/policy fixture | PASS | DB fixtures |
 | PR-004 | read-only/review/autonomous modes | PLANNED | Phase 2-4 integration |
@@ -70,7 +73,7 @@ The protected `validate` workflow now includes DB, concurrency and invariant gat
 | PR-021 | adapter manifest/conformance | PLANNED | Phase 2 |
 | PR-022 | invalid transitions rejected | PASS | WS-002 property proof |
 | PR-023 | failures/retries reconcile safely | PASS locally / PLANNED chain | WP-09 plus Phase 2/3 |
-| PR-024 | documentation matches behavior | PASS for WP-11 candidate | final external closeout review |
+| PR-024 | documentation matches behavior | PASS | WP-11 gate reconciliation and closeout review |
 | PR-025 | no unresolved critical/high security findings | BLOCKED | final MVP hardening, not Phase-1 gate |
 | PR-026 | product-owner MVP sign-off | BLOCKED | MVP not complete |
 
@@ -79,7 +82,7 @@ The protected `validate` workflow now includes DB, concurrency and invariant gat
 | ID | Threat | Status | Evidence / next phase |
 | --- | --- | --- | --- |
 | TM-001 | total overspend | PASS | ledger invariant |
-| TM-002 | concurrent overspend | PASS | 32×4 deterministic proof |
+| TM-002 | concurrent overspend | PASS | protected 32×4 deterministic proof |
 | TM-003 | idempotency conflict | PASS | DB retry/conflict |
 | TM-004 | duplicate broadcast/evidence | PASS locally | recovery evidence idempotency |
 | TM-005 | approval replay | PASS locally | WP-07/08 |
