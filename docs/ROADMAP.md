@@ -1,6 +1,8 @@
 # Roadmap
 
-Owner: lead orchestrator. `docs/PRODUCT_SPEC.md` controls gate semantics.
+Owner: lead orchestrator.
+Update rule: after phase planning, gate review, material scope change, or product-owner decision.
+`docs/PRODUCT_SPEC.md` controls gate semantics.
 
 | Phase | Outcome | Entry | Exit evidence | Status |
 | --- | --- | --- | --- | --- |

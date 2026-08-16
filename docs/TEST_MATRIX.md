@@ -1,6 +1,8 @@
 # MVP Test Matrix
 
-Owner: security/verification workstream. Status values: `PLANNED`, `PASS`, `BLOCKED`, `NOT APPLICABLE`.
+Owner: security/verification workstream.
+Update rule: with every requirement, threat, test, run, skip, failure, or gate change.
+Status values: `PLANNED`, `PASS`, `BLOCKED`, `NOT APPLICABLE`.
 
 ## Current Phase-1 closeout snapshot
 

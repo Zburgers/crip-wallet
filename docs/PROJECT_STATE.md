@@ -1,6 +1,7 @@
 # Project State
 
-Owner: lead orchestrator. This file is the current resume snapshot, not an activity log.
+Owner: lead orchestrator.
+Update rule: at every meaningful integration point; keep this as the current resume snapshot rather than an activity log.
 
 ## Repository
 

@@ -1,6 +1,7 @@
 # Changelog
 
-Owner: lead orchestrator. Record security, schema, policy, compatibility and governance changes in the same integration change.
+Owner: lead orchestrator.
+Update rule: record user/operator-visible, schema, security, policy, compatibility, dependency, or governance-authority changes in the same integration change.
 
 ## Unreleased
 

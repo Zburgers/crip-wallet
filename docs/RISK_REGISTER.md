@@ -1,6 +1,8 @@
 # Risk Register
 
-Owner: lead orchestrator. Open risks must remain visible until their related phase/gate evidence exists.
+Owner: lead orchestrator.
+Update rule: after threat, design, dependency, verification, scope, or status changes.
+Open risks must remain visible until their related phase/gate evidence exists.
 
 | ID | Risk | Impact | Current mitigation/status |
 | --- | --- | --- | --- |
