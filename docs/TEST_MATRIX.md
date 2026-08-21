@@ -111,3 +111,12 @@ These DB, concurrency and invariant suites run inside the protected `validate` w
 | TM-028 | enforcement overclaim | PLANNED | Phase 2 adapter conformance |
 | TM-029 | migration/data loss | PASS for forward/checksum/corrective path / PLANNED backup drill | later hardening |
 | TM-030 | dependency/supply chain | PASS for lock/audit/action pins / monitored | ongoing |
+| TM-031 | constructor self-verification | PLANNED | P2-02 separate encoder/parser and mutation vectors |
+| TM-032 | unbound signer transaction fields | BLOCKED | proposed ADR-0015 acceptance, then P2-02/P2-04 |
+| TM-033 | response-loss false failure/release | PLANNED | P2-05/P2-06 persist-before-send fault proof |
+| TM-034 | receipt/cross-operation substitution | PLANNED | P2-05 transaction/receipt/log and DB binding proof |
+| TM-035 | local-chain reset confusion | PLANNED | P2-01 fixture fingerprint and P2-03/P2-05 checks |
+
+## Phase-2 implementation matrix
+
+The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, including inherited S0/S1 gates, is maintained in `docs/plans/PHASE-2.md`. No Phase-2 row is PASS until the named test exists and protected current-head evidence is recorded here.

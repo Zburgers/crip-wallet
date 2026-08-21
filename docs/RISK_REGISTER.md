@@ -27,5 +27,10 @@ Open risks must remain visible until their related phase/gate evidence exists.
 | R-019 | Sole-maintainer merge-governance limitation | High | Active ruleset requires `validate`, deletion/non-fast-forward protection; zero separate-account approval is explicitly documented and must not be misrepresented as independent human approval |
 | R-020 | Dependency security-update drift | Medium | Dependabot + audit CI; mitigated/monitored |
 | R-021 | Checkout tests collide/corrupt another checkout | Critical | Checkout-bound runtime + Docker-assigned loopback ports + shared loader; mitigated locally |
+| R-022 | Envelope omits exact signed EVM fields | Critical | Envelope v1 lacks resolved nonce, transaction type, priority fee and complete simulation block identity; proposed ADR-0015 is a blocking prerequisite for P2-02 |
+| R-023 | Constructor verifies its own calldata | Critical | Phase-2 plan requires viem construction plus a separate strict 68-byte ERC-20 parser with mutation vectors |
+| R-024 | RPC response loss causes false failure and budget release | Critical | Persist expected hash/attempt before send; unknown outcomes retain/dispute funds; deterministic forward-then-drop tests in P2-06 |
+| R-025 | Receipt or chain evidence reconciles the wrong operation | Critical | Full transaction/receipt/log matching plus operation/reservation/hash unique bindings and authenticated reconciler evidence planned for P2-05 |
+| R-026 | Local-chain reset makes stale evidence appear current | High | Persist and verify chain/genesis/fixture/deployment-code fingerprint at simulation, sign and reconciliation boundaries |
 
 Detection evidence lives in `docs/TEST_MATRIX.md` and the relevant workstream files.

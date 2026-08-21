@@ -10,6 +10,8 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 - Opened Phase 2 / WS-004 from current `main` for the local fake-ERC-20 vertical slice: construct, independently verify, simulate, authorize, locally sign, broadcast, confirm and reconcile.
 - Added `docs/plans/PHASE-2.md` and `docs/workstreams/WS-004-transaction-pipeline.md` with explicit local-only boundaries, packet order, S2 evidence requirements and chain-level ambiguity/fault coverage.
 - Preserved the prohibition on public RPC, testnet/mainnet, real funds, production custody and production identity.
+- Replaced the Phase-2 bootstrap outline with an implementation-ready architecture and packet plan covering exact interfaces, envelope/data migration impact, independent verification, simulation freshness, signer isolation, persist-before-send broadcast recovery, evidence-bound reconciliation, deterministic faults and S2 reproduction.
+- Proposed ADR-0015 to add an exact EIP-1559 envelope-v2 boundary. P2-01 is ready; P2-02 remains blocked until product-owner acceptance because envelope v1 cannot bind every signed transaction field.
 
 ### Dependencies
 

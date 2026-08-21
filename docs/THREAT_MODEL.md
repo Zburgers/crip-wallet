@@ -71,6 +71,11 @@ and race attackers; insiders with partial access; and accidental operator error.
 | T-028 | Enforcement-grade overclaim                  | Strict enum and adapter conformance                                                                                                                          | TM-028        |
 | T-029 | Migration/data-loss corruption               | Forward-only migrations, restore/correction evidence                                                                                                         | TM-029        |
 | T-030 | Dependency/supply-chain compromise           | Lock, audit, pin, minimal dependencies                                                                                                                       | TM-030        |
+| T-031 | Constructor self-verification                | Separate viem encoder and narrow manual canonical transfer parser                                                                                            | TM-031        |
+| T-032 | Signer chooses unbound nonce/type/fee        | Accepted envelope v2 binds every type-2 field; IDs-only signer API                                                                                            | TM-032        |
+| T-033 | Response-loss falsely releases reservation   | Persist expected hash/attempt before send; uncertainty remains pending/disputed                                                                               | TM-033        |
+| T-034 | Receipt or transaction evidence substitution | Match transaction, receipt, log and operation/reservation/hash bindings                                                                                       | TM-034        |
+| T-035 | Local-chain reset confusion                  | Chain/genesis/fixture/deployment-code fingerprint checks                                                                                                      | TM-035        |
 
 ## Abuse paths
 
@@ -88,3 +93,7 @@ Control-plane rules can be bypassed if the local signer or its host is fully
 compromised. Anvil keys are disposable and fake-value only. Simulation and audit
 hash chains are evidence, not guarantees. Production custody and public-network
 operation remain outside MVP and require Gate S3.
+
+## Phase-2 trust-boundary review
+
+The Phase-2 design and packet ownership are recorded in `docs/plans/PHASE-2.md`. The RPC and contract are untrusted evidence sources; the signer is a restricted local TCB process; and the reconciler accepts only authenticated, operation-bound evidence. Proposed ADR-0015 is required because signing while nonce, transaction type, priority fee or complete simulation block identity remains outside the immutable envelope would permit transaction substitution after authorization.

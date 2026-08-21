@@ -2,7 +2,7 @@
 
 **Phase:** 2
 
-**Status:** OPEN / PLANNING BOOTSTRAP
+**Status:** OPEN / IMPLEMENTATION PLAN COMPLETE; P2-01 READY
 
 **Dependency:** Gate S1 — PASS / ACCEPTED
 
@@ -60,6 +60,12 @@ The workstream must preserve the existing provider-neutral control-plane model. 
 6. P2-06 fault/ambiguity evidence + S2 closeout
 
 Packet boundaries may be refined by the implementation agent, but security dependencies must not be parallelized into incompatible transaction/envelope/adapter state models.
+
+## Researched implementation boundary
+
+The implementation-ready contract is now in `docs/plans/PHASE-2.md`. It reuses the Phase-1 canonical authorization guard, four-scope control fences, authenticated ADAPTER/RECONCILER credentials, broadcast evidence, recovery leases and exactly-once ledger resolution. It does not create another authorization, budget, approval, envelope-lifecycle or reconciliation source of truth.
+
+P2-01 may begin. P2-02 and later must wait for product-owner acceptance of proposed `docs/decisions/ADR-0015-exact-evm-envelope-v2.md`. Envelope v1 does not bind the resolved nonce, transaction type, EIP-1559 priority fee, and both simulation block number/hash; signing with those values chosen after authorization would violate exact intent-to-execution binding.
 
 ## Exit evidence
 

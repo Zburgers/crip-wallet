@@ -71,7 +71,7 @@ No S2 evidence is claimed yet. Transaction construction, independent decoding, s
 - WS-002 canonical contracts — FROZEN LOCALLY.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
-- WS-004 Phase-2 transaction pipeline/local adapter — OPEN / PLANNING BOOTSTRAP.
+- WS-004 Phase-2 transaction pipeline/local adapter — implementation plan complete; P2-01 ready.
 - WS-005 Phase-3 integrated approval/control/recovery slice — NOT OPENED until WS-004 is stable.
 - WS-006/007 — NOT OPENED.
 
@@ -79,4 +79,11 @@ No S2 evidence is claimed yet. Transaction construction, independent decoding, s
 
 Phase 2 remains strictly local and fake-money only: Anvil chain `31337` / `0x7a69`, disposable local keys and a mock ERC-20. Public RPC, testnet, mainnet, real funds, production custody and production identity remain prohibited.
 
-Last updated: 2026-08-21 for Phase-2 opening and dependency reconciliation.
+## Phase-2 planning handoff
+
+- `docs/plans/PHASE-2.md` now contains the researched architecture, APIs, lifecycle mapping, migration impact, packet-level TDD tasks, fault model, threat ownership and S2 reproduction gate.
+- P2-01 is ready to implement against the existing checkout-bound Anvil runtime.
+- P2-02 and later are blocked on explicit acceptance of proposed ADR-0015. The accepted envelope v1 cannot bind every field of the exact EIP-1559 transaction that Phase 2 must sign.
+- S2 remains **OPEN / NOT PASSED**; no runtime Phase-2 implementation or chain evidence exists yet.
+
+Last updated: 2026-08-21 for the Phase-2 implementation-plan handoff.
