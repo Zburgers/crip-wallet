@@ -5,6 +5,17 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ## Unreleased
 
+### Phase 2
+
+- Opened Phase 2 / WS-004 from current `main` for the local fake-ERC-20 vertical slice: construct, independently verify, simulate, authorize, locally sign, broadcast, confirm and reconcile.
+- Added `docs/plans/PHASE-2.md` and `docs/workstreams/WS-004-transaction-pipeline.md` with explicit local-only boundaries, packet order, S2 evidence requirements and chain-level ambiguity/fault coverage.
+- Preserved the prohibition on public RPC, testnet/mainnet, real funds, production custody and production identity.
+
+### Dependencies
+
+- Merged `typescript-eslint` 8.67.0 and `@types/node` 26.2.0 after protected CI and Secret Scan passed on their update PRs.
+- Kept TypeScript pinned at 6.0.3. Dependabot PR #2 for TypeScript 7.0.2 is intentionally ignored for the TypeScript 7 major line because `typescript-eslint@8.67.0` declares TypeScript `<6.1.0`; the attempted update fails closed during `npm ci` with `ERESOLVE`.
+
 ### Security
 
 - WP-07 closes the alternate authorization path. Protected reservation states require canonical authorization evidence and the database rejects manufactured authorization/broadcast/finalization state.
