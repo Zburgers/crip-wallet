@@ -32,6 +32,7 @@
     "test:concurrency": "node tooling/phase1-test-gate.mjs concurrency",
     "pretest:invariants": "npm run build --workspaces --if-present",
     "test:invariants": "node tooling/phase1-test-gate.mjs invariants",
+    "contracts:test": "node tooling/phase2-contracts.mjs",
     "dev:up": "bash scripts/dev-up.sh",
     "dev:status": "bash scripts/dev-status.sh",
     "dev:down": "bash scripts/dev-down.sh"

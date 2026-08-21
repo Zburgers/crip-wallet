@@ -1,0 +1,10 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+cache_path = "cache"
+solc_version = "0.8.30"
+optimizer = true
+optimizer_runs = 200
+fs_permissions = [{ access = "read", path = "/tmp/crip-wallet-deployer.key" }]
