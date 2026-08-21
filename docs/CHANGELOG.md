@@ -11,7 +11,9 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 - Added `docs/plans/PHASE-2.md` and `docs/workstreams/WS-004-transaction-pipeline.md` with explicit local-only boundaries, packet order, S2 evidence requirements and chain-level ambiguity/fault coverage.
 - Preserved the prohibition on public RPC, testnet/mainnet, real funds, production custody and production identity.
 - Replaced the Phase-2 bootstrap outline with an implementation-ready architecture and packet plan covering exact interfaces, envelope/data migration impact, independent verification, simulation freshness, signer isolation, persist-before-send broadcast recovery, evidence-bound reconciliation, deterministic faults and S2 reproduction.
-- Proposed ADR-0015 to add an exact EIP-1559 envelope-v2 boundary. P2-01 is ready; P2-02 remains blocked until product-owner acceptance because envelope v1 cannot bind every signed transaction field.
+- **Accepted ADR-0015** as the Phase-2 exact-EVM execution contract. Envelope v2 uses schema version `2.0` and a distinct v2 hash-preimage version; binds every unsigned EIP-1559 field including resolved nonce, priority/max fee and `accessList: []`; preserves envelope v1 unchanged; uses bounded canonical simulation freshness; keeps the IDs-only DB-loaded signer as a local-Anvil reference-adapter mechanism rather than universal provider DB coupling; persists expected transaction hash/broadcast attempt before send; and preserves ADR-0014 authenticated reconciliation of untrusted chain evidence.
+- P2-02 is no longer blocked on product-owner architecture approval. It remains sequenced after P2-01 review/stabilization and must implement the accepted ADR rather than redesigning the execution boundary.
+- Reconciled `docs/SECURITY.md` with current gate authority: S0 PASS, S1 PASS / ACCEPTED, S2 OPEN / NOT PASSED. Historical WP-03/WP-04 blocked language is now explicitly framed as checkpoint history rather than current status.
 
 ### Dependencies
 
@@ -26,6 +28,7 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 - WP-09 hardens recovery claims: lease duration is authenticated and bounded, lease validity/expiry uses PostgreSQL time, and caller-supplied time cannot steal a live lease.
 - WP-10 closes the reservation-to-envelope revocation/pause gap and atomically releases eligible held reservations before an envelope exists.
 - WP-11 places DB, deterministic concurrency and invariant/property suites inside the protected `validate` workflow so a core financial/authorization regression can no longer merge behind a static-only green check.
+- ADR-0015 closes the **architecture-level** unbound-EVM-field gap but does not claim implementation proof. P2-02 through P2-06 still own schema/DB mutation tests, independent decode, simulation freshness, signer isolation, persist-before-send ambiguity handling, chain-evidence verification and exactly-once reconciliation evidence.
 
 ### Governance / planning
 

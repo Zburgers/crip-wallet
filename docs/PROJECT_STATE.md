@@ -52,11 +52,13 @@ Protected CI run `31919254466` at `85545348d369c7860742872acb4da100a5842152` pas
 
 ### S2 — OPEN / NOT PASSED
 
-Phase 2 / WS-004 is now open for the local fake-ERC-20 vertical slice:
+Phase 2 / WS-004 is open for the local fake-ERC-20 vertical slice:
 
 `construct → independently verify → simulate → authorize → locally sign → broadcast → confirm → reconcile`
 
-No S2 evidence is claimed yet. Transaction construction, independent decoding, simulation/fee enforcement, local signing/broadcast/confirmation/reconciliation and chain-level fault/ambiguity tests remain to be implemented and proven.
+ADR-0015 is accepted and now fixes the exact EIP-1559 envelope-v2, local reference-signer, persist-before-send broadcast, and authenticated reconciliation boundary. This removes the architecture-approval blocker for P2-02, but it does not constitute runtime or chain evidence.
+
+No S2 evidence is claimed yet. Transaction construction, independent decoding, simulation/fee enforcement, local signing/broadcast/confirmation/reconciliation and chain-level fault/ambiguity tests remain to be implemented and proven. P2-01 must be reviewed and its local fixture/toolchain contract stabilized before P2-02 begins.
 
 ## Dependency state
 
@@ -71,7 +73,7 @@ No S2 evidence is claimed yet. Transaction construction, independent decoding, s
 - WS-002 canonical contracts — FROZEN LOCALLY.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
-- WS-004 Phase-2 transaction pipeline/local adapter — implementation plan complete; P2-01 ready.
+- WS-004 Phase-2 transaction pipeline/local adapter — implementation plan complete; ADR-0015 accepted; P2-01 is the active implementation packet.
 - WS-005 Phase-3 integrated approval/control/recovery slice — NOT OPENED until WS-004 is stable.
 - WS-006/007 — NOT OPENED.
 
@@ -81,9 +83,10 @@ Phase 2 remains strictly local and fake-money only: Anvil chain `31337` / `0x7a6
 
 ## Phase-2 planning handoff
 
-- `docs/plans/PHASE-2.md` now contains the researched architecture, APIs, lifecycle mapping, migration impact, packet-level TDD tasks, fault model, threat ownership and S2 reproduction gate.
-- P2-01 is ready to implement against the existing checkout-bound Anvil runtime.
-- P2-02 and later are blocked on explicit acceptance of proposed ADR-0015. The accepted envelope v1 cannot bind every field of the exact EIP-1559 transaction that Phase 2 must sign.
-- S2 remains **OPEN / NOT PASSED**; no runtime Phase-2 implementation or chain evidence exists yet.
+- `docs/plans/PHASE-2.md` contains the researched architecture, APIs, lifecycle mapping, migration impact, packet-level TDD tasks, fault model, threat ownership and S2 reproduction gate.
+- ADR-0015 is **ACCEPTED**. Envelope v2 must use schema version `2.0` and a distinct v2 hash-preimage version; bind all unsigned type-2 fields including `accessList: []`; use the accepted bounded simulation-freshness rules; preserve the local-Anvil IDs-only signer as a reference-adapter mechanism rather than a universal DB-coupling requirement; persist expected transaction hash/broadcast attempt before send; and keep ADR-0014 authenticated reconciler evidence in front of exactly-once ledger reconciliation.
+- P2-01 is the current implementation/review packet against the existing checkout-bound Anvil runtime.
+- P2-02 is no longer blocked on ADR approval, but must wait until P2-01 review is complete and the fixture/toolchain boundary is stable.
+- S2 remains **OPEN / NOT PASSED**; no complete local vertical-slice evidence is claimed yet.
 
-Last updated: 2026-08-21 for the Phase-2 implementation-plan handoff.
+Last updated: 2026-08-21 for ADR-0015 acceptance and the Phase-2 implementation handoff.
