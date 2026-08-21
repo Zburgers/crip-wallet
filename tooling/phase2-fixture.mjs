@@ -390,7 +390,7 @@ const runFoundry = (
   mounts = [],
   hostNetwork = false,
 ) => {
-  const dockerArgs = ["run", "--rm"];
+  const dockerArgs = ["run", "--rm", "--env", "HOME=/tmp"];
   if (
     typeof process.getuid === "function" &&
     typeof process.getgid === "function"

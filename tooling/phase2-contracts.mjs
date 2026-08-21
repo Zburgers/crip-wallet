@@ -24,6 +24,8 @@ const result = spawnSync(
   [
     "run",
     "--rm",
+    "--env",
+    "HOME=/tmp",
     ...(typeof process.getuid === "function" &&
     typeof process.getgid === "function"
       ? ["--user", `${process.getuid()}:${process.getgid()}`]
