@@ -46,7 +46,7 @@ claims. Database queries are parameterized and transactions use one client.
 | --- | --- | --- |
 | S0 repository safety | Secret scanning/push protection, locked dependencies, CODEOWNERS, active main ruleset `20791659`, vulnerability reporting, MIT licensing, and no-real-wallet/local-runtime controls were accepted in Phase 0/PR #1 | **PASS** |
 | S1 core invariant proof | Protected Phase-1 evidence proves strict schemas/hashing, atomic ledger/idempotency, approval replay protection, authenticated local-owner approval, four-scope pause/revocation fences, authenticated recovery leases, DB/concurrency/property invariants, and current-head CI/Secret Scan | **PASS / ACCEPTED** |
-| S2 local E2E | Phase 2 / WS-004 is open. ADR-0015 is accepted and defines exact EIP-1559 envelope/signing/evidence boundaries, but the complete local construct/verify/simulate/sign/broadcast/confirm/reconcile journey and fault proof are not yet accepted | **OPEN / NOT PASSED** |
+| S2 local E2E | Phase 2 / WS-004 is open. P2-01 fixture evidence exists, while the complete local construct/verify/simulate/sign/broadcast/confirm/reconcile journey and fault proof are not yet accepted under the ADR-0015 boundary | **OPEN / NOT PASSED** |
 | S3 testnet readiness | Out of MVP; requires stronger adapter/auth and review | NOT STARTED |
 | S4 real-value canary | Prohibited without explicit owner approval | OUT OF SCOPE |
 

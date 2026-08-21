@@ -8,7 +8,7 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-01 is the active implementation/review packet. ADR-0015 is accepted. P2-02 is architecture-unblocked but sequenced after P2-01 acceptance. Gate S2 is **OPEN / NOT PASSED**.
+**Status:** P2-01 is implemented locally and is the active review packet. ADR-0015 is accepted. P2-02 is architecture-unblocked but sequenced after P2-01 review/stability. Gate S2 is **OPEN / NOT PASSED**.
 
 ---
 
@@ -49,6 +49,7 @@ ADR-0003 immutable envelope -> ADR-0005 pre-sign controls -> ADR-0008 approval b
 ADR-0010 transactional audit -> ADR-0014 authenticated evidence -> ADR-0011 recovery leases
 ADR-0001 single core -> ADR-0012 minimal interfaces
 ADR-0007 TypeScript/PostgreSQL/Vitest constrains every packet
+ADR-0015 ACCEPTED -> exact envelope v2 / type-2 fields / simulation freshness / local signer / persist-before-send / authenticated reconciliation
 ADR-0015 ACCEPTED -> exact envelope v2 / type-2 fields / simulation freshness / local signer / persist-before-send / authenticated reconciliation
 ```
 
@@ -400,6 +401,9 @@ POLICY_PRECHECKED
 **Verification:** `npm run contracts:test` must run Forge through the repository-managed container and fail if the test suite is missing/failing.
 
 #### P2-01B - Deploy and verify checkout-bound fixture
+**P2-01 evidence:** `npm run contracts:test` passes 10/10 Forge tests; `npm run fixture:phase2` creates the mode-0600 fixture; `npm run test:chain -- fixture.test.ts` passes 8/8 local fixture and boundary tests. The chain gate is fail-closed for missing suites, and fixture regeneration requires a clean Anvil reset. This packet evidence does not claim S2 completion.
+
+**Commit boundaries:** `build: add pinned fake ERC-20 fixture`; `test: prove local fixture safety`.
 
 - Load the authoritative `.local/runtime.env` and existing checkout identity; reject non-loopback RPC, wrong chain, stopped/malformed runtime or different checkout.
 - Prefer deployment through Anvil's local unlocked disposable dev account so the fixture tooling need not extract a private key at all. If the exact pinned Foundry path cannot support that safely, use a separately reviewed stdin/inherited-FD/local-secret mechanism. Never private key in argv, process environment, logs, fixture JSON or repository files.

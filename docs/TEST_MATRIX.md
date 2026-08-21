@@ -24,6 +24,19 @@ Secret Scan: `31919254475` — PASS.
 
 These DB, concurrency and invariant suites run inside the protected `validate` workflow required by main ruleset `20791659`.
 
+## Phase-2 local fixture evidence
+
+This is packet evidence only. It does not promote Gate S2, which also requires
+the later construction, signing, broadcast, confirmation, reconciliation and
+fault/ambiguity packets.
+
+| Check | Result |
+| --- | --- |
+| `npm run contracts:test` | PASS — 10/10 MockERC20 Forge tests through the digest-pinned Foundry image |
+| `npm run fixture:phase2` | PASS — Anvil `eip155:31337`, deterministic token address, deployment receipt, metadata, supply and code hash verified; fixture mode `0600` |
+| `npm run test:chain -- fixture.test.ts` | PASS — 8/8 local fixture and boundary tests |
+| missing chain suite | PASS — fail-closed with a nonzero exit |
+
 ## Gate evidence
 
 | ID | Requirement | Status | Evidence / next owner |
@@ -53,7 +66,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | ID | Requirement | Status | Evidence / next phase |
 | --- | --- | --- | --- |
 | PR-001 | Clean clone installs/checks | PASS | protected CI/local bootstrap |
-| PR-002 | Anvil 31337 and fake assets only | PASS | local runtime guard; actual transfer Phase 2 |
+| PR-002 | Anvil 31337 and fake assets only | PASS | local runtime guard + P2-01 fixed-supply MockERC20 transfer gate |
 | PR-003 | owner/agent/wallet/policy fixture | PASS | DB fixtures |
 | PR-004 | read-only/review/autonomous modes | PLANNED | Phase 2-4 integration |
 | PR-005 | budget under concurrency | PASS | S1-01 |
@@ -88,7 +101,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-003 | idempotency conflict | PASS | DB retry/conflict |
 | TM-004 | duplicate broadcast/evidence | PASS locally | recovery evidence idempotency; real local broadcast proof P2-06 |
 | TM-005 | approval replay | PASS locally | WP-07/08 |
-| TM-006 | chain substitution/public RPC | PLANNED | P2-01/P2-03/P2-04 |
+| TM-006 | chain substitution/public RPC | PASS for P2-01 fixture boundary / PLANNED E2E | loopback/31337 guards; P2-03/P2-04 |
 | TM-007 | recipient/amount/asset substitution | PLANNED | P2-02 |
 | TM-008 | calldata/extra-call substitution | PLANNED | P2-02 |
 | TM-009 | fee bypass/spike | PLANNED | P2-03/P2-04 |
@@ -97,7 +110,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-012 | revocation/pause race | PASS locally / PLANNED pre-sign | WP-04/10 then Phase 3 |
 | TM-013 | permit/unlimited/signature abuse | PLANNED | P2-02/P2-04/Phase 4 |
 | TM-014 | delegatecall/multicall/proxy | PLANNED | P2-02 |
-| TM-015 | token metadata manipulation | PLANNED | P2-01/P2-02 |
+| TM-015 | token metadata manipulation | PASS for P2-01 fixture / PLANNED E2E | deployment metadata and runtime code-hash checks; P2-02 |
 | TM-016 | RPC disagreement | PLANNED | P2-03/P2-05 |
 | TM-017 | re-simulation divergence | PLANNED | P2-03/Phase 3 |
 | TM-018 | signed-unbroadcast ambiguity | PASS only as local disputed-state primitive / PLANNED real local signer | P2-04/P2-06 then Phase 3 |
@@ -106,7 +119,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-021 | reservation expiry race | PASS core lifecycle / PLANNED E2E | Phase 3 |
 | TM-022 | malicious/replayed webhook | NOT APPLICABLE to current local MVP surface | revisit if webhook adapter added |
 | TM-023 | audit tampering/omission | PASS locally / PLANNED E2E | DB guards then Phase 5 |
-| TM-024 | secret output/log exposure | PASS for local runtime owner/recovery material / PLANNED signer redaction | P2-04/P2-06/Phase 5 |
+| TM-024 | secret output/log exposure | PASS for P2-01 deployment/fixture output / PLANNED signer redaction | temporary mode-0600 key file; no key in output or fixture; P2-04/P2-06/Phase 5 |
 | TM-025 | SQL/command injection | PASS for parameterized core paths / PLANNED interface adversarial | Phase 4/5 |
 | TM-026 | owner session/CSRF | PASS for ADR-0008 local signed-decision boundary / PLANNED browser session | Phase 4 |
 | TM-027 | interface bypass | PLANNED | Phase 4 |
@@ -117,8 +130,10 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-032 | unbound signer transaction fields | PLANNED | ADR-0015 ACCEPTED; P2-02 v2 schema/DB/hash proof + P2-04 exact signer proof |
 | TM-033 | response-loss false failure/release | PLANNED | P2-05/P2-06 persist-before-send expected-hash/attempt fault proof |
 | TM-034 | receipt/cross-operation substitution | PLANNED | P2-05 transaction/receipt/log matching + ADR-0014 authenticated reconciler proof |
-| TM-035 | local-chain reset confusion | PLANNED | P2-01 fixture fingerprint and P2-03/P2-05/P2-06 boundary checks |
+| TM-035 | local-chain reset confusion | PASS for P2-01 fixture / PLANNED boundary checks | genesis/fixture/deployment/code fingerprints; P2-03/P2-05/P2-06 |
 
 ## Phase-2 implementation matrix
 
 The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, including inherited S0/S1 gates, is maintained in `docs/plans/PHASE-2.md`. ADR-0015 is accepted and P2-02 is no longer blocked on product-owner architecture approval. No Phase-2 row is PASS until the named test exists and protected current-head evidence is recorded here.
+| P2-01A | pinned fake ERC-20 toolchain and contract | PASS | `npm run contracts:test` — 10/10 |
+| P2-01B | checkout-bound fixture and local-chain boundary | PASS | `npm run fixture:phase2` + `npm run test:chain -- fixture.test.ts` — 8/8 |
