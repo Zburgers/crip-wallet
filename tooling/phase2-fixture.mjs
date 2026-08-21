@@ -391,6 +391,11 @@ const runFoundry = (
   hostNetwork = false,
 ) => {
   const dockerArgs = ["run", "--rm"];
+  if (
+    typeof process.getuid === "function" &&
+    typeof process.getgid === "function"
+  )
+    dockerArgs.push("--user", `${process.getuid()}:${process.getgid()}`);
   if (hostNetwork) dockerArgs.push("--network", "host");
   dockerArgs.push("--entrypoint", entrypoint);
   dockerArgs.push(

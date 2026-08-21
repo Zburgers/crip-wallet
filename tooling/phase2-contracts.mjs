@@ -24,6 +24,10 @@ const result = spawnSync(
   [
     "run",
     "--rm",
+    ...(typeof process.getuid === "function" &&
+    typeof process.getgid === "function"
+      ? ["--user", `${process.getuid()}:${process.getgid()}`]
+      : []),
     "--entrypoint",
     "forge",
     "--mount",
