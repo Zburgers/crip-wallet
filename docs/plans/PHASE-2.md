@@ -401,7 +401,7 @@ POLICY_PRECHECKED
 **Verification:** `npm run contracts:test` must run Forge through the repository-managed container and fail if the test suite is missing/failing.
 
 #### P2-01B - Deploy and verify checkout-bound fixture
-**P2-01 evidence:** `npm run contracts:test` passes 10/10 Forge tests; `npm run fixture:phase2` creates the mode-0600 fixture; `npm run test:chain -- fixture.test.ts` passes 8/8 local fixture and boundary tests. The chain gate is fail-closed for missing suites, and fixture regeneration requires a clean Anvil reset. This packet evidence does not claim S2 completion.
+**P2-01 evidence:** `npm run contracts:test` passes 10/10 Forge tests; `npm run fixture:phase2` creates the mode-0600 fixture; `npm run test:chain -- fixture.test.ts` passes 9/9 local fixture and boundary tests, including reset → redeploy with a new fixture instance and stale rejection of the prior instance. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`. The chain gate is fail-closed for missing or out-of-scope suites, and fixture regeneration requires a clean Anvil reset. This packet evidence does not claim S2 completion.
 
 **Commit boundaries:** `build: add pinned fake ERC-20 fixture`; `test: prove local fixture safety`.
 

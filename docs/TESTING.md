@@ -75,10 +75,10 @@ reconciliation.
   only from a clean Anvil reset, verifies deployment receipt, bytecode hash,
   metadata and initial supply, and writes `.local/phase2-fixture.json` mode
   `0600` without private-key material.
-- `npm run test:chain -- fixture.test.ts`: 8 Vitest tests covering positive
+- `npm run test:chain -- fixture.test.ts`: 9 Vitest tests covering positive
   fixture verification and transfer behavior, public-host/wrong-chain guards,
   checkout binding, malformed Anvil state, stale/code-hash mismatch, and
-  secret-free output.
+  reset/redeploy instance staleness and secret-free output.
 
 The chain suite is fail-closed when the requested suite is missing. A transfer
 mutates disposable Anvil state; rerun the lifecycle and fixture commands from a

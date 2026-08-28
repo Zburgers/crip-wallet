@@ -30,11 +30,15 @@ This is packet evidence only. It does not promote Gate S2, which also requires
 the later construction, signing, broadcast, confirmation, reconciliation and
 fault/ambiguity packets.
 
+Protected remediation evidence head: `25e8147f7439af5722dafe092a33dd1351c15280`.
+Protected CI: `33189082028` — PASS (`validate` job `98909614058`).
+Secret Scan: `33189082181` — PASS.
+
 | Check | Result |
 | --- | --- |
 | `npm run contracts:test` | PASS — 10/10 MockERC20 Forge tests through the digest-pinned Foundry image |
-| `npm run fixture:phase2` | PASS — Anvil `eip155:31337`, deterministic token address, deployment receipt, metadata, supply and code hash verified; fixture mode `0600` |
-| `npm run test:chain -- fixture.test.ts` | PASS — 8/8 local fixture and boundary tests |
+| `npm run fixture:phase2` | PASS — Anvil `eip155:31337`, deterministic token address, deployment receipt, metadata, supply, code hash and cryptographically random fixture instance verified; fixture mode `0600` |
+| `npm run test:chain -- fixture.test.ts` | PASS — 9/9 local fixture and boundary tests, including reset → redeploy with a different `fixtureInstanceId` and stale rejection of the prior instance |
 | missing chain suite | PASS — fail-closed with a nonzero exit |
 
 ## Gate evidence
@@ -136,4 +140,4 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 
 The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, including inherited S0/S1 gates, is maintained in `docs/plans/PHASE-2.md`. ADR-0015 is accepted and P2-02 is no longer blocked on product-owner architecture approval. No Phase-2 row is PASS until the named test exists and protected current-head evidence is recorded here.
 | P2-01A | pinned fake ERC-20 toolchain and contract | PASS | `npm run contracts:test` — 10/10 |
-| P2-01B | checkout-bound fixture and local-chain boundary | PASS | `npm run fixture:phase2` + `npm run test:chain -- fixture.test.ts` — 8/8 |
+| P2-01B | checkout-bound fixture, unique instance identity and local-chain boundary | PASS | Protected CI `33189082028` on `25e8147f`; Forge 10/10; chain 9/9 including reset → redeploy stale-instance proof |

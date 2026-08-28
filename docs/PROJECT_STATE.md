@@ -58,7 +58,7 @@ Phase 2 / WS-004 is open for the local fake-ERC-20 vertical slice:
 
 ADR-0015 is accepted and now fixes the exact EIP-1559 envelope-v2, local reference-signer, persist-before-send broadcast, and authenticated reconciliation boundary. This removes the architecture-approval blocker for P2-02, but it does not constitute runtime or chain evidence.
 
-P2-01 local fixture evidence is complete: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 8/8. No complete S2 journey is claimed. Transaction construction, independent decoding, simulation/fee enforcement, local signing/broadcast/confirmation/reconciliation and chain-level fault/ambiguity tests remain to be implemented and proven. P2-01 still requires PR review and fixture/toolchain stabilization before P2-02 begins.
+P2-01 local fixture evidence is complete: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset → redeploy with a new cryptographically random `fixtureInstanceId` and stale rejection of the prior instance. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`. No complete S2 journey is claimed. Transaction construction, independent decoding, simulation/fee enforcement, local signing/broadcast/confirmation/reconciliation and chain-level fault/ambiguity tests remain to be implemented and proven. P2-01 remains the active reviewed packet; P2-02 must wait for review acceptance.
 
 ## Dependency state
 
@@ -85,7 +85,7 @@ Phase 2 remains strictly local and fake-money only: Anvil chain `31337` / `0x7a6
 
 - `docs/plans/PHASE-2.md` contains the researched architecture, APIs, lifecycle mapping, migration impact, packet-level TDD tasks, fault model, threat ownership and S2 reproduction gate.
 - ADR-0015 is **ACCEPTED**. Envelope v2 must use schema version `2.0` and a distinct v2 hash-preimage version; bind all unsigned type-2 fields including `accessList: []`; use the accepted bounded simulation-freshness rules; preserve the local-Anvil IDs-only signer as a reference-adapter mechanism rather than a universal DB-coupling requirement; persist expected transaction hash/broadcast attempt before send; and keep ADR-0014 authenticated reconciler evidence in front of exactly-once ledger reconciliation.
-- P2-01 is implemented locally against the existing checkout-bound Anvil runtime: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 8/8. It is now the current review packet.
+- P2-01 is implemented against the existing checkout-bound Anvil runtime: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset/redeploy instance staleness proof. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`. It remains the current review packet.
 - P2-02 is no longer blocked on ADR approval, but must wait until P2-01 review is complete and the fixture/toolchain boundary is stable.
 - S2 remains **OPEN / NOT PASSED**; no complete local vertical-slice evidence is claimed yet.
 
