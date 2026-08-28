@@ -1,0 +1,22 @@
+{
+  "name": "@crip/adapter-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b --force"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "dependencies": {
+    "@crip/schemas": "0.0.0",
+    "zod": "4.4.3"
+  }
+}
