@@ -33,3 +33,4 @@ rejected, deprecated, or superseded.
 | [0012](ADR-0012-minimal-shared-interface.md)             | Minimal interfaces over one authorization core | Accepted |
 | [0013](ADR-0013-license-selection.md)                    | Open-source license selection                  | Accepted |
 | [0014](ADR-0014-authenticated-local-recovery.md)         | Authenticated local evidence and recovery      | Accepted |
+| [0015](ADR-0015-exact-evm-envelope-v2.md)                | Exact EVM envelope v2 and local evidence       | Accepted |

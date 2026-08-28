@@ -89,6 +89,24 @@ test("root scripts expose reproducible validation and safe local lifecycle comma
   assert.match(read("tooling/phase1-test-parameters.mjs"), /workers: 4/);
 });
 
+test("chain gate rejects requested tests outside tests/chain", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tooling/phase2-test-gate.mjs",
+      "chain",
+      "../../packages/schemas/test/idempotency.test.ts",
+    ],
+    {
+      cwd: new URL("../../", import.meta.url),
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /fail-closed|tests[\\/]chain/i);
+});
+
 test("local lifecycle scripts use defensive Bash and never embed wallet material", () => {
   for (const path of [
     "scripts/dev-up.sh",

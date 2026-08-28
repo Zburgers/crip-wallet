@@ -42,26 +42,29 @@ claims. Database queries are parameterized and transactions use one client.
 
 ## Security gates
 
-| Gate                    | Current evidence                                                                                                                                                                                    | Status       |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| S0 repository safety    | Secret scanning, push protection, Dependabot security fixes, active main ruleset `20791659`, green remote CI/Gitleaks for PR #1, and MIT licensing are verified; required review acceptance remains | OPEN         |
-| S1 core invariant proof | WS-002/WS-003/WP-03/WP-04/WP-05 local proof suites pass; independent security acceptance, owner authentication, provider/chain integration, and review acceptance remain                            | BLOCKED      |
-| S2 local E2E            | No vertical slice yet                                                                                                                                                                               | BLOCKED      |
-| S3 testnet readiness    | Out of MVP; requires stronger adapter/auth and review                                                                                                                                               | NOT STARTED  |
-| S4 real-value canary    | Prohibited without explicit owner approval                                                                                                                                                          | OUT OF SCOPE |
+| Gate | Current evidence | Status |
+| --- | --- | --- |
+| S0 repository safety | Secret scanning/push protection, locked dependencies, CODEOWNERS, active main ruleset `20791659`, vulnerability reporting, MIT licensing, and no-real-wallet/local-runtime controls were accepted in Phase 0/PR #1 | **PASS** |
+| S1 core invariant proof | Protected Phase-1 evidence proves strict schemas/hashing, atomic ledger/idempotency, approval replay protection, authenticated local-owner approval, four-scope pause/revocation fences, authenticated recovery leases, DB/concurrency/property invariants, and current-head CI/Secret Scan | **PASS / ACCEPTED** |
+| S2 local E2E | Phase 2 / WS-004 is open. P2-01 fixture evidence exists, while the complete local construct/verify/simulate/sign/broadcast/confirm/reconcile journey and fault proof are not yet accepted under the ADR-0015 boundary | **OPEN / NOT PASSED** |
+| S3 testnet readiness | Out of MVP; requires stronger adapter/auth and review | NOT STARTED |
+| S4 real-value canary | Prohibited without explicit owner approval | OUT OF SCOPE |
+
+S0/S1 acceptance does not substitute for S2. No current document may represent
+planning, a fake local fixture, or a partial Phase-2 packet as a completed chain
+execution proof.
 
 ## WP-03 authorization evidence
 
-The local WP-03 slice adds persisted approval requests, append-only approval
+The local WP-03 slice added persisted approval requests, append-only approval
 decisions, canonical Keccak-verified and schema-validated envelope/policy/reservation
 bindings, atomic envelope replacement invalidation, unique authorization evidence,
 deferred operation/reservation consistency checks, expiry/rejection/revocation
-fencing, and serializable one-time consumption. The focused database
-and concurrency evidence is green, but Gate S1 remains `BLOCKED`: this packet
-does not implement the ADR-0008 local owner session or test-key signature
-artifact because the work instruction prohibits signing. Pause/revocation races,
-authenticated owner-session controls, adapter/reconciler integration, recovery,
-and independent security acceptance remain open.
+fencing, and serializable one-time consumption. At the WP-03 checkpoint Gate S1
+was still blocked because ADR-0008 local-owner authentication and later
+pause/revocation/recovery work had not yet landed. Those later Phase-1 packets
+subsequently closed that gate; this paragraph is historical packet evidence, not
+the current gate state.
 
 ## Dependency and supply-chain policy
 
@@ -79,15 +82,17 @@ recovered by hash/nonce evidence.
 
 ## WP-04 control-fence proof
 
-The local control plane now stores authoritative system, owner, agent, and
-policy state in monotonic `control_fences`. Approval, decision, and
-authorization-evidence rows persist the complete fence snapshot. Control
-changes and authorization consumers share the `SYSTEM -> OWNER -> AGENT ->
-POLICY` lock order; committed pause/revocation invalidates stale authority and
-releases eligible held reservations in the same transaction. Resume increments
-the system fence and cannot resurrect old evidence. Deterministic local proof
-is in `tests/concurrency/control-fence.test.ts`; provider/signing and chain
-reconciliation remain outside this packet and Gate S1 remains blocked.
+The local control plane stores authoritative system, owner, agent, and policy
+state in monotonic `control_fences`. Approval, decision, and authorization-
+evidence rows persist the complete fence snapshot. Control changes and
+authorization consumers share the `SYSTEM -> OWNER -> AGENT -> POLICY` lock
+order; committed pause/revocation invalidates stale authority and releases
+eligible held reservations in the same transaction. Resume increments the
+system fence and cannot resurrect old evidence. Deterministic local proof is in
+`tests/concurrency/control-fence.test.ts`. At the WP-04 checkpoint provider/
+signing and chain reconciliation remained outside that packet; later Phase-1
+work closed S1, while actual local signing/chain integration remains Phase 2/3
+work.
 
 ## WP-05 authenticated execution boundary and recovery
 
@@ -103,7 +108,32 @@ and signed-payload hash. Verification snapshots the same fields for the
 reconciler. Recovery uses a PostgreSQL lease version and append-only attempt ID;
 expired or stale workers fail closed, duplicate attempts return the original
 result, and simultaneous recoverers serialize on the lease row. CONFIRMED can
-finalize only matching immutable evidence. FAILED releases only pre-broadcast
-held/authorized reservations. AMBIGUOUS and CONFLICT remain DISPUTED and keep
-funds reserved. The proof uses controlled local fakes only and does not claim a
-chain receipt or real execution.
+finalize only matching immutable evidence. FAILED releases only authoritative
+pre-broadcast failure. AMBIGUOUS and CONFLICT remain DISPUTED and keep funds
+reserved. The Phase-1 proof used controlled local fakes and did not claim a chain
+receipt or real execution.
+
+## Phase-2 exact EVM execution boundary
+
+Accepted ADR-0015 extends, rather than replaces, the Phase-1 security model:
+
+- envelope v1 remains frozen for Phase-1 evidence;
+- envelope v2 uses `schemaVersion: "2.0"` plus a distinct v2 hash-preimage version;
+- every unsigned EIP-1559 field is bound before authorization, including resolved
+  nonce, priority/max fee, gas limit, calldata/value, and `accessList: []`;
+- simulation binds canonical block number/hash and becomes stale only under the
+  accepted canonicality/freshness/precondition rules, not merely because a new
+  head exists;
+- the local-Anvil signer is an IDs-only DB-loaded reference-adapter mechanism,
+  not a universal requirement that future provider adapters access PostgreSQL;
+- the expected transaction hash and broadcast-attempt identity are persisted
+  before send; transport/response loss never proves non-execution;
+- RPC transactions, blocks, receipts, and logs are untrusted evidence inputs;
+  ADR-0014 authenticated reconciler evidence remains required before the
+  exactly-once ledger recovery path can mutate financial state;
+- one included Anvil block is local S2 evidence only and is not a production
+  finality claim.
+
+Public RPC, testnet/mainnet, real assets, production custody, real-wallet
+material, arbitrary signing, and provider integrations remain prohibited by the
+current Phase-2 boundary.

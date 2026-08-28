@@ -6,18 +6,19 @@ Update rule: at every meaningful integration point; keep this as the current res
 ## Repository
 
 - Repository: `Zburgers/crip-wallet`
-- Working branch / PR: `phase-0/governance-foundation` / PR #1
+- Default branch baseline: `main` at `f733a41ed16c44ad631f0a5a4b52e8096ab70eed`
+- Phase 0/1 merge: PR #1 merged as `4dd91b481ccac51247e2c7e1220b5e74f968c0d5`
+- Phase-2 implementation branch: `phase-2/ws-004-local-erc20`
 - Governing product authority: `docs/PRODUCT_SPEC.md`
-- Phase-1 implementation verification baseline: `de9cac0cc19fb17b6964074878d4916cb30899ef`
-- WP-11 protected evidence head: `85545348d369c7860742872acb4da100a5842152`
-- Protected CI: run `31919254466` — PASS
-- Secret Scan: run `31919254475` — PASS
+- Phase-1 protected evidence head: `85545348d369c7860742872acb4da100a5842152`
+- Phase-1 protected CI: run `31919254466` — PASS
+- Phase-1 Secret Scan: run `31919254475` — PASS
 
 ## Gate status
 
 ### S0 — PASS
 
-The governing S0 requirements are satisfied: secret scanning, locked dependencies, CODEOWNERS, branch protection, vulnerability reporting and no real-wallet material. Ruleset `20791659` requires `validate` and protects against deletion/non-fast-forward updates.
+The governing S0 requirements are satisfied: secret scanning, locked dependencies, CODEOWNERS, branch protection, vulnerability reporting and no real-wallet material. The protected `main` branch remains the integration boundary.
 
 This is a sole-maintainer repository. No separate GitHub-account approval is claimed. That limitation is tracked as R-019 and must not be described as independent human approval.
 
@@ -49,9 +50,22 @@ Protected CI run `31919254466` at `85545348d369c7860742872acb4da100a5842152` pas
 
 **Phase 1 is complete and Gate S1 is accepted.**
 
-### S2 — NOT STARTED
+### S2 — OPEN / NOT PASSED
 
-Phase 2 / WS-004 may open after PR #1 closeout. S2 itself remains unpassed: no transaction construction/signing/provider/chain vertical slice is claimed yet.
+Phase 2 / WS-004 is open for the local fake-ERC-20 vertical slice:
+
+`construct → independently verify → simulate → authorize → locally sign → broadcast → confirm → reconcile`
+
+ADR-0015 is accepted and now fixes the exact EIP-1559 envelope-v2, local reference-signer, persist-before-send broadcast, and authenticated reconciliation boundary. This removes the architecture-approval blocker for P2-02, but it does not constitute runtime or chain evidence.
+
+P2-01 local fixture evidence is complete: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset → redeploy with a new cryptographically random `fixtureInstanceId` and stale rejection of the prior instance. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`. No complete S2 journey is claimed. Transaction construction, independent decoding, simulation/fee enforcement, local signing/broadcast/confirmation/reconciliation and chain-level fault/ambiguity tests remain to be implemented and proven. P2-01 remains the active reviewed packet; P2-02 must wait for review acceptance.
+
+## Dependency state
+
+- `typescript-eslint` is `8.67.0` and `@types/node` is `26.2.0`; their Dependabot PRs passed protected CI and Secret Scan before merge.
+- TypeScript remains pinned at `6.0.3`.
+- Dependabot PR #2 for TypeScript 7.0.2 is intentionally ignored for the TypeScript 7 major line because `typescript-eslint@8.67.0` requires TypeScript `<6.1.0`; its CI fails closed at `npm ci` with `ERESOLVE`.
+- R-020 remains monitored through Dependabot and dependency-audit CI.
 
 ## Phase ownership
 
@@ -59,12 +73,20 @@ Phase 2 / WS-004 may open after PR #1 closeout. S2 itself remains unpassed: no t
 - WS-002 canonical contracts — FROZEN LOCALLY.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
-- WS-004 Phase-2 transaction pipeline/local adapter — READY TO OPEN AFTER PR #1 CLOSEOUT.
+- WS-004 Phase-2 transaction pipeline/local adapter — ADR-0015 accepted; P2-01 complete locally and awaiting review.
 - WS-005 Phase-3 integrated approval/control/recovery slice — NOT OPENED until WS-004 is stable.
 - WS-006/007 — NOT OPENED.
 
 ## Safety boundary
 
-No real funds, production wallet material, public RPC, testnet/mainnet, production custody or production identity is authorized by this state.
+Phase 2 remains strictly local and fake-money only: Anvil chain `31337` / `0x7a69`, disposable local keys and a mock ERC-20. Public RPC, testnet, mainnet, real funds, production custody and production identity remain prohibited.
 
-Last updated: 2026-08-16 for Phase-0/1 closeout.
+## Phase-2 planning handoff
+
+- `docs/plans/PHASE-2.md` contains the researched architecture, APIs, lifecycle mapping, migration impact, packet-level TDD tasks, fault model, threat ownership and S2 reproduction gate.
+- ADR-0015 is **ACCEPTED**. Envelope v2 must use schema version `2.0` and a distinct v2 hash-preimage version; bind all unsigned type-2 fields including `accessList: []`; use the accepted bounded simulation-freshness rules; preserve the local-Anvil IDs-only signer as a reference-adapter mechanism rather than a universal DB-coupling requirement; persist expected transaction hash/broadcast attempt before send; and keep ADR-0014 authenticated reconciler evidence in front of exactly-once ledger reconciliation.
+- P2-01 is implemented against the existing checkout-bound Anvil runtime: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset/redeploy instance staleness proof. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`. It remains the current review packet.
+- P2-02 is no longer blocked on ADR approval, but must wait until P2-01 review is complete and the fixture/toolchain boundary is stable.
+- S2 remains **OPEN / NOT PASSED**; no complete local vertical-slice evidence is claimed yet.
+
+Last updated: 2026-08-21 for ADR-0015 acceptance and the P2-01 implementation/review checkpoint.
