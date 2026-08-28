@@ -29,6 +29,7 @@
     { "path": "packages/policy-engine" },
     { "path": "packages/audit" },
     { "path": "packages/budget-ledger" },
-    { "path": "packages/approvals" }
+    { "path": "packages/approvals" },
+    { "path": "packages/transaction-pipeline" }
   ]
 }
