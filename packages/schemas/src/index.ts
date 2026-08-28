@@ -51,9 +51,12 @@ export {
 export {
   ENVELOPE_HASH_DOMAIN,
   ENVELOPE_HASH_VERSION,
+  ENVELOPE_HASH_VERSION_V2,
   attachEnvelopeHash,
   buildEnvelopeHashPreimage,
   canonicalExecutionEnvelopeSchema,
+  canonicalExecutionEnvelopeV1Schema,
+  canonicalExecutionEnvelopeV2Schema,
   canonicalizeExecutionEnvelope,
   createEnvelopeApprovalBinding,
   executionEnvelopeSchema,
@@ -63,6 +66,8 @@ export {
   serializeExecutionEnvelope,
   type EnvelopeApprovalBinding,
   type ExecutionEnvelope,
+  type ExecutionEnvelopeV1,
+  type ExecutionEnvelopeV2,
 } from "./envelope.js";
 export {
   adapterCapabilityManifestSchema,
