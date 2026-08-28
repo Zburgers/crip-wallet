@@ -12,8 +12,10 @@ import {
 import {
   assertLocalOnlyRuntime,
   computeFixtureFingerprint,
+  createPhase2Fixture,
   parseAnvilConfig,
   readFixture,
+  resetPhase2Anvil,
   runUnlockedTransfer,
   validateFixtureDocument,
   verifyFixtureOnChain,
@@ -168,4 +170,32 @@ test("fixture output contains no private key and is mode 0600", () => {
     assert.equal(fixtureText.includes(privateKey), false);
   assert.equal(statSync(fixturePath).mode & 0o777, 0o600);
   assert.equal(runtime.anvil.host, "127.0.0.1");
+});
+
+test("reset and redeploy creates a new fixture instance and stales the prior instance", async () => {
+  const prior = readFixture({ root: repositoryRoot });
+
+  await resetPhase2Anvil({ root: repositoryRoot });
+  const current = await createPhase2Fixture({ root: repositoryRoot });
+
+  assert.notEqual(current.fixtureInstanceId, prior.fixtureInstanceId);
+  assert.equal(current.token.address, prior.token.address);
+  assert.equal(
+    current.deployment.transactionHash,
+    prior.deployment.transactionHash,
+  );
+  assert.equal(
+    current.token.runtimeBytecodeHash,
+    prior.token.runtimeBytecodeHash,
+  );
+  assert.match(
+    current.fixtureInstanceId,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
+
+  await assert.rejects(
+    () => verifyFixtureOnChain({ root: repositoryRoot, fixture: prior }),
+    /stale fixture instance/i,
+  );
+  await verifyFixtureOnChain({ root: repositoryRoot, fixture: current });
 });

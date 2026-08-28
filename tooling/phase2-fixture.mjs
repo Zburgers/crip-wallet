@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -18,7 +18,7 @@ import { Buffer } from "node:buffer";
 import { checkoutHash, loadLocalRuntime } from "./local-runtime.mjs";
 
 /** @typedef {{ environment: string, chainId: string, anvilHost: string, anvilPort: number, rpcUrl: string }} RuntimeGuardInput */
-/** @typedef {{ schemaVersion: number, fixture: string, checkoutHash: string, composeProject: string, chain: { caip2: string, chainId: number, host: string, port: number, rpcUrl: string, genesisBlockHash: string, genesisFingerprint: string }, deployer: { address: string, accountIndex: number }, token: { address: string, name: string, symbol: string, decimals: number, initialSupply: string, revertRecipient: string, artifactBytecodeHash: string, runtimeBytecodeHash: string }, deployment: { transactionHash: string, blockNumber: string, blockHash: string }, toolchain: { foundryImage: string, forgeVersion: string, anvilVersion: string, solcVersion: string, solcCompilerVersion: string }, createdAt: string, fingerprint: string }} FixtureDocument */
+/** @typedef {{ schemaVersion: number, fixture: string, fixtureInstanceId: string, checkoutHash: string, composeProject: string, chain: { caip2: string, chainId: number, host: string, port: number, rpcUrl: string, genesisBlockHash: string, genesisFingerprint: string }, deployer: { address: string, accountIndex: number }, token: { address: string, name: string, symbol: string, decimals: number, initialSupply: string, revertRecipient: string, artifactBytecodeHash: string, runtimeBytecodeHash: string }, deployment: { transactionHash: string, blockNumber: string, blockHash: string }, toolchain: { foundryImage: string, forgeVersion: string, anvilVersion: string, solcVersion: string, solcCompilerVersion: string }, createdAt: string, fingerprint: string }} FixtureDocument */
 /** @typedef {{ runtime: ReturnType<typeof loadLocalRuntime>, anvil: { accounts: string[], privateKeys: string[], deployerAddress: string, deployerKey: string }, artifact: { runtimeBytecode: string, bytecodeHash: string, compilerVersion: string }, foundryImage: string, composeProject: string, rpcUrl: string, anvilHost: string }} FixtureContext */
 
 export const EXPECTED_CHAIN_ID = "0x7a69";
@@ -42,6 +42,8 @@ const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/i;
 const HASH_PATTERN = /^0x[0-9a-f]{64}$/i;
 const KEY_PATTERN = /^0x[0-9a-f]{64}$/i;
 const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
+const FIXTURE_INSTANCE_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SECRET_KEY_PATTERN =
   /private.?key|mnemonic|seed.?phrase|password|secret/i;
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -270,6 +272,7 @@ const loadContext = (root) => {
 const fingerprintPayload = (fixture) => ({
   schemaVersion: fixture.schemaVersion,
   fixture: fixture.fixture,
+  fixtureInstanceId: fixture.fixtureInstanceId,
   checkoutHash: fixture.checkoutHash,
   composeProject: fixture.composeProject,
   chain: fixture.chain,
@@ -307,6 +310,12 @@ export const validateFixtureDocument = (fixture, expected = {}) => {
     fixture.composeProject !== expected.expectedComposeProject
   ) {
     throw new Error("fixture Compose project does not match this checkout");
+  }
+  if (
+    typeof fixture.fixtureInstanceId !== "string" ||
+    !FIXTURE_INSTANCE_ID_PATTERN.test(fixture.fixtureInstanceId)
+  ) {
+    throw new Error("fixture instance ID is invalid");
   }
   if (
     fixture.chain.caip2 !== EXPECTED_CAIP2 ||
@@ -479,6 +488,15 @@ const safeRpcCall = async (runtime, method, params) => {
   }
 };
 
+/** @param {{ root?: string }} [options] @returns {Promise<void>} */
+export const resetPhase2Anvil = async ({ root = repositoryRoot } = {}) => {
+  const context = loadContext(root);
+  const result = await safeRpcCall(context.runtime, "anvil_reset", []);
+  if (result !== null && result !== true) {
+    throw new Error("local Anvil reset was not confirmed");
+  }
+};
+
 /** @param {ReturnType<typeof loadLocalRuntime>} runtime @returns {Promise<{ hash: string, fingerprint: string }>} */
 const readGenesis = async (runtime) => {
   const block = await safeRpcCall(runtime, "eth_getBlockByNumber", [
@@ -619,6 +637,10 @@ export const verifyFixtureOnChain = async ({
     expectedCheckoutHash: expectedHash,
     expectedComposeProject: `crip-wallet-${expectedHash}`,
   });
+  const current = readFixture({ root });
+  if (current.fixtureInstanceId !== fixture.fixtureInstanceId) {
+    throw new Error("stale fixture instance: fixture is not current");
+  }
   assertArtifactBinding(fixture, context.artifact.bytecodeHash);
   const chainId = await safeRpcCall(context.runtime, "eth_chainId", []);
   if (chainId !== EXPECTED_CHAIN_ID)
@@ -841,6 +863,7 @@ const createFixture = async (root, context) => {
   const fixture = {
     schemaVersion: FIXTURE_SCHEMA_VERSION,
     fixture: FIXTURE_NAME,
+    fixtureInstanceId: randomUUID(),
     checkoutHash: context.runtime.checkoutHash,
     composeProject: context.composeProject,
     chain: {
@@ -926,7 +949,17 @@ export const createPhase2Fixture = async ({ root = repositoryRoot } = {}) => {
   const context = loadContext(root);
   const fixturePath = join(root, FIXTURE_PATH);
   if (existsSync(fixturePath)) {
-    const existing = readFixture({ root });
+    let existing;
+    try {
+      existing = readFixture({ root });
+    } catch (error) {
+      if (!(await isCleanReset(context))) {
+        throw new Error("existing Phase-2 fixture is invalid", {
+          cause: error,
+        });
+      }
+      return createFixture(root, context);
+    }
     validateFixtureDocument(existing, {
       expectedCheckoutHash: context.runtime.checkoutHash,
       expectedComposeProject: context.composeProject,
@@ -977,6 +1010,10 @@ export const runUnlockedTransfer = async ({
     expectedCheckoutHash: context.runtime.checkoutHash,
     expectedComposeProject: context.composeProject,
   });
+  const current = readFixture({ root });
+  if (current.fixtureInstanceId !== fixture.fixtureInstanceId) {
+    throw new Error("stale fixture instance: fixture is not current");
+  }
   requireAddress(recipient);
   if (!/^\d+$/.test(amount) || BigInt(amount) <= 0n)
     throw new Error("transfer amount must be a positive integer");

@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { URL } from "node:url";
@@ -21,17 +21,31 @@ const available = existsSync(chainRoot)
       .filter((name) => /\.(?:test|spec)\.ts$/.test(name))
       .map((name) => join("tests", "chain", name))
   : [];
+const requestedFiles = requested.map((name) => {
+  const candidate = resolve(chainRoot, name);
+  const relativeToChain = relative(chainRoot, candidate);
+  if (
+    !relativeToChain ||
+    relativeToChain.startsWith(`..${sep}`) ||
+    isAbsolute(relativeToChain) ||
+    !/(?:\.test|\.spec)\.ts$/.test(relativeToChain)
+  ) {
+    return null;
+  }
+  return join("tests", "chain", relativeToChain);
+});
 const files =
   requested.length > 0
-    ? requested.map((name) => join("tests", "chain", name))
+    ? requestedFiles.flatMap((file) => (file === null ? [] : [file]))
     : available;
 
 if (
   files.length === 0 ||
+  requestedFiles.some((file) => file === null) ||
   files.some((file) => !existsSync(join(repoRoot, file)))
 ) {
   process.stderr.write(
-    `ERROR: ${suite} gate is fail-closed; requested or discovered test suite is missing.\n`,
+    `ERROR: ${suite} gate is fail-closed; requested tests must remain under tests/chain and exist.\n`,
   );
   process.exit(1);
 }
