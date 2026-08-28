@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 
 import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "vitest";
 
 import {
   approveApproval,
@@ -87,7 +94,7 @@ const v1Envelope = (operationId: string, reservationId: string) => ({
   policyVersion: 1,
   policyDecisionHash: hash,
   budgetReservationId: reservationId,
-  createdAt: "2099-01-01T00:00:00Z",
+  createdAt: "2020-01-01T00:00:00Z",
   expiresAt: "2099-01-01T01:00:00Z",
   riskDecision: "ALLOW",
   approvalRequirement: "none",
@@ -141,7 +148,7 @@ const v2Envelope = (operationId: string, reservationId: string) => ({
   policyVersion: 1,
   policyDecisionHash: hash,
   budgetReservationId: reservationId,
-  createdAt: "2099-01-01T00:00:00Z",
+  createdAt: "2020-01-01T00:00:00Z",
   expiresAt: "2099-01-01T01:00:00Z",
   riskDecision: "ALLOW",
   approvalRequirement: "none",
@@ -310,7 +317,7 @@ const prepareAuthorizedV2 = async (): Promise<string> => {
     envelopeHash,
     policyDecisionId: "decision_1",
     issuedAt: "2020-01-01T00:00:00Z",
-    expiresAt: "2099-01-01T01:00:00Z",
+    expiresAt: "2099-01-01T00:50:00Z",
     nonce: "approval-nonce-1",
     audit: audit("op_1", "approval-requested"),
   });
@@ -321,7 +328,7 @@ const prepareAuthorizedV2 = async (): Promise<string> => {
       envelopeHash,
       policyId: "policy_1",
       policyVersion: 1,
-      expiresAt: "2099-01-01T01:00:00Z",
+      expiresAt: "2099-01-01T00:50:00Z",
       nonce: "approval-nonce-1",
     }),
     now: "2099-01-01T00:01:00Z",
@@ -374,7 +381,9 @@ describe.sequential("WS-004 execution evidence persistence", () => {
 
   test("accepts a valid legacy v1 envelope and valid strict v2 envelope", async () => {
     const legacy = v1Envelope("op_1", "res_1");
-    await expect(insertEnvelope(pool, legacy)).resolves.toMatch(/^0x[0-9a-f]{64}$/);
+    await expect(insertEnvelope(pool, legacy)).resolves.toMatch(
+      /^0x[0-9a-f]{64}$/,
+    );
 
     const v2 = v2Envelope("op_2", "res_2");
     await expect(insertEnvelope(pool, v2)).resolves.toMatch(/^0x[0-9a-f]{64}$/);
@@ -382,12 +391,26 @@ describe.sequential("WS-004 execution evidence persistence", () => {
 
   test("fails closed for unknown versions, v2 legacy fields, non-empty access lists, and fee inversion", async () => {
     for (const mutate of [
-      (payload: Record<string, unknown>) => ({ ...payload, schemaVersion: "3.0" }),
-      (payload: Record<string, unknown>) => ({ ...payload, simulationBlockReference: "100" }),
-      (payload: Record<string, unknown>) => ({ ...payload, accessList: [{ address: address("2"), storageKeys: [] }] }),
-      (payload: Record<string, unknown>) => ({ ...payload, maxPriorityFeePerGas: "3" }),
+      (payload: Record<string, unknown>) => ({
+        ...payload,
+        schemaVersion: "3.0",
+      }),
+      (payload: Record<string, unknown>) => ({
+        ...payload,
+        simulationBlockReference: "100",
+      }),
+      (payload: Record<string, unknown>) => ({
+        ...payload,
+        accessList: [{ address: address("2"), storageKeys: [] }],
+      }),
+      (payload: Record<string, unknown>) => ({
+        ...payload,
+        maxPriorityFeePerGas: "3",
+      }),
     ]) {
-      await expect(insertEnvelope(pool, mutate(v2Envelope("op_1", "res_1")))).rejects.toThrow();
+      await expect(
+        insertEnvelope(pool, mutate(v2Envelope("op_1", "res_1"))),
+      ).rejects.toThrow();
     }
   });
 
@@ -433,7 +456,13 @@ describe.sequential("WS-004 execution evidence persistence", () => {
            expected_transaction_hash, signer_credential_id, signer_component_id, signed_at)
          VALUES ('signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1, 'approval_1:authorization',
            'sim_1', $2, $3, $4, $5, now())`,
-        [envelopeHash, fixtureId, hash, adapterCredential.credentialId, adapterCredential.componentId],
+        [
+          envelopeHash,
+          fixtureId,
+          hash,
+          adapterCredential.credentialId,
+          adapterCredential.componentId,
+        ],
       ),
     ).resolves.toBeDefined();
     await expect(
@@ -450,7 +479,13 @@ describe.sequential("WS-004 execution evidence persistence", () => {
            expected_transaction_hash, signer_credential_id, signer_component_id, signed_at)
          VALUES ('signed_2', 'op_1', 'res_1', 'env_op_1_1', 1, $1, 'approval_1:authorization',
            'sim_1', $2, $3, $4, $5, now())`,
-        [envelopeHash, fixtureId, hash, adapterCredential.credentialId, adapterCredential.componentId],
+        [
+          envelopeHash,
+          fixtureId,
+          hash,
+          adapterCredential.credentialId,
+          adapterCredential.componentId,
+        ],
       ),
     ).rejects.toThrow(/unique|duplicate/i);
   });
@@ -464,7 +499,13 @@ describe.sequential("WS-004 execution evidence persistence", () => {
          expected_transaction_hash, signer_credential_id, signer_component_id, signed_at)
        VALUES ('signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1, 'approval_1:authorization',
          'sim_1', $2, $3, $4, $5, now())`,
-      [envelopeHash, fixtureId, hash, adapterCredential.credentialId, adapterCredential.componentId],
+      [
+        envelopeHash,
+        fixtureId,
+        hash,
+        adapterCredential.credentialId,
+        adapterCredential.componentId,
+      ],
     );
     await pool.query(
       `INSERT INTO broadcast_attempts
@@ -489,20 +530,132 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     ).rejects.toThrow(/invalid broadcast attempt transition/i);
   });
 
+  test("binds normalized transaction, receipt, log, and one reconciler effect", async () => {
+    const envelopeHash = await prepareAuthorizedV2();
+    await pool.query(
+      `INSERT INTO signed_transactions
+        (signed_transaction_id, operation_id, reservation_id, envelope_id, envelope_revision,
+         envelope_hash, authorization_id, simulation_id, fixture_instance_id,
+         expected_transaction_hash, signer_credential_id, signer_component_id, signed_at)
+       VALUES ('signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1, 'approval_1:authorization',
+         'sim_1', $2, $3, $4, $5, now())`,
+      [
+        envelopeHash,
+        fixtureId,
+        hash,
+        adapterCredential.credentialId,
+        adapterCredential.componentId,
+      ],
+    );
+    await pool.query(
+      `INSERT INTO broadcast_attempts
+        (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,
+         envelope_revision, envelope_hash, authorization_id, fixture_instance_id,
+         expected_transaction_hash, status, started_at)
+       VALUES ('attempt_1', 'signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1,
+         'approval_1:authorization', $2, $3, 'STARTED', now())`,
+      [envelopeHash, fixtureId, hash],
+    );
+    await pool.query(
+      `INSERT INTO chain_transaction_evidence
+        (transaction_evidence_id, broadcast_attempt_id, signed_transaction_id, operation_id,
+         reservation_id, envelope_id, envelope_revision, envelope_hash, authorization_id,
+         fixture_instance_id, chain_id, transaction_hash, block_number, block_hash,
+         transaction_index, from_address, to_address, value_atomic, calldata, nonce,
+         transaction_type, gas_limit, max_priority_fee_per_gas, max_fee_per_gas,
+         access_list, evidence_hash)
+       VALUES ('tx_1', 'attempt_1', 'signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1,
+         'approval_1:authorization', $2, 'eip155:31337', $3, 101, $4, 0, $5, $6, 0,
+         $7, 7, 'eip1559', 50000, 1, 2, '[]', $8)`,
+      [
+        envelopeHash,
+        fixtureId,
+        hash,
+        hash,
+        address("10"),
+        address("1"),
+        v2Envelope("op_1", "res_1").calldata,
+        hash,
+      ],
+    );
+    await pool.query(
+      `INSERT INTO chain_receipt_evidence
+        (receipt_evidence_id, transaction_evidence_id, operation_id, reservation_id,
+         envelope_id, envelope_revision, envelope_hash, authorization_id, fixture_instance_id,
+         transaction_hash, chain_id, block_number, block_hash, receipt_status, gas_used,
+         effective_gas_price, log_count, evidence_hash)
+       VALUES ('receipt_1', 'tx_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1,
+         'approval_1:authorization', $2, $3, 'eip155:31337', 101, $4, 'SUCCESS',
+         30000, 2, 1, $5)`,
+      [envelopeHash, fixtureId, hash, hash, hash],
+    );
+    await pool.query(
+      `INSERT INTO chain_transfer_logs
+        (log_evidence_id, receipt_evidence_id, log_index, token_address, from_address,
+         to_address, amount_atomic)
+       VALUES ('log_1', 'receipt_1', 0, $1, $2, $3, 10)`,
+      [address("1"), address("10"), address("20")],
+    );
+    await pool.query(
+      `INSERT INTO execution_economic_effects
+        (effect_id, operation_id, reservation_id, envelope_id, envelope_revision, envelope_hash,
+         authorization_id, receipt_evidence_id, transaction_hash, asset_address, from_address,
+         to_address, amount_atomic, reconciler_credential_id, reconciler_component_id,
+         reconciler_auth_signature, reconciler_auth_payload_hash, effect_hash)
+       VALUES ('effect_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1, 'approval_1:authorization',
+         'receipt_1', $2, $3, $4, $5, 10, $6, $7, 'signature', $8, $9)`,
+      [
+        envelopeHash,
+        hash,
+        address("1"),
+        address("10"),
+        address("20"),
+        reconcilerCredential.credentialId,
+        reconcilerCredential.componentId,
+        `sha256:${"c".repeat(64)}`,
+        `0x${"d".repeat(64)}`,
+      ],
+    );
+    await expect(
+      pool.query(
+        `INSERT INTO execution_economic_effects
+          (effect_id, operation_id, reservation_id, envelope_id, envelope_revision, envelope_hash,
+           authorization_id, receipt_evidence_id, transaction_hash, asset_address, from_address,
+           to_address, amount_atomic, reconciler_credential_id, reconciler_component_id,
+           reconciler_auth_signature, reconciler_auth_payload_hash, effect_hash)
+         VALUES ('effect_2', 'op_1', 'res_1', 'env_op_1_1', 1, $1, 'approval_1:authorization',
+           'receipt_1', $2, $3, $4, $5, 10, $6, $7, 'signature', $8, $9)`,
+        [
+          envelopeHash,
+          hash,
+          address("1"),
+          address("10"),
+          address("20"),
+          reconcilerCredential.credentialId,
+          reconcilerCredential.componentId,
+          `sha256:${"e".repeat(64)}`,
+          `0x${"f".repeat(64)}`,
+        ],
+      ),
+    ).rejects.toThrow(/unique|duplicate/i);
+  });
+
   test("normalizes one receipt log and rejects multiple economic effects", async () => {
     const columns = await pool.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
-      [[
-        "local_chain_fixtures",
-        "transaction_simulations",
-        "signed_transactions",
-        "broadcast_attempts",
-        "chain_transaction_evidence",
-        "chain_receipt_evidence",
-        "chain_transfer_logs",
-        "execution_economic_effects",
-      ]],
+      [
+        [
+          "local_chain_fixtures",
+          "transaction_simulations",
+          "signed_transactions",
+          "broadcast_attempts",
+          "chain_transaction_evidence",
+          "chain_receipt_evidence",
+          "chain_transfer_logs",
+          "execution_economic_effects",
+        ],
+      ],
     );
     expect(columns.rows).toHaveLength(8);
     expect(zeroLogTopic).toMatch(/^0x[0-9a-f]{64}$/);
@@ -524,7 +677,11 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       client.release();
     }
     expect(
-      (await pool.query("SELECT count(*)::int AS count FROM local_chain_fixtures")).rows[0]?.count,
+      (
+        await pool.query(
+          "SELECT count(*)::int AS count FROM local_chain_fixtures",
+        )
+      ).rows[0]?.count,
     ).toBe(0);
   });
 });
