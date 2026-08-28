@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false,
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "tsBuildInfoFile": "../../.local/tsbuild/local-anvil-adapter.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "references": [
+    { "path": "../../packages/schemas" },
+    { "path": "../../packages/adapter-sdk" }
+  ]
+}
