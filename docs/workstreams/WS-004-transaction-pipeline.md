@@ -2,7 +2,7 @@
 
 **Phase:** 2
 
-**Status:** OPEN / P2-01 COMPLETE LOCALLY; ADR-0015 ACCEPTED; P2-02 AWAITING REVIEW
+**Status:** OPEN / P2-02 COMPLETE LOCALLY; P2-03 NEXT; ADR-0015 ACCEPTED; S2 NOT PASSED
 
 **Dependency:** Gate S1 — PASS / ACCEPTED
 
@@ -70,7 +70,7 @@ The implementation-ready contract is in `docs/plans/PHASE-2.md`. It reuses the P
 
 ADR-0015 is **ACCEPTED**. It resolves the previous exact-signing blocker by requiring additive envelope v2 semantics, `accessList: []`, bounded canonical simulation freshness, local-Anvil IDs-only signer isolation without universal provider DB coupling, persist-before-send expected-hash evidence, and ADR-0014-authenticated reconciliation of untrusted chain evidence.
 
-P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 is no longer blocked on product-owner architecture approval, but it must wait until P2-01 review is complete and the fixture/toolchain boundary is stable.
+P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 is integrated locally at `9d58f47` from stable head `343de49`, combining the reviewed envelope-v2 commit `9a5fe377` and static transfer-core commit `bc5ff828`. Local combined checks, focused tests, audit and inherited DB/concurrency/invariant regressions pass; protected current-head evidence is not claimed. P2-03 may consume the resulting static candidate, independent decode result and verification result.
 
 ## Exit evidence
 

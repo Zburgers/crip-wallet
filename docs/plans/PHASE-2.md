@@ -8,7 +8,7 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-01 is implemented locally and is the active review packet. ADR-0015 is accepted. P2-02 is architecture-unblocked but sequenced after P2-01 review/stability. Gate S2 is **OPEN / NOT PASSED**.
+**Status:** P2-01 is implemented locally. P2-02 is integrated locally at `9d58f47` from stable head `343de49`; ADR-0015 is accepted. P2-03 is next. Gate S2 is **OPEN / NOT PASSED**.
 
 ---
 
@@ -720,7 +720,7 @@ None. ADR-0015 is accepted. P2-02 is gated by **P2-01 review/stability**, not by
 
 ### Packet-owned non-blocking decisions
 
-- P2-02 selects/locks the exact `viem` version after current upstream/package inspection and dependency audit.
+- P2-02 selected and locked `viem` `2.56.0`; `npm audit --audit-level=high` reports 0 vulnerabilities on the local integration head. Protected current-head evidence is not claimed.
 - P2-03 selects and documents the smallest deterministic gas-limit margin and maximum simulation block age through explicit tests; both remain bounded by the accepted fee/freshness rules.
 - P2-04 may choose child-process stdio or a mode-0600 Unix socket for the local signer after platform/reliability tests. Either way the local API remains IDs-only and non-network/public; the universal provider adapter contract remains provider-neutral.
 
@@ -728,9 +728,9 @@ None. ADR-0015 is accepted. P2-02 is gated by **P2-01 review/stability**, not by
 
 ## 14. Current handoff
 
-### P2-01 implementation/review
+### P2-02 implementation/integration handoff
 
-Use Shipyard executing-plans, TDD, infrastructure validation, Solidity security and verification skills. Implement/review only P2-01A then P2-01B. Do not add `viem`, envelope v2 code, migration 0022, transaction-pipeline logic or product signer behavior in P2-01.
+P2-02 integration used the reviewed commits `9a5fe377` (envelope v2) and `bc5ff828` (static transfer core) on stable P2-01 head `343de49`, producing local integration head `9d58f47`. It added no migrations, signer, broadcast or public-network behavior. Local combined evidence is recorded in `docs/TEST_MATRIX.md`; protected current-head CI and Secret Scan remain an external gate.
 
 Review P2-01 specifically for:
 
@@ -743,4 +743,4 @@ Review P2-01 specifically for:
 - secret scans and S0/S1 regression gates;
 - no P2-02 scope creep.
 
-After P2-01 is reviewed, corrected if necessary, and protected CI/Secret Scan are green, P2-02 may begin immediately under accepted ADR-0015. Gate S2 remains **NOT PASSED** until the complete packet chain and closeout evidence pass.
+P2-03 input is the strict `TransferCoreCandidate` from `constructTransferCore`, the independently decoded `DecodedTransfer` from `decodeTransferIndependent`, the canonical transfer intent, and trusted local context/provenance. P2-03 output must be a newly defined strict simulation/executable-candidate result containing the current fixture instance, canonical block number/hash, pending sender nonce, token/native balances, exact gas limit, `eip1559` type, priority/max fee, `accessList: []`, normalized outcome/revert evidence, expected deltas and an evidence hash. It must feed final exact-candidate verification and envelope-v2 finalization without creating a persistent candidate authority or performing authorization/signing/broadcast. Gate S2 remains **NOT PASSED** until the complete packet chain and closeout evidence pass.
