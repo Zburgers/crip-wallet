@@ -100,3 +100,9 @@ export {
   stableErrorSchema,
   type StableError,
 } from "./errors.js";
+export {
+  executableTransferCandidateSchema,
+  simulationEvidenceSchema,
+  type ExecutableTransferCandidate,
+  type SimulationEvidence,
+} from "./evm-execution.js";

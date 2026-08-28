@@ -120,3 +120,8 @@ ADR-0015 is **ACCEPTED** and closes the architecture-level exact-signing gap:
 These controls are architectural requirements only until their owning Phase-2
 packets provide executable and protected-current-head evidence. Gate S2 remains
 **NOT PASSED**.
+
+P2-03 provides local executable evidence for the canonical-block, loopback-only,
+RPC-disagreement, fee-ceiling, token/native separation, exact-field mutation,
+and bounded-freshness controls. This is local evidence only; protected current-
+head CI, Secret Scan, signing, broadcast, and reconciliation remain outstanding.

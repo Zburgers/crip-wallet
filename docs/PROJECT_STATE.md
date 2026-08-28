@@ -58,7 +58,7 @@ Phase 2 / WS-004 is open for the local fake-ERC-20 vertical slice:
 
 ADR-0015 is accepted and now fixes the exact EIP-1559 envelope-v2, local reference-signer, persist-before-send broadcast, and authenticated reconciliation boundary. This removes the architecture-approval blocker for P2-02, but it does not constitute runtime or chain evidence.
 
-P2-01 local fixture evidence is complete: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset → redeploy with a new cryptographically random `fixtureInstanceId` and stale rejection of the prior instance. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`. P2-02 is complete locally on integration head `9d58f47` (based on stable P2-01 head `343de49`), combining envelope v2/hash dispatch with the static transfer core. Fresh local evidence is recorded in the P2-02 checkpoint: `npm run check` (21 repository + 205 package tests), focused P2-02 tests (87), envelope v1 regression tests (47), Forge contracts (10/10), DB (71/71), concurrency (18/18), invariants (7/7), and `npm audit --audit-level=high` (0 vulnerabilities). No protected CI or Secret Scan evidence is claimed for this integration head. No complete S2 journey is claimed; P2-03 simulation/fee resolution is next, followed by persistence, signer, broadcast, confirmation and reconciliation proof.
+P2-01 local fixture evidence is complete: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset → redeploy with a new cryptographically random `fixtureInstanceId` and stale rejection of the prior instance. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`. P2-02 is complete locally on integration head `733b32f` (based on stable P2-01 head `343de49`), combining envelope v2/hash dispatch with the static transfer core. P2-03 is complete locally on the isolated P2-03 branch from coordinator SHA `733b32f`, with strict executable/evidence schemas, canonical loopback simulation, exact type-2 resolution, fee enforcement, normalized evidence hashing and bounded freshness. Local P2-03 evidence is 20 focused unit tests, 1 chain test, 21 repository + 225 package tests, Forge 10/10, DB 71/71, concurrency 18/18, invariants 7/7, and npm audit 0 vulnerabilities. Protected CI and Secret Scan are not claimed for this head. No complete S2 journey is claimed; P2-04 persistence/signer work is next.
 
 ## Dependency state
 
@@ -73,7 +73,7 @@ P2-01 local fixture evidence is complete: pinned MockERC20 Forge tests pass 10/1
 - WS-002 canonical contracts — FROZEN LOCALLY.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
-- WS-004 Phase-2 transaction pipeline/local adapter — ADR-0015 accepted; P2-02 complete locally; P2-03 next; S2 remains open.
+- WS-004 Phase-2 transaction pipeline/local adapter — ADR-0015 accepted; P2-03 complete locally; P2-04 next; S2 remains open.
 - WS-005 Phase-3 integrated approval/control/recovery slice — NOT OPENED until WS-004 is stable.
 - WS-006/007 — NOT OPENED.
 
@@ -86,7 +86,7 @@ Phase 2 remains strictly local and fake-money only: Anvil chain `31337` / `0x7a6
 - `docs/plans/PHASE-2.md` contains the researched architecture, APIs, lifecycle mapping, migration impact, packet-level TDD tasks, fault model, threat ownership and S2 reproduction gate.
 - ADR-0015 is **ACCEPTED**. Envelope v2 must use schema version `2.0` and a distinct v2 hash-preimage version; bind all unsigned type-2 fields including `accessList: []`; use the accepted bounded simulation-freshness rules; preserve the local-Anvil IDs-only signer as a reference-adapter mechanism rather than a universal DB-coupling requirement; persist expected transaction hash/broadcast attempt before send; and keep ADR-0014 authenticated reconciler evidence in front of exactly-once ledger reconciliation.
 - P2-01 is implemented against the existing checkout-bound Anvil runtime: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset/redeploy instance staleness proof. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`.
-- P2-02 is integrated locally at `9d58f47`, based on `343de49`, with reviewed source commits `9a5fe377` and `bc5ff828`; local combined gates and inherited regressions pass as listed above. Protected current-head evidence is not claimed. P2-03 may begin from this contract boundary.
+- P2-03 is implemented locally from coordinator SHA `733b32f` in `packages/transaction-pipeline` plus additive schemas in `packages/schemas`; it performs no authorization, persistence, signing or broadcast. Local evidence and the full-regression timeout boundary are recorded in `docs/TEST_MATRIX.md`. Protected current-head evidence is not claimed. P2-04 may begin from this contract boundary.
 - S2 remains **OPEN / NOT PASSED**; no complete local vertical-slice evidence is claimed yet.
 
-Last updated: 2026-08-28 for the P2-02 local integration/review checkpoint.
+Last updated: 2026-08-28 for the P2-03 local implementation checkpoint.

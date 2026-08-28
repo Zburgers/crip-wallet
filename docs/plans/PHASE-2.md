@@ -8,7 +8,7 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-01 is implemented locally. P2-02 is integrated locally at `9d58f47` from stable head `343de49`; ADR-0015 is accepted. P2-03 is next. Gate S2 is **OPEN / NOT PASSED**.
+**Status:** P2-01 is implemented locally. P2-02 is integrated at coordinator head `733b32f`. P2-03 is implemented locally; P2-04 is next. ADR-0015 is accepted. Gate S2 is **OPEN / NOT PASSED**.
 
 ---
 
@@ -743,4 +743,4 @@ Review P2-01 specifically for:
 - secret scans and S0/S1 regression gates;
 - no P2-02 scope creep.
 
-P2-03 input is the strict `TransferCoreCandidate` from `constructTransferCore`, the independently decoded `DecodedTransfer` from `decodeTransferIndependent`, the canonical transfer intent, and trusted local context/provenance. P2-03 output must be a newly defined strict simulation/executable-candidate result containing the current fixture instance, canonical block number/hash, pending sender nonce, token/native balances, exact gas limit, `eip1559` type, priority/max fee, `accessList: []`, normalized outcome/revert evidence, expected deltas and an evidence hash. It must feed final exact-candidate verification and envelope-v2 finalization without creating a persistent candidate authority or performing authorization/signing/broadcast. Gate S2 remains **NOT PASSED** until the complete packet chain and closeout evidence pass.
+P2-03 input is the strict `TransferCoreCandidate` from `constructTransferCore`, the independently decoded `DecodedTransfer` from `decodeTransferIndependent`, the canonical transfer intent, and trusted local context/provenance. P2-03 is implemented locally in `packages/transaction-pipeline` with additive runtime schemas in `packages/schemas`: it pins simulation to the current loopback fixture and canonical block, resolves pending nonce/gas/type-2 fees/access-list, enforces checked native max-cost and balance separation, hashes normalized evidence, verifies exact fields, and exposes bounded freshness. It has no persistent candidate authority and performs no authorization/signing/broadcast. Local focused evidence is 20 unit tests and 1 chain test; protected current-head evidence is not claimed. Gate S2 remains **NOT PASSED** until the complete packet chain and closeout evidence pass.
