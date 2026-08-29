@@ -11,6 +11,9 @@
   "include": ["src/**/*.ts", "test/**/*.ts"],
   "references": [
     { "path": "../../packages/schemas" },
-    { "path": "../../packages/adapter-sdk" }
+    { "path": "../../packages/adapter-sdk" },
+    { "path": "../../packages/audit" },
+    { "path": "../../packages/trust-boundary" },
+    { "path": "../../packages/transaction-pipeline" }
   ]
 }

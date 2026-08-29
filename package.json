@@ -34,6 +34,8 @@
     "test:invariants": "node tooling/phase1-test-gate.mjs invariants",
     "contracts:test": "node tooling/phase2-contracts.mjs",
     "fixture:phase2": "node tooling/phase2-fixture.mjs",
+    "signer:provision": "node tooling/phase2-signer-credential.mjs",
+    "pretest:chain": "npm run build --workspaces --if-present",
     "test:chain": "node tooling/phase2-test-gate.mjs chain",
     "dev:up": "bash scripts/dev-up.sh",
     "dev:status": "bash scripts/dev-status.sh",

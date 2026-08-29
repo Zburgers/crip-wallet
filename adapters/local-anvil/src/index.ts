@@ -109,3 +109,98 @@ export type {
   NormalizedStatus,
   SignAuthorizedTransferRequest,
 } from "@crip/adapter-sdk";
+
+export {
+  SIGNER_DEFAULT_MAX_BLOCK_AGE,
+  signAuthorizedTransferCore,
+  signerTraceIdFor,
+  type Address,
+  type DurableSignedEvidence,
+  type ExactTransactionFields,
+  type FenceRecord,
+  type Hash,
+  type PersistSignedEvidenceInput,
+  type SignAuthorizedTransferIds,
+  type SignerCredentialIdentity,
+  type SignerDeps,
+  type SignerOutcome,
+  type SignerPhase,
+  type SignerRefusal,
+  type SignerRefusalCode,
+  type SignerStore,
+  type SignerSuccess,
+  type SigningAuditTrail,
+  type SigningContext,
+  type SimulationRecord,
+} from "./signer-core.js";
+export { createSignerStore } from "./signer-store.js";
+export { createLocalSignerDeps } from "./signer-keys.js";
+export {
+  spawnSignerProcess,
+  type SignerClientResult,
+  type SpawnSignerOptions,
+} from "./signer-client.js";
+
+import { Pool } from "pg";
+import { verifyComponentAction } from "@crip/trust-boundary";
+
+import { spawnSignerProcess as spawnSigner } from "./signer-client.js";
+
+/**
+ * Parent-side signer wiring for the reference adapter. Each signing request
+ * spawns the isolated signer child; the child loads its own secrets from
+ * mode-0600 local state and returns only IDs, hashes, and component auth.
+ * The returned authorization is verified against the credential's registered
+ * public key before the result is accepted.
+ */
+export const createLocalAnvilSignerHandler = (input: {
+  root: string;
+  pool: Pool;
+  timeoutMs?: number;
+}): LocalAnvilReferenceHandlers => ({
+  signAuthorizedTransfer: async (request) => {
+    const result = await spawnSigner({
+      root: input.root,
+      ids: request,
+      ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+    });
+    if (!result.ok || !result.transactionHash || !result.authorization)
+      throw new Error(
+        `local signer refused the authorized transfer: ${result.code ?? "INTERNAL"}`,
+      );
+    const publicKey = await input.pool
+      .query<{ public_key: string }>(
+        "SELECT public_key FROM trusted_component_credentials WHERE credential_id = $1",
+        [result.authorization.credentialId],
+      )
+      .then((query) => query.rows[0]?.public_key);
+    if (!publicKey)
+      throw new Error("signer credential is not registered in trusted state");
+    const payload = {
+      operationId: request.operationId,
+      authorizationId: request.authorizationId,
+      adapterRequestId: request.adapterRequestId,
+      transactionHash: result.transactionHash,
+    };
+    const verified = verifyComponentAction(
+      result.authorization,
+      publicKey,
+      "sign-authorized-transfer",
+      payload,
+    );
+    if (!verified) throw new Error("signer component authorization is invalid");
+    return { transactionHash: result.transactionHash };
+  },
+  getStatus: async (request) => ({
+    operationId: request.operationId,
+    adapterRequestId: request.adapterRequestId,
+    state: "UNKNOWN",
+    evidence: "UNTRUSTED",
+  }),
+  recoverTransaction: async (request) => ({
+    operationId: request.operationId,
+    adapterRequestId: request.adapterRequestId,
+    outcome: "UNKNOWN",
+    evidence: "UNTRUSTED",
+  }),
+});
