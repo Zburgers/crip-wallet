@@ -77,14 +77,14 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | PR-006 | chain/asset/recipient/action restrictions | PLANNED | Phase 2 |
 | PR-007 | atomic reservation before authorization | PASS | WS-003 |
 | PR-008 | retry/idempotency cannot duplicate spend | PASS for ledger / PLANNED for chain | Phase 2/3 execution proof remains |
-| PR-009 | intent constructs transaction | PLANNED | P2-02 |
-| PR-010 | independent decode/verification | PLANNED | P2-02 |
-| PR-011 | state-changing operations simulated | PLANNED | P2-03 |
+| PR-009 | intent constructs transaction | PASS locally / PLANNED protected | P2-02 integration: `packages/transaction-pipeline/test/transfer-core.test.ts` |
+| PR-010 | independent decode/verification | PASS locally / PLANNED protected | P2-02 integration: independent decoder and static verifier mutation tests |
+| PR-011 | state-changing operations simulated | PASS locally / PLANNED protected | P2-03 unit + loopback chain simulation (20 focused unit tests, 1 chain test) |
 | PR-012 | immutable envelope after reservation | PASS locally / PLANNED exact-EVM v2 | WS-002 approval binding; P2-02 exact signed-field proof |
 | PR-013 | approval envelope-bound and one-time | PASS locally | WP-07/08; E2E Phase 3 |
 | PR-014 | owner/signer key outside agent process | PASS for owner-auth local key boundary / PLANNED for transaction signer | P2-04 |
 | PR-015 | revocation/pause before signing | PASS for S1 control plane / PLANNED at signer boundary | Phase 3 |
-| PR-016 | native fee ceiling | PLANNED | P2-03/P2-04 |
+| PR-016 | native fee ceiling | PASS locally / PLANNED protected | P2-03 integer max-cost, native-balance and fee-escalation tests |
 | PR-017 | MCP/CLI/dashboard share core | PLANNED | Phase 4 |
 | PR-018 | no raw signing surface in interfaces | PLANNED | P2-04 local adapter + Phase 4 public interfaces |
 | PR-019 | lifecycle telemetry correlation | PLANNED | Phase 5 |
@@ -106,17 +106,17 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-004 | duplicate broadcast/evidence | PASS locally | recovery evidence idempotency; real local broadcast proof P2-06 |
 | TM-005 | approval replay | PASS locally | WP-07/08 |
 | TM-006 | chain substitution/public RPC | PASS for P2-01 fixture boundary / PLANNED E2E | loopback/31337 guards; P2-03/P2-04 |
-| TM-007 | recipient/amount/asset substitution | PLANNED | P2-02 |
-| TM-008 | calldata/extra-call substitution | PLANNED | P2-02 |
-| TM-009 | fee bypass/spike | PLANNED | P2-03/P2-04 |
+| TM-007 | recipient/amount/asset substitution | PASS locally / PLANNED protected | P2-02 static verifier mutation tests |
+| TM-008 | calldata/extra-call substitution | PASS locally / PLANNED protected | P2-02 strict 68-byte decoder and calldata mutation tests |
+| TM-009 | fee bypass/spike | PASS locally / PLANNED protected | P2-03 priority/max-fee, ceiling and freshness escalation tests |
 | TM-010 | stale/downgraded policy | PASS locally / PLANNED pre-sign | fence + binding; Phase 3 |
 | TM-011 | expired approval | PASS locally | WP-08 |
 | TM-012 | revocation/pause race | PASS locally / PLANNED pre-sign | WP-04/10 then Phase 3 |
 | TM-013 | permit/unlimited/signature abuse | PLANNED | P2-02/P2-04/Phase 4 |
-| TM-014 | delegatecall/multicall/proxy | PLANNED | P2-02 |
+| TM-014 | delegatecall/multicall/proxy | PASS locally / PLANNED protected | P2-02 unknown-selector and exact-length decoder tests |
 | TM-015 | token metadata manipulation | PASS for P2-01 fixture / PLANNED E2E | deployment metadata and runtime code-hash checks; P2-02 |
-| TM-016 | RPC disagreement | PLANNED | P2-03/P2-05 |
-| TM-017 | re-simulation divergence | PLANNED | P2-03/Phase 3 |
+| TM-016 | RPC disagreement | PASS locally / PLANNED protected | P2-03 chain/fixture/block/fee disagreement fail-closed tests |
+| TM-017 | re-simulation divergence | PASS locally / PLANNED protected | P2-03 executable mutation and bounded freshness tests |
 | TM-018 | signed-unbroadcast ambiguity | PASS only as local disputed-state primitive / PLANNED real local signer | P2-04/P2-06 then Phase 3 |
 | TM-019 | broadcast persistence timeout | PASS local recovery primitive / PLANNED adapter integration | P2-05/P2-06 then Phase 3 |
 | TM-020 | revert/reorg/receipt confusion | PLANNED | P2-05/P2-06 |
@@ -130,14 +130,18 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-028 | enforcement overclaim | PLANNED | P2-04 adapter conformance |
 | TM-029 | migration/data loss | PASS for forward/checksum/corrective path / PLANNED backup drill | later hardening |
 | TM-030 | dependency/supply chain | PASS for lock/audit/action pins / monitored | ongoing; `viem` lock/audit at P2-02 |
-| TM-031 | constructor self-verification | PLANNED | P2-02 `viem` encoder + independent strict parser + mutation vectors |
-| TM-032 | unbound signer transaction fields | PLANNED | ADR-0015 ACCEPTED; P2-02 v2 schema/DB/hash proof + P2-04 exact signer proof |
+| TM-031 | constructor self-verification | PASS locally / PLANNED protected | P2-02 `viem` encoder + independent strict parser + 128 calldata mutation runs |
+| TM-032 | unbound signer transaction fields | PASS locally / PLANNED signer proof | P2-02 v2 schema/hash binds exact fields; P2-04 must prove signer exactness |
 | TM-033 | response-loss false failure/release | PLANNED | P2-05/P2-06 persist-before-send expected-hash/attempt fault proof |
 | TM-034 | receipt/cross-operation substitution | PLANNED | P2-05 transaction/receipt/log matching + ADR-0014 authenticated reconciler proof |
-| TM-035 | local-chain reset confusion | PASS for P2-01 fixture / PLANNED boundary checks | genesis/fixture/deployment/code fingerprints; P2-03/P2-05/P2-06 |
+| TM-035 | local-chain reset confusion | PASS for P2-01 fixture / PASS locally P2-03 / PLANNED protected | genesis/fixture/deployment/code fingerprints plus P2-03 fixture-bound simulation evidence |
 
 ## Phase-2 implementation matrix
 
-The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, including inherited S0/S1 gates, is maintained in `docs/plans/PHASE-2.md`. ADR-0015 is accepted and P2-02 is no longer blocked on product-owner architecture approval. No Phase-2 row is PASS until the named test exists and protected current-head evidence is recorded here.
+The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, including inherited S0/S1 gates, is maintained in `docs/plans/PHASE-2.md`. ADR-0015 is accepted and P2-02 is no longer blocked on product-owner architecture approval. `PASS locally / PLANNED protected` records the exact local integration evidence without claiming protected current-head CI or Secret Scan.
 | P2-01A | pinned fake ERC-20 toolchain and contract | PASS | `npm run contracts:test` — 10/10 |
 | P2-01B | checkout-bound fixture, unique instance identity and local-chain boundary | PASS | Protected CI `33189082028` on `25e8147f`; Forge 10/10; chain 9/9 including reset → redeploy stale-instance proof |
+| P2-02A | additive envelope v2 and hash dispatch | PASS locally / PLANNED protected | `npx vitest run packages/schemas/test/envelope-v2.test.ts`; 60 tests; v1 regression suite 47 tests; exact v2 hash vector |
+| P2-02BCD | static transfer construction, independent decoder and verifier | PASS locally / PLANNED protected | `npx vitest run packages/transaction-pipeline/test/transfer-core.test.ts`; 27 tests including 128 calldata mutation runs |
+| P2-02 integration | combined P2-02 local review gate | PASS locally / PLANNED protected | `npm ci`; `npm run check`; audit 0 vulnerabilities; Forge 10/10; DB 71/71; concurrency 18/18; invariants 7/7; focused P2-02 87 tests |
+| P2-03 | canonical simulation, exact executable resolution, fee enforcement and freshness | PASS locally / PLANNED protected | 20 focused unit tests; 1 focused loopback chain test; 21 repository + 225 package tests; Forge 10/10; DB 71/71; concurrency 18/18; invariants 7/7; audit 0 vulnerabilities. Default all-chain invocation also hit the inherited 5-second P2-01 fixture reset-test timeout; no skip or protected claim. |

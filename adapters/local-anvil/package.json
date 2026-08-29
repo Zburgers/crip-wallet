@@ -1,0 +1,28 @@
+{
+  "name": "@crip/local-anvil-adapter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b --force"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "dependencies": {
+    "@crip/adapter-sdk": "0.0.0",
+    "@crip/audit": "0.0.0",
+    "@crip/schemas": "0.0.0",
+    "@crip/transaction-pipeline": "0.0.0",
+    "@crip/trust-boundary": "0.0.0",
+    "pg": "8.23.0",
+    "viem": "2.56.0",
+    "zod": "4.4.3"
+  }
+}

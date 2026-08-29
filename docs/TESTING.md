@@ -84,6 +84,19 @@ The chain suite is fail-closed when the requested suite is missing. A transfer
 mutates disposable Anvil state; rerun the lifecycle and fixture commands from a
 fresh reset before rerunning the suite.
 
+P2-03 adds `packages/transaction-pipeline/test/simulation.test.ts` (15
+deterministic unit tests), `packages/schemas/test/evm-execution.test.ts` (5
+schema tests), and `tests/chain/simulation.test.ts` (1 loopback test). The
+resolver uses a canonical block snapshot, pending nonce, token/native balances,
+a 10% integer gas margin, explicit EIP-1559 fees and `accessList: []`.
+Freshness permits an unrelated newer head within the configured block-age
+window, but rejects canonicality, fixture, nonce, balance, fee, and executable
+field changes. Revert evidence is normalized and hashed; no signer, broadcast,
+or migration is involved. The fixture reset/redeploy test can exceed its
+existing 5-second default timeout in a cold container; diagnose that inherited
+P2-01 test with `--testTimeout=15000` rather than weakening the gate or calling
+the full chain suite concurrently.
+
 ## Evidence promotion
 
 Unit evidence cannot satisfy database, concurrency, chain, or E2E rows. A healthy

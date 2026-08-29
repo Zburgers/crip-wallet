@@ -34,7 +34,10 @@ export type AuditEventType =
   | "execution.recovery.claimed"
   | "execution.recovery.ambiguous"
   | "execution.recovery.resolved"
-  | "execution.recovery.conflict";
+  | "execution.recovery.conflict"
+  | "signing.started"
+  | "signing.failed"
+  | "transaction.signed";
 
 export interface ComponentAuthorization {
   credentialId: string;
