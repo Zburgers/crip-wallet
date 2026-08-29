@@ -8,31 +8,40 @@ const repoRoot = resolve(new URL("..", import.meta.url).pathname);
 const suite = process.argv[2] ?? "";
 const requested = process.argv.slice(3).filter((value) => value !== "--");
 
-if (suite !== "chain") {
+const suiteRoots = {
+  chain: { directory: join(repoRoot, "tests", "chain"), label: "tests/chain" },
+  fault: {
+    directory: join(repoRoot, "adapters", "local-anvil", "test"),
+    label: "adapters/local-anvil/test",
+  },
+};
+
+if (suite !== "chain" && suite !== "fault") {
   process.stderr.write(
     `ERROR: unknown Phase-2 suite ${JSON.stringify(suite)}.\n`,
   );
   process.exit(2);
 }
 
-const chainRoot = join(repoRoot, "tests", "chain");
-const available = existsSync(chainRoot)
-  ? readdirSync(chainRoot)
+const suiteConfig = suite === "chain" ? suiteRoots.chain : suiteRoots.fault;
+const suiteRoot = suiteConfig.directory;
+const available = existsSync(suiteRoot)
+  ? readdirSync(suiteRoot)
       .filter((name) => /\.(?:test|spec)\.ts$/.test(name))
-      .map((name) => join("tests", "chain", name))
+      .map((name) => join(suiteConfig.label, name))
   : [];
 const requestedFiles = requested.map((name) => {
-  const candidate = resolve(chainRoot, name);
-  const relativeToChain = relative(chainRoot, candidate);
+  const candidate = resolve(suiteRoot, name);
+  const relativeToSuite = relative(suiteRoot, candidate);
   if (
-    !relativeToChain ||
-    relativeToChain.startsWith(`..${sep}`) ||
-    isAbsolute(relativeToChain) ||
-    !/(?:\.test|\.spec)\.ts$/.test(relativeToChain)
+    !relativeToSuite ||
+    relativeToSuite.startsWith(`..${sep}`) ||
+    isAbsolute(relativeToSuite) ||
+    !/(?:\.test|\.spec)\.ts$/.test(relativeToSuite)
   ) {
     return null;
   }
-  return join("tests", "chain", relativeToChain);
+  return join(suiteConfig.label, relativeToSuite);
 });
 const files =
   requested.length > 0
@@ -45,7 +54,7 @@ if (
   files.some((file) => !existsSync(join(repoRoot, file)))
 ) {
   process.stderr.write(
-    `ERROR: ${suite} gate is fail-closed; requested tests must remain under tests/chain and exist.\n`,
+    `ERROR: ${suite} gate is fail-closed; requested tests must remain under ${suiteConfig.label} and exist.\n`,
   );
   process.exit(1);
 }
