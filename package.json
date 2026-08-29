@@ -37,6 +37,7 @@
     "signer:provision": "node tooling/phase2-signer-credential.mjs",
     "pretest:chain": "npm run build --workspaces --if-present",
     "test:chain": "node tooling/phase2-test-gate.mjs chain",
+    "test:fault": "node tooling/phase2-test-gate.mjs fault",
     "dev:up": "bash scripts/dev-up.sh",
     "dev:status": "bash scripts/dev-status.sh",
     "dev:down": "bash scripts/dev-down.sh"
