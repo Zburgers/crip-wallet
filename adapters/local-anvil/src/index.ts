@@ -140,6 +140,20 @@ export {
   type SignerClientResult,
   type SpawnSignerOptions,
 } from "./signer-client.js";
+export {
+  broadcastSignedTransaction,
+  ProvenPreAcceptanceRejection,
+  type BroadcastAttempt,
+  type BroadcastAttemptStatus,
+  type BroadcastFailure,
+  type BroadcastInput,
+  type BroadcastResult,
+  type BroadcastStore,
+  type BroadcastSuccess,
+  type DurableSignedTransaction,
+  type RawTransactionSender,
+} from "./broadcast-core.js";
+export { createBroadcastStore } from "./broadcast-store.js";
 
 import { Pool } from "pg";
 import { verifyComponentAction } from "@crip/trust-boundary";
