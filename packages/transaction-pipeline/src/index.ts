@@ -24,6 +24,17 @@ export { constructTransferCore } from "./construct-transfer.js";
 export { decodeTransferIndependent } from "./decode-transfer.js";
 export { verifyTransferCore } from "./verify-transfer.js";
 export {
+  verifyUntrustedChainEvidence,
+  type ChainEvidenceExpectation,
+  type ChainEvidenceHash,
+  type ChainEvidenceMismatch,
+  type ChainEvidenceMismatchCode,
+  type ChainEvidenceVerificationResult,
+  type UntrustedChainEvidence,
+  type VerifiedChainEvidence,
+  type VerifiedTransferLogEvidence,
+} from "./chain-evidence.js";
+export {
   checkSimulationFreshness,
   createLocalAnvilReadRpc,
   hashExecutableCandidate,
