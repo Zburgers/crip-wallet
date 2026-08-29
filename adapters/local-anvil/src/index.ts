@@ -136,6 +136,16 @@ export {
 export { createSignerStore } from "./signer-store.js";
 export { createLocalSignerDeps } from "./signer-keys.js";
 export {
+  createFaultProxy,
+  FAULT_PROXY_MODES,
+  LOCAL_CHAIN_ID as FAULT_PROXY_CHAIN_ID,
+  type FaultProxy,
+  type FaultProxyMode,
+  type FaultProxyModeOptions,
+  type FaultProxyOptions,
+  type FaultProxyRequest,
+} from "./fault-proxy.js";
+export {
   spawnSignerProcess,
   type SignerClientResult,
   type SpawnSignerOptions,
