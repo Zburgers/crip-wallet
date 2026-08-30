@@ -763,4 +763,42 @@ describe.sequential("WP-05 authenticated reconciliation and recovery", () => {
       finalizedSpend: "0",
     });
   });
+
+  test("verified revert releases the reservation with zero token spend", async () => {
+    await insertOperation("op_verified_revert");
+    await reserve("op_verified_revert", "res_verified_revert", "15");
+    const value = evidence("g");
+    await broadcast("op_verified_revert", "res_verified_revert", value);
+    const lease = await claim(
+      "op_verified_revert",
+      "res_verified_revert",
+      "attempt_verified_revert",
+    );
+    const resolution = {
+      attemptId: "attempt_verified_revert",
+      operationId: "op_verified_revert",
+      reservationId: "res_verified_revert",
+      leaseVersion: lease.leaseVersion,
+      outcome: "FAILED" as const,
+      reason: "matching status-0 receipt proves the transfer reverted",
+      actualSpendAtomic: "0",
+      proofReference: value.receiptReference,
+      verifiedRevert: true,
+    };
+    const recovery = recoveryAudit(resolution, value);
+    recovery.componentAuth = signComponentAction(
+      reconciler,
+      "recovery.resolve",
+      { ...recoveryPayload(resolution, value), verifiedRevert: true },
+    );
+
+    await expect(
+      resolveRecovery(pool, { ...resolution, audit: recovery }),
+    ).resolves.toMatchObject({ status: "RELEASED" });
+    expect((await getBudget(pool, "budget_1")).snapshot).toMatchObject({
+      available: "100",
+      reserved: "0",
+      finalizedSpend: "0",
+    });
+  });
 });
