@@ -767,6 +767,7 @@ const writeTransitionAudit = async (
 const assertCanonicalAuthorizationEvidence = async (
   client: PoolClient,
   reservation: ReservationSnapshot,
+  operationStates: readonly string[] = ["AUTHORIZED"],
 ): Promise<void> => {
   const result = await client.query<{ authorization_id: string }>(
     `SELECT ae.authorization_id
@@ -783,7 +784,7 @@ const assertCanonicalAuthorizationEvidence = async (
        ON ai.authorization_id = ae.authorization_id
      WHERE ae.reservation_id = $1
        AND ae.operation_id = $2
-       AND o.current_state = 'AUTHORIZED'
+       AND o.current_state = ANY($3::text[])
        AND ai.authorization_id IS NULL
        AND e.envelope_hash = ae.envelope_hash
        AND pd.decision_hash = ae.policy_decision_hash
@@ -796,7 +797,7 @@ const assertCanonicalAuthorizationEvidence = async (
            AND latest.revision > ae.envelope_revision
        )
      FOR SHARE OF ae, o, e, pd`,
-    [reservation.reservationId, reservation.operationId],
+    [reservation.reservationId, reservation.operationId, operationStates],
   );
   if (result.rowCount !== 1)
     throw new LedgerError(
@@ -852,7 +853,11 @@ export const markReservationBroadcast = (
           "INVALID_RESERVATION_TRANSITION",
           `cannot mark ${reservation.status} reservation as broadcast`,
         );
-      await assertCanonicalAuthorizationEvidence(client, reservation);
+      await assertCanonicalAuthorizationEvidence(client, reservation, [
+        "AUTHORIZED",
+        "SIGNING",
+        "SIGNED",
+      ]);
       if (reservation.status === "BROADCAST") {
         const existing = await getBroadcastEvidence(
           client,

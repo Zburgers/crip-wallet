@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { keccak256 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 
 import {
   broadcastSignedTransaction,
@@ -8,7 +10,33 @@ import {
   type DurableSignedTransaction,
 } from "../src/index.js";
 
-const hash = `0x${"a".repeat(64)}`;
+const account = privateKeyToAccount(`0x${"1".repeat(64)}`);
+const otherAccount = privateKeyToAccount(`0x${"2".repeat(64)}`);
+const rawTransaction = await account.signTransaction({
+  chainId: 31337,
+  type: "eip1559",
+  to: `0x${"3".repeat(40)}`,
+  value: 0n,
+  nonce: 0,
+  gas: 21_000n,
+  maxFeePerGas: 2n,
+  maxPriorityFeePerGas: 1n,
+  data: "0x",
+  accessList: [],
+});
+const unrelatedRawTransaction = await otherAccount.signTransaction({
+  chainId: 31337,
+  type: "eip1559",
+  to: `0x${"3".repeat(40)}`,
+  value: 0n,
+  nonce: 0,
+  gas: 21_000n,
+  maxFeePerGas: 2n,
+  maxPriorityFeePerGas: 1n,
+  data: "0x",
+  accessList: [],
+});
+const hash = keccak256(rawTransaction);
 const signed: DurableSignedTransaction = {
   signedTransactionId: "signed:operation_1:1",
   operationId: "operation_1",
@@ -53,7 +81,7 @@ const input = {
   request,
   signedTransactionId: signed.signedTransactionId,
   attemptId: "attempt_1",
-  rawTransaction: "0xdeadbeef",
+  rawTransaction,
 };
 
 describe("persist-before-send broadcast", () => {
@@ -78,23 +106,39 @@ describe("persist-before-send broadcast", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.attempt.status).toBe("ACCEPTED");
-    expect(events).toEqual(["STARTED", "SEND:0xdeadbeef"]);
+    expect(events).toEqual(["STARTED", `SEND:${rawTransaction}`]);
   });
 
-  it("classifies explicit pre-acceptance rejection as REJECTED", async () => {
+  it("classifies only an explicit local no-send rejection as REJECTED", async () => {
     const result = await broadcastSignedTransaction(
       memoryStore(),
       {
         sendRawTransaction: async () => {
-          throw new ProvenPreAcceptanceRejection("NONCE_TOO_LOW");
+          throw new ProvenPreAcceptanceRejection();
         },
       },
       input,
     );
     expect(result).toMatchObject({
       ok: false,
-      attempt: { status: "REJECTED", classificationReason: "NONCE_TOO_LOW" },
+      attempt: {
+        status: "REJECTED",
+        classificationReason: "RPC_REQUEST_NOT_TRANSMITTED",
+      },
     });
+  });
+
+  it("keeps an RPC stale-nonce response UNKNOWN because prior acceptance is possible", async () => {
+    const result = await broadcastSignedTransaction(
+      memoryStore(),
+      {
+        sendRawTransaction: async () => {
+          throw new Error("nonce too low");
+        },
+      },
+      input,
+    );
+    expect(result).toMatchObject({ ok: false, attempt: { status: "UNKNOWN" } });
   });
 
   it.each([
@@ -113,7 +157,7 @@ describe("persist-before-send broadcast", () => {
     expect(result).toMatchObject({ ok: false, attempt: { status: "UNKNOWN" } });
   });
 
-  it("keeps a contradictory returned hash UNKNOWN", async () => {
+  it("classifies a contradictory returned hash as CONFLICT", async () => {
     const result = await broadcastSignedTransaction(
       memoryStore(),
       { sendRawTransaction: async () => `0x${"c".repeat(64)}` },
@@ -122,10 +166,57 @@ describe("persist-before-send broadcast", () => {
     expect(result).toMatchObject({
       ok: false,
       attempt: {
-        status: "UNKNOWN",
-        classificationReason: "CONTRADICTORY_OR_INVALID_RETURNED_HASH",
+        status: "CONFLICT",
+        classificationReason: "CONTRADICTORY_RETURNED_HASH",
       },
     });
+  });
+
+  it.each([
+    [
+      "one-byte mutation",
+      `${rawTransaction.slice(0, -2)}${rawTransaction.endsWith("00") ? "01" : "00"}`,
+    ],
+    ["unrelated valid signed transaction", unrelatedRawTransaction],
+    ["malformed signed bytes", "0xdeadbeef"],
+  ])("rejects %s before persistence or send", async (_label, raw) => {
+    let starts = 0;
+    let sends = 0;
+    const store = memoryStore();
+    await expect(
+      broadcastSignedTransaction(
+        {
+          ...store,
+          startBroadcastAttempt: async (...args) => {
+            starts += 1;
+            return store.startBroadcastAttempt(...args);
+          },
+        },
+        {
+          sendRawTransaction: async () => {
+            sends += 1;
+            return hash;
+          },
+        },
+        { ...input, rawTransaction: raw },
+      ),
+    ).rejects.toThrow(/signed transaction|expected transaction hash/i);
+    expect(starts).toBe(0);
+    expect(sends).toBe(0);
+  });
+
+  it("never includes raw signed bytes in validation errors", async () => {
+    const malformed = "0xdeadbeef";
+    await expect(
+      broadcastSignedTransaction(
+        memoryStore(),
+        { sendRawTransaction: async () => hash },
+        {
+          ...input,
+          rawTransaction: malformed,
+        },
+      ),
+    ).rejects.not.toThrow(malformed);
   });
 
   it("does not send again when the durable attempt is already terminal", async () => {

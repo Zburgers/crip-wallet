@@ -40,6 +40,11 @@ export interface ReconciliationInput {
   audits: ReconciliationAudits;
   attemptId: string;
   leaseDurationSeconds?: number;
+  /** Deterministic test barriers at durable crash boundaries. */
+  barriers?: {
+    afterRecoveryResolved?(): Promise<void>;
+    afterEconomicEffectPersisted?(): Promise<void>;
+  };
 }
 
 export interface ReconciliationSuccess {
@@ -264,7 +269,7 @@ const persistVerifiedEvidence = async (
               access_list, evidence_hash)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
                    $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
-                   $26, $27)`,
+                   $26)`,
           [
             transactionEvidenceId,
             input.attemptId,
@@ -365,6 +370,75 @@ const persistVerifiedEvidence = async (
       throw error;
     }
   });
+};
+
+const assertExactLegacyEvidence = (
+  input: ReconciliationInput,
+  verified: VerifiedChainEvidence,
+): void => {
+  const evidence = input.broadcastEvidence;
+  if (
+    evidence.transactionHash !== input.expectation.expectedTransactionHash ||
+    evidence.transactionHash !== verified.transactionHash
+  )
+    throw new Error(
+      "broadcast evidence transaction hash does not match verified execution",
+    );
+  if (
+    evidence.nonce !== input.expectation.envelope.nonce ||
+    evidence.nonce !== verified.nonce
+  )
+    throw new Error(
+      "broadcast evidence nonce does not match verified execution",
+    );
+  if (evidence.receiptReference !== `receipt:${input.attemptId}`)
+    throw new Error(
+      "broadcast evidence receipt reference does not match durable receipt evidence",
+    );
+};
+
+const loadResolvedRecovery = async (
+  pool: Pool,
+  input: ReconciliationInput,
+): Promise<RecoveryResolution | null> => {
+  const result = await pool.query<{
+    operation_id: string;
+    reservation_id: string;
+    lease_version: string;
+    outcome: RecoveryResolution["outcome"];
+    reason: string;
+    actual_spend_atomic: string | null;
+    proof_reference: string | null;
+  }>(
+    `SELECT operation_id, reservation_id, lease_version, outcome, reason,
+            actual_spend_atomic, proof_reference
+     FROM recovery_attempts WHERE attempt_id = $1`,
+    [input.attemptId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  if (
+    row.operation_id !== input.expectation.operationId ||
+    row.reservation_id !== input.expectation.reservationId
+  )
+    throw new Error(
+      "resolved recovery attempt has conflicting execution identity",
+    );
+  return {
+    attemptId: input.attemptId,
+    operationId: row.operation_id,
+    reservationId: row.reservation_id,
+    leaseVersion: row.lease_version,
+    outcome: row.outcome,
+    reason: row.reason,
+    ...(row.actual_spend_atomic === null
+      ? {}
+      : { actualSpendAtomic: row.actual_spend_atomic }),
+    ...(row.proof_reference === null
+      ? {}
+      : { proofReference: row.proof_reference }),
+    ...(row.outcome === "FAILED" ? { verifiedRevert: true } : {}),
+  };
 };
 
 const readReceiptReference = async (
@@ -583,7 +657,7 @@ const advanceOperationLifecycle = async (
  * remain untrusted until the independent verifier succeeds; all economic
  * mutation remains behind ADR-0014 authentication and the recovery lease.
  */
-export const reconcileLocalChainEvidence = async (
+const reconcileLocalChainEvidenceCore = async (
   pool: Pool,
   input: ReconciliationInput,
 ): Promise<ReconciliationResult> => {
@@ -616,6 +690,45 @@ export const reconcileLocalChainEvidence = async (
       evidence: result.verified,
       reservation: current.reservation,
     };
+  }
+
+  assertExactLegacyEvidence(input, result.verified);
+
+  const priorResolution = await loadResolvedRecovery(pool, input);
+  if (priorResolution) {
+    if (
+      (result.verified.receiptStatus === "SUCCESS" &&
+        priorResolution.outcome !== "CONFIRMED") ||
+      (result.verified.receiptStatus === "REVERT" &&
+        priorResolution.outcome !== "FAILED") ||
+      priorResolution.proofReference !==
+        input.broadcastEvidence.receiptReference
+    )
+      throw new Error(
+        "resolved recovery attempt conflicts with verified evidence",
+      );
+    const reservation = await resolveRecovery(pool, {
+      ...priorResolution,
+      audit: input.audits.resolve,
+    });
+    if (result.verified.receiptStatus === "SUCCESS") {
+      await insertEconomicEffect(
+        pool,
+        input,
+        result.verified,
+        input.broadcastEvidence.receiptReference,
+        priorResolution,
+      );
+      await input.barriers?.afterEconomicEffectPersisted?.();
+    }
+    await advanceOperationLifecycle(
+      pool,
+      input,
+      "RECONCILED",
+      priorResolution,
+      reservation,
+    );
+    return { ok: true, evidence: result.verified, reservation };
   }
 
   await markReservationBroadcast(pool, {
@@ -667,6 +780,7 @@ export const reconcileLocalChainEvidence = async (
     ...resolution,
     audit: input.audits.resolve,
   });
+  await input.barriers?.afterRecoveryResolved?.();
   if (result.verified.receiptStatus === "SUCCESS")
     await insertEconomicEffect(
       pool,
@@ -675,6 +789,8 @@ export const reconcileLocalChainEvidence = async (
       receiptReference,
       resolution,
     );
+  if (result.verified.receiptStatus === "SUCCESS")
+    await input.barriers?.afterEconomicEffectPersisted?.();
   await advanceOperationLifecycle(
     pool,
     input,
@@ -684,3 +800,22 @@ export const reconcileLocalChainEvidence = async (
   );
   return { ok: true, evidence: result.verified, reservation };
 };
+
+/** Serialize retries for one operation; durable idempotency still owns results. */
+export const reconcileLocalChainEvidence = async (
+  pool: Pool,
+  input: ReconciliationInput,
+): Promise<ReconciliationResult> =>
+  withClient(pool, async (lockClient) => {
+    const lockIdentity = `crip:p2-05c:${input.expectation.operationId}`;
+    await lockClient.query("SELECT pg_advisory_lock(hashtext($1))", [
+      lockIdentity,
+    ]);
+    try {
+      return await reconcileLocalChainEvidenceCore(pool, input);
+    } finally {
+      await lockClient
+        .query("SELECT pg_advisory_unlock(hashtext($1))", [lockIdentity])
+        .catch(() => undefined);
+    }
+  });

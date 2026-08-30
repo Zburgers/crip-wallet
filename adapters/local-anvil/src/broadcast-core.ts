@@ -2,12 +2,13 @@ import {
   authorizedTransferRequestSchema,
   type SignAuthorizedTransferRequest,
 } from "@crip/adapter-sdk";
+import { keccak256, parseTransaction, serializeTransaction } from "viem";
 
 const HASH_PATTERN = /^0x[0-9a-f]{64}$/;
 const RAW_TRANSACTION_PATTERN = /^0x[0-9a-f]+$/;
 
 export type BroadcastAttemptStatus =
-  "STARTED" | "ACCEPTED" | "REJECTED" | "UNKNOWN";
+  "STARTED" | "ACCEPTED" | "REJECTED" | "UNKNOWN" | "CONFLICT";
 
 export interface DurableSignedTransaction {
   signedTransactionId: string;
@@ -62,8 +63,8 @@ export interface RawTransactionSender {
 export class ProvenPreAcceptanceRejection extends Error {
   readonly preAcceptance = true;
 
-  constructor(reason = "PROVEN_PRE_ACCEPTANCE_REJECTION") {
-    super(reason);
+  constructor() {
+    super("RPC_REQUEST_NOT_TRANSMITTED");
     this.name = "ProvenPreAcceptanceRejection";
   }
 }
@@ -99,6 +100,26 @@ const assertSafeInput = (input: BroadcastInput): void => {
     throw new Error("invalid raw transaction encoding");
 };
 
+const deriveCanonicalSignedTransactionHash = (
+  rawTransaction: string,
+): string => {
+  try {
+    const raw = rawTransaction as `0x${string}`;
+    const parsed = parseTransaction(raw);
+    if (
+      parsed.type !== "eip1559" ||
+      parsed.r === undefined ||
+      parsed.s === undefined ||
+      parsed.yParity === undefined ||
+      serializeTransaction(parsed) !== raw
+    )
+      throw new Error("non-canonical or unsigned transaction");
+    return keccak256(raw);
+  } catch {
+    throw new Error("invalid canonical signed transaction encoding");
+  }
+};
+
 /** Persist-before-send broadcast state machine. It never signs or reconstructs a transaction. */
 export const broadcastSignedTransaction = async (
   store: BroadcastStore,
@@ -112,6 +133,11 @@ export const broadcastSignedTransaction = async (
     throw new Error("signed evidence operation binding mismatch");
   if (signed.authorizationId !== input.request.authorizationId)
     throw new Error("signed evidence authorization binding mismatch");
+  const derivedTransactionHash = deriveCanonicalSignedTransactionHash(
+    input.rawTransaction,
+  );
+  if (derivedTransactionHash !== signed.expectedTransactionHash)
+    throw new Error("signed bytes do not match expected transaction hash");
 
   const started = await store.startBroadcastAttempt(signed, input.attemptId);
   if (
@@ -139,8 +165,12 @@ export const broadcastSignedTransaction = async (
       status = "ACCEPTED";
       responseTransactionHash = response;
       classificationReason = "MATCHING_RETURNED_TRANSACTION_HASH";
+    } else if (HASH_PATTERN.test(response)) {
+      status = "CONFLICT";
+      responseTransactionHash = response;
+      classificationReason = "CONTRADICTORY_RETURNED_HASH";
     } else {
-      classificationReason = "CONTRADICTORY_OR_INVALID_RETURNED_HASH";
+      classificationReason = "INVALID_RETURNED_HASH_UNCERTAIN";
     }
   } catch (error) {
     if (error instanceof ProvenPreAcceptanceRejection) {

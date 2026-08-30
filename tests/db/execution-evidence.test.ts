@@ -15,8 +15,28 @@ import {
   consumeApproval,
   createApprovalRequest,
 } from "@crip/approvals";
-import { applyMigrations } from "@crip/budget-ledger";
-import { generateComponentCredential } from "@crip/trust-boundary";
+import {
+  applyMigrations,
+  claimRecoveryLease,
+  releaseReservation,
+  resolveRecovery,
+  type AuditContext,
+  type BroadcastEvidence,
+} from "@crip/budget-ledger";
+import { type ExecutionEnvelopeV2 } from "@crip/schemas";
+import {
+  verifyUntrustedChainEvidence,
+  type ChainEvidenceExpectation,
+  type UntrustedChainEvidence,
+} from "@crip/transaction-pipeline";
+import {
+  reconcileLocalChainEvidence,
+  type ReconciliationInput,
+} from "@crip/local-anvil-adapter";
+import {
+  generateComponentCredential,
+  signComponentAction,
+} from "@crip/trust-boundary";
 import { loadLocalRuntime } from "../../tooling/local-runtime.mjs";
 import { createLocalOwnerTestCredential } from "./local-owner-auth.js";
 
@@ -115,7 +135,11 @@ const v2Envelope = (operationId: string, reservationId: string) => ({
   from: address("10"),
   to: address("1"),
   value: "0",
-  calldata: "0xa9059cbb" + "0".repeat(128),
+  calldata:
+    "0xa9059cbb" +
+    "0".repeat(24) +
+    address("20").slice(2) +
+    BigInt(10).toString(16).padStart(64, "0"),
   decodedFunction: "erc20.transfer",
   decodedArguments: {
     assetAddress: address("1"),
@@ -359,6 +383,197 @@ const reset = async (): Promise<void> => {
   await seed(pool);
 };
 
+const componentAudit = (
+  operationId: string,
+  suffix: string,
+  componentAuth: AuditContext["componentAuth"],
+): AuditContext => ({
+  ...audit(operationId, suffix, "worker"),
+  componentAuth,
+});
+
+const reconciliationFixture = async (
+  receiptStatus: "success" | "reverted" = "success",
+  hooks?: ReconciliationInput["barriers"],
+): Promise<ReconciliationInput> => {
+  const envelopeHash = await prepareAuthorizedV2();
+  const envelope = {
+    ...v2Envelope("op_1", "res_1"),
+    envelopeHash,
+  } as ExecutionEnvelopeV2;
+  await pool.query(
+    "UPDATE budget_accounts SET available = 90, reserved = 10 WHERE budget_id = 'budget_1'",
+  );
+  await pool.query(
+    `INSERT INTO signed_transactions
+      (signed_transaction_id, operation_id, reservation_id, envelope_id, envelope_revision,
+       envelope_hash, authorization_id, simulation_id, fixture_instance_id,
+       expected_transaction_hash, signer_credential_id, signer_component_id, signed_at)
+     VALUES ('signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1, 'approval_1:authorization',
+       'sim_1', $2, $3, $4, $5, now())`,
+    [
+      envelopeHash,
+      fixtureId,
+      hash,
+      adapterCredential.credentialId,
+      adapterCredential.componentId,
+    ],
+  );
+  await pool.query(
+    `INSERT INTO broadcast_attempts
+      (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,
+       envelope_revision, envelope_hash, authorization_id, fixture_instance_id,
+       expected_transaction_hash)
+     VALUES ('attempt_1', 'signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1,
+       'approval_1:authorization', $2, $3)`,
+    [envelopeHash, fixtureId, hash],
+  );
+  await pool.query(
+    `UPDATE broadcast_attempts SET status = 'ACCEPTED', response_transaction_hash = $1,
+      classification_reason = 'MATCHING_RETURNED_TRANSACTION_HASH', completed_at = now()
+     WHERE attempt_id = 'attempt_1'`,
+    [hash],
+  );
+  await pool.query(
+    "UPDATE operations SET current_state = 'SIGNING', version = version + 1 WHERE operation_id = 'op_1'",
+  );
+  await pool.query(
+    "UPDATE operations SET current_state = 'SIGNED', version = version + 1 WHERE operation_id = 'op_1'",
+  );
+
+  const expectation: ChainEvidenceExpectation = {
+    operationId: "op_1",
+    reservationId: "res_1",
+    envelopeId: "env_op_1_1",
+    envelopeRevision: 1,
+    envelopeHash: envelopeHash as `0x${string}`,
+    authorizationId: "approval_1:authorization",
+    fixtureInstanceId: fixtureId,
+    expectedTransactionHash: hash as `0x${string}`,
+    fixture: {
+      fixtureInstanceId: fixtureId,
+      chainId: "eip155:31337",
+      walletAddress: address("10") as `0x${string}`,
+      tokenAddress: address("1") as `0x${string}`,
+      rpcUrl: "http://127.0.0.1:8545/",
+    },
+    envelope,
+  };
+  const blockHash = `0x${"b".repeat(64)}` as const;
+  const transferData = `0x${BigInt(10).toString(16).padStart(64, "0")}`;
+  const topicAddress = (value: string) =>
+    `0x${"0".repeat(24)}${value.slice(2)}`;
+  const evidence: UntrustedChainEvidence = {
+    transaction: {
+      hash,
+      chainId: 31337n,
+      blockHash,
+      blockNumber: 101n,
+      transactionIndex: 0n,
+      from: address("10"),
+      to: address("1"),
+      value: 0n,
+      input: envelope.calldata,
+      nonce: 7n,
+      type: "eip1559",
+      gas: 50000n,
+      maxPriorityFeePerGas: 1n,
+      maxFeePerGas: 2n,
+      accessList: [],
+    },
+    receipt: {
+      transactionHash: hash,
+      blockHash,
+      blockNumber: 101n,
+      status: receiptStatus,
+      gasUsed: 45000n,
+      effectiveGasPrice: 2n,
+      logs:
+        receiptStatus === "success"
+          ? [
+              {
+                address: address("1"),
+                topics: [
+                  zeroLogTopic,
+                  topicAddress(address("10")),
+                  topicAddress(address("20")),
+                ],
+                data: transferData,
+                logIndex: 0n,
+                transactionHash: hash,
+                blockHash,
+                blockNumber: 101n,
+                removed: false,
+              },
+            ]
+          : [],
+    },
+    canonicalBlockByNumber: { number: 101n, hash: blockHash },
+    canonicalBlockByHash: { number: 101n, hash: blockHash },
+  };
+  const broadcastEvidence: BroadcastEvidence = {
+    transactionHash: hash,
+    nonce: "7",
+    receiptReference: "receipt:attempt_1",
+  };
+  const reason =
+    receiptStatus === "success"
+      ? "matching canonical transaction, receipt, block, and Transfer evidence"
+      : "matching status-0 receipt proves the transfer reverted";
+  const outcome = receiptStatus === "success" ? "CONFIRMED" : "FAILED";
+  return {
+    expectation,
+    evidence,
+    broadcastEvidence,
+    attemptId: "attempt_1",
+    ...(hooks ? { barriers: hooks } : {}),
+    audits: {
+      broadcast: componentAudit(
+        "op_1",
+        "reconcile:broadcast",
+        signComponentAction(adapterCredential, "broadcast", {
+          reservationId: "res_1",
+          ...broadcastEvidence,
+        }),
+      ),
+      verification: componentAudit(
+        "op_1",
+        "reconcile:verify",
+        signComponentAction(reconcilerCredential, "verify", {
+          reservationId: "res_1",
+          ...broadcastEvidence,
+        }),
+      ),
+      claim: componentAudit(
+        "op_1",
+        "reconcile:claim",
+        signComponentAction(reconcilerCredential, "recovery.claim", {
+          attemptId: "attempt_1",
+          operationId: "op_1",
+          reservationId: "res_1",
+          leaseDurationSeconds: 60,
+        }),
+      ),
+      resolve: componentAudit(
+        "op_1",
+        "reconcile:resolve",
+        signComponentAction(reconcilerCredential, "recovery.resolve", {
+          attemptId: "attempt_1",
+          operationId: "op_1",
+          reservationId: "res_1",
+          leaseVersion: "1",
+          outcome,
+          reason,
+          actualSpendAtomic: receiptStatus === "success" ? "10" : "0",
+          proofReference: broadcastEvidence.receiptReference,
+          ...(receiptStatus === "reverted" ? { verifiedRevert: true } : {}),
+          evidence: broadcastEvidence,
+        }),
+      ),
+    },
+  };
+};
+
 describe.sequential("WS-004 execution evidence persistence", () => {
   beforeAll(async () => applyMigrations(pool));
   beforeEach(async () => {
@@ -369,14 +584,12 @@ describe.sequential("WS-004 execution evidence persistence", () => {
   });
   afterAll(async () => pool.end());
 
-  test("applies migration 0022 after the frozen Phase-1 migrations", async () => {
+  test("applies the broadcast-safety migration after the frozen Phase-1 migrations", async () => {
     const rows = await pool.query<{ filename: string }>(
       "SELECT filename FROM schema_migrations ORDER BY filename",
     );
-    expect(rows.rows).toHaveLength(22);
-    expect(rows.rows.at(-1)?.filename).toBe(
-      "0022_ws004_evm_execution_evidence.sql",
-    );
+    expect(rows.rows).toHaveLength(23);
+    expect(rows.rows.at(-1)?.filename).toBe("0023_p205_broadcast_safety.sql");
   });
 
   test("accepts a valid legacy v1 envelope and valid strict v2 envelope", async () => {
@@ -528,6 +741,43 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         "UPDATE broadcast_attempts SET status = 'UNKNOWN' WHERE attempt_id = 'attempt_1'",
       ),
     ).rejects.toThrow(/invalid broadcast attempt transition/i);
+  });
+
+  test("persists a contradictory valid returned hash as CONFLICT", async () => {
+    const envelopeHash = await prepareAuthorizedV2();
+    await pool.query(
+      `INSERT INTO signed_transactions
+        (signed_transaction_id, operation_id, reservation_id, envelope_id, envelope_revision,
+         envelope_hash, authorization_id, simulation_id, fixture_instance_id,
+         expected_transaction_hash, signer_credential_id, signer_component_id, signed_at)
+       VALUES ('signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1, 'approval_1:authorization',
+         'sim_1', $2, $3, $4, $5, now())`,
+      [
+        envelopeHash,
+        fixtureId,
+        hash,
+        adapterCredential.credentialId,
+        adapterCredential.componentId,
+      ],
+    );
+    await pool.query(
+      `INSERT INTO broadcast_attempts
+        (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,
+         envelope_revision, envelope_hash, authorization_id, fixture_instance_id,
+         expected_transaction_hash)
+       VALUES ('attempt_1', 'signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1,
+         'approval_1:authorization', $2, $3)`,
+      [envelopeHash, fixtureId, hash],
+    );
+    await expect(
+      pool.query(
+        `UPDATE broadcast_attempts SET status = 'CONFLICT',
+          response_transaction_hash = $1,
+          classification_reason = 'CONTRADICTORY_RETURNED_HASH', completed_at = now()
+         WHERE attempt_id = 'attempt_1'`,
+        [`0x${"c".repeat(64)}`],
+      ),
+    ).resolves.toBeDefined();
   });
 
   test("binds normalized transaction, receipt, log, and one reconciler effect", async () => {
@@ -683,5 +933,409 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         )
       ).rows[0]?.count,
     ).toBe(0);
+  });
+
+  test("reconciles exact SUCCESS through the P2-05C entry point once", async () => {
+    const input = await reconciliationFixture();
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "FINALIZED", finalizedSpendAtomic: "10" },
+    });
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "FINALIZED" },
+    });
+    const state = await pool.query(
+      `SELECT o.current_state, r.status, b.available, b.reserved, b.finalized_spend,
+        (SELECT count(*)::int FROM recovery_attempts WHERE operation_id = o.operation_id) attempts,
+        (SELECT count(*)::int FROM execution_economic_effects WHERE operation_id = o.operation_id) effects
+       FROM operations o JOIN budget_reservations r USING (operation_id)
+       JOIN budget_accounts b USING (budget_id) WHERE o.operation_id = 'op_1'`,
+    );
+    expect(state.rows[0]).toMatchObject({
+      current_state: "RECONCILED",
+      status: "FINALIZED",
+      available: "90",
+      reserved: "0",
+      finalized_spend: "10",
+      attempts: 1,
+      effects: 1,
+    });
+  });
+
+  test("reconciles a verified status-0 receipt as RELEASED with zero spend", async () => {
+    const input = await reconciliationFixture("reverted");
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "RELEASED", finalizedSpendAtomic: "0" },
+    });
+    const state = await pool.query(
+      `SELECT o.current_state, r.status, b.available, b.reserved, b.finalized_spend,
+        (SELECT count(*)::int FROM execution_economic_effects WHERE operation_id = o.operation_id) effects
+       FROM operations o JOIN budget_reservations r USING (operation_id)
+       JOIN budget_accounts b USING (budget_id) WHERE o.operation_id = 'op_1'`,
+    );
+    expect(state.rows[0]).toMatchObject({
+      current_state: "RECONCILED",
+      status: "RELEASED",
+      available: "100",
+      reserved: "0",
+      finalized_spend: "0",
+      effects: 0,
+    });
+  });
+
+  test.each([
+    ["transaction hash", { transactionHash: `0x${"c".repeat(64)}` }],
+    ["nonce", { nonce: "8" }],
+    ["receipt reference", { receiptReference: "receipt:unrelated" }],
+  ])(
+    "rejects legacy evidence with wrong %s before economic mutation",
+    async (_label, mutation) => {
+      const input = await reconciliationFixture();
+      await expect(
+        reconcileLocalChainEvidence(pool, {
+          ...input,
+          broadcastEvidence: { ...input.broadcastEvidence, ...mutation },
+        }),
+      ).rejects.toThrow(/broadcast evidence.*match|receipt reference/i);
+      const state = await pool.query(
+        "SELECT status FROM budget_reservations WHERE reservation_id = 'res_1'",
+      );
+      expect(state.rows[0]?.status).toBe("AUTHORIZED");
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int count FROM recovery_attempts WHERE operation_id = 'op_1'",
+          )
+        ).rows[0]?.count,
+      ).toBe(0);
+    },
+  );
+
+  test("a durable send-capable attempt fences direct and FAILED recovery release", async () => {
+    await reconciliationFixture();
+    await expect(
+      releaseReservation(pool, {
+        reservationId: "res_1",
+        audit: audit("op_1", "direct-release"),
+      }),
+    ).rejects.toThrow(
+      /send-capable broadcast attempt fences reservation release/i,
+    );
+
+    const recoveryAttemptId = "recovery_release_1";
+    const claim = await claimRecoveryLease(pool, {
+      attemptId: recoveryAttemptId,
+      operationId: "op_1",
+      reservationId: "res_1",
+      leaseDurationSeconds: 60,
+      audit: componentAudit(
+        "op_1",
+        "failed-release:claim",
+        signComponentAction(reconcilerCredential, "recovery.claim", {
+          attemptId: recoveryAttemptId,
+          operationId: "op_1",
+          reservationId: "res_1",
+          leaseDurationSeconds: 60,
+        }),
+      ),
+    });
+    const resolution = {
+      attemptId: recoveryAttemptId,
+      operationId: "op_1",
+      reservationId: "res_1",
+      leaseVersion: claim.leaseVersion,
+      outcome: "FAILED" as const,
+      reason: "claimed pre-acceptance failure after durable send attempt",
+    };
+    await expect(
+      resolveRecovery(pool, {
+        ...resolution,
+        audit: componentAudit(
+          "op_1",
+          "failed-release:resolve",
+          signComponentAction(reconcilerCredential, "recovery.resolve", {
+            ...resolution,
+            actualSpendAtomic: null,
+            proofReference: null,
+            evidence: null,
+          }),
+        ),
+      }),
+    ).rejects.toThrow(
+      /send-capable broadcast attempt fences reservation release/i,
+    );
+    const state = await pool.query(
+      `SELECT r.status, b.available, b.reserved, b.finalized_spend
+       FROM budget_reservations r JOIN budget_accounts b USING (budget_id)
+       WHERE r.reservation_id = 'res_1'`,
+    );
+    expect(state.rows[0]).toMatchObject({
+      status: "AUTHORIZED",
+      available: "90",
+      reserved: "10",
+      finalized_spend: "0",
+    });
+  });
+
+  test.each([
+    [
+      "transaction mismatch",
+      (value: UntrustedChainEvidence) => ({
+        ...value,
+        transaction: {
+          ...(value.transaction as Record<string, unknown>),
+          hash: `0x${"c".repeat(64)}`,
+        },
+      }),
+    ],
+    [
+      "receipt mismatch",
+      (value: UntrustedChainEvidence) => ({
+        ...value,
+        receipt: {
+          ...(value.receipt as Record<string, unknown>),
+          transactionHash: `0x${"c".repeat(64)}`,
+        },
+      }),
+    ],
+    [
+      "Transfer-log mismatch",
+      (value: UntrustedChainEvidence) => {
+        const receipt = value.receipt as Record<string, unknown>;
+        const logs = receipt.logs as readonly Record<string, unknown>[];
+        return {
+          ...value,
+          receipt: {
+            ...receipt,
+            logs: [{ ...logs[0], data: `0x${"0".repeat(63)}b` }],
+          },
+        };
+      },
+    ],
+  ])(
+    "routes %s through the actual entry point to DISPUTED",
+    async (_label, mutate) => {
+      const input = await reconciliationFixture();
+      const evidence = mutate(input.evidence);
+      const verification = verifyUntrustedChainEvidence(
+        input.expectation,
+        evidence,
+      );
+      expect(verification.ok).toBe(false);
+      if (verification.ok) throw new Error("expected mismatch fixture");
+      const reason = `chain evidence mismatch: ${verification.mismatches
+        .map((item) => item.code)
+        .join(",")}`;
+      const resolve = componentAudit(
+        "op_1",
+        `mismatch:${_label.replaceAll(" ", "-")}:resolve`,
+        signComponentAction(reconcilerCredential, "recovery.resolve", {
+          attemptId: "attempt_1",
+          operationId: "op_1",
+          reservationId: "res_1",
+          leaseVersion: "1",
+          outcome: "CONFLICT",
+          reason,
+          actualSpendAtomic: null,
+          proofReference: null,
+          evidence: null,
+        }),
+      );
+      await expect(
+        reconcileLocalChainEvidence(pool, {
+          ...input,
+          evidence,
+          audits: { ...input.audits, resolve },
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        reservation: { status: "DISPUTED" },
+      });
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int count FROM execution_economic_effects WHERE operation_id = 'op_1'",
+          )
+        ).rows[0]?.count,
+      ).toBe(0);
+    },
+  );
+
+  test.each([
+    ["operation", { operationId: "op_2" }],
+    ["reservation", { reservationId: "res_2" }],
+    [
+      "fixture",
+      {
+        fixtureInstanceId: "22222222-2222-4222-8222-222222222222",
+      },
+    ],
+  ])(
+    "rejects cross-%s authority before economic mutation",
+    async (_label, mutation) => {
+      const input = await reconciliationFixture();
+      await expect(
+        reconcileLocalChainEvidence(pool, {
+          ...input,
+          expectation: { ...input.expectation, ...mutation },
+        }),
+      ).rejects.toThrow(
+        /broadcast attempt does not match reconciliation authority/i,
+      );
+      expect(
+        (
+          await pool.query(
+            "SELECT count(*)::int count FROM recovery_attempts WHERE operation_id = 'op_1'",
+          )
+        ).rows[0]?.count,
+      ).toBe(0);
+    },
+  );
+
+  test("rejects forged and revoked RECONCILER authentication before resolution", async () => {
+    const forged = await reconciliationFixture();
+    await expect(
+      reconcileLocalChainEvidence(pool, {
+        ...forged,
+        audits: {
+          ...forged.audits,
+          verification: {
+            ...forged.audits.verification,
+            componentAuth: {
+              ...forged.audits.verification.componentAuth!,
+              signature: `${forged.audits.verification.componentAuth!.signature}x`,
+            },
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "COMPONENT_AUTHENTICATION_FAILED" });
+
+    await reset();
+    const revoked = await reconciliationFixture();
+    await pool.query(
+      `UPDATE trusted_component_credentials
+       SET status = 'REVOKED', revoked_at = now()
+       WHERE credential_id = $1`,
+      [reconcilerCredential.credentialId],
+    );
+    await expect(
+      reconcileLocalChainEvidence(pool, revoked),
+    ).rejects.toMatchObject({
+      code: "COMPONENT_NOT_TRUSTED",
+    });
+  });
+
+  test("concurrent retries converge on one recovery and one effect", async () => {
+    const input = await reconciliationFixture();
+    const results = await Promise.allSettled([
+      reconcileLocalChainEvidence(pool, input),
+      reconcileLocalChainEvidence(pool, input),
+    ]);
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(2);
+    const counts = await pool.query(
+      `SELECT (SELECT count(*)::int FROM recovery_attempts WHERE operation_id = 'op_1') attempts,
+              (SELECT count(*)::int FROM execution_economic_effects WHERE operation_id = 'op_1') effects`,
+    );
+    expect(counts.rows[0]).toEqual({ attempts: 1, effects: 1 });
+  });
+
+  test("resumes exactly once after a crash immediately after SUCCESS resolution", async () => {
+    let crash = true;
+    const input = await reconciliationFixture("success", {
+      afterRecoveryResolved: async () => {
+        if (crash) {
+          crash = false;
+          throw new Error("deterministic post-resolution crash");
+        }
+      },
+    });
+    await expect(reconcileLocalChainEvidence(pool, input)).rejects.toThrow(
+      "deterministic post-resolution crash",
+    );
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "FINALIZED" },
+    });
+    const counts = await pool.query(
+      `SELECT (SELECT count(*)::int FROM recovery_attempts WHERE operation_id = 'op_1') attempts,
+              (SELECT count(*)::int FROM execution_economic_effects WHERE operation_id = 'op_1') effects,
+              (SELECT current_state FROM operations WHERE operation_id = 'op_1') state`,
+    );
+    expect(counts.rows[0]).toEqual({
+      attempts: 1,
+      effects: 1,
+      state: "RECONCILED",
+    });
+  });
+
+  test("resumes lifecycle after a crash following economic-effect persistence", async () => {
+    let crash = true;
+    const input = await reconciliationFixture("success", {
+      afterEconomicEffectPersisted: async () => {
+        if (crash) {
+          crash = false;
+          throw new Error("deterministic post-effect crash");
+        }
+      },
+    });
+    await expect(reconcileLocalChainEvidence(pool, input)).rejects.toThrow(
+      "deterministic post-effect crash",
+    );
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "FINALIZED" },
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int count FROM execution_economic_effects WHERE operation_id = 'op_1'",
+        )
+      ).rows[0]?.count,
+    ).toBe(1);
+  });
+
+  test("resumes a verified REVERT after a crash following RELEASED resolution", async () => {
+    let crash = true;
+    const input = await reconciliationFixture("reverted", {
+      afterRecoveryResolved: async () => {
+        if (crash) {
+          crash = false;
+          throw new Error("deterministic revert post-resolution crash");
+        }
+      },
+    });
+    await expect(reconcileLocalChainEvidence(pool, input)).rejects.toThrow(
+      "deterministic revert post-resolution crash",
+    );
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "RELEASED" },
+    });
+    const state = await pool.query(
+      `SELECT o.current_state, r.status, b.finalized_spend
+       FROM operations o JOIN budget_reservations r USING (operation_id)
+       JOIN budget_accounts b USING (budget_id) WHERE o.operation_id = 'op_1'`,
+    );
+    expect(state.rows[0]).toMatchObject({
+      current_state: "RECONCILED",
+      status: "RELEASED",
+      finalized_spend: "0",
+    });
   });
 });
