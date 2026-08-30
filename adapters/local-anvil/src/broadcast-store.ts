@@ -47,7 +47,15 @@ const attemptColumns = `attempt_id, signed_transaction_id, operation_id, reserva
   envelope_id, envelope_revision, envelope_hash, authorization_id, fixture_instance_id,
   expected_transaction_hash, status, response_transaction_hash, classification_reason`;
 
-export const createBroadcastStore = (pool: Pool): BroadcastStore => ({
+export interface BroadcastStoreBarriers {
+  /** Test-only deterministic barrier after the shared reservation lock. */
+  afterReservationLocked?: () => Promise<void>;
+}
+
+export const createBroadcastStore = (
+  pool: Pool,
+  barriers: BroadcastStoreBarriers = {},
+): BroadcastStore => ({
   findSignedTransaction: (signedTransactionId) =>
     withClient(pool, async (client) => {
       const result = await client.query<Record<string, unknown>>(
@@ -76,6 +84,16 @@ export const createBroadcastStore = (pool: Pool): BroadcastStore => ({
     withClient(pool, async (client) => {
       await client.query("BEGIN");
       try {
+        const reservation = await client.query<{ status: string }>(
+          `SELECT status FROM budget_reservations
+           WHERE reservation_id = $1 FOR UPDATE`,
+          [signed.reservationId],
+        );
+        if (reservation.rows[0]?.status !== "AUTHORIZED")
+          throw new Error(
+            "broadcast attempt requires an execution-valid AUTHORIZED reservation",
+          );
+        await barriers.afterReservationLocked?.();
         const existing = await client.query<AttemptRow>(
           `SELECT ${attemptColumns} FROM broadcast_attempts
          WHERE attempt_id = $1 OR signed_transaction_id = $2

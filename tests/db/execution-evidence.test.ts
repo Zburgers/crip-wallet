@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
 import { Pool, type PoolClient } from "pg";
+import { keccak256 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import {
   afterAll,
   beforeAll,
@@ -30,6 +32,8 @@ import {
   type UntrustedChainEvidence,
 } from "@crip/transaction-pipeline";
 import {
+  broadcastSignedTransaction,
+  createBroadcastStore,
   reconcileLocalChainEvidence,
   type ReconciliationInput,
 } from "@crip/local-anvil-adapter";
@@ -51,6 +55,20 @@ const pool = new Pool({
 });
 
 const hash = `0x${"a".repeat(64)}`;
+const broadcastAccount = privateKeyToAccount(`0x${"1".repeat(64)}`);
+const broadcastRawTransaction = await broadcastAccount.signTransaction({
+  chainId: 31337,
+  type: "eip1559",
+  to: `0x${"3".repeat(40)}`,
+  value: 0n,
+  nonce: 0,
+  gas: 21_000n,
+  maxFeePerGas: 2n,
+  maxPriorityFeePerGas: 1n,
+  data: "0x",
+  accessList: [],
+});
+const broadcastHash = keccak256(broadcastRawTransaction);
 const address = (suffix: string): string => `0x${suffix.padStart(40, "0")}`;
 const fixtureId = "11111111-1111-4111-8111-111111111111";
 const zeroLogTopic =
@@ -574,6 +592,59 @@ const reconciliationFixture = async (
   };
 };
 
+const broadcastStartFixture = async (): Promise<void> => {
+  const envelopeHash = await prepareAuthorizedV2();
+  await pool.query(
+    "UPDATE budget_accounts SET available = 90, reserved = 10 WHERE budget_id = 'budget_1'",
+  );
+  await pool.query(
+    `INSERT INTO signed_transactions
+      (signed_transaction_id, operation_id, reservation_id, envelope_id, envelope_revision,
+       envelope_hash, authorization_id, simulation_id, fixture_instance_id,
+       expected_transaction_hash, signer_credential_id, signer_component_id, signed_at)
+     VALUES ('signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1, 'approval_1:authorization',
+       'sim_1', $2, $3, $4, $5, now())`,
+    [
+      envelopeHash,
+      fixtureId,
+      broadcastHash,
+      adapterCredential.credentialId,
+      adapterCredential.componentId,
+    ],
+  );
+  await pool.query(
+    "UPDATE operations SET current_state = 'SIGNING', version = version + 1 WHERE operation_id = 'op_1'",
+  );
+  await pool.query(
+    "UPDATE operations SET current_state = 'SIGNED', version = version + 1 WHERE operation_id = 'op_1'",
+  );
+};
+
+const deferred = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
+
+const waitForDatabaseBlock = async (applicationName: string): Promise<void> => {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const result = await pool.query<{ blocked: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM pg_stat_activity a
+         WHERE a.application_name = $1
+           AND cardinality(pg_blocking_pids(a.pid)) > 0
+       ) AS blocked`,
+      [applicationName],
+    );
+    if (result.rows[0]?.blocked) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error(`database session did not block: ${applicationName}`);
+};
+
 describe.sequential("WS-004 execution evidence persistence", () => {
   beforeAll(async () => applyMigrations(pool));
   beforeEach(async () => {
@@ -590,6 +661,245 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     );
     expect(rows.rows).toHaveLength(23);
     expect(rows.rows.at(-1)?.filename).toBe("0023_p205_broadcast_safety.sql");
+  });
+
+  test("serializes release behind real-store STARTED creation", async () => {
+    await broadcastStartFixture();
+    const locked = deferred();
+    const commit = deferred();
+    const releasePool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: "race-a-release",
+    });
+    let sends = 0;
+    const releaseStarted = deferred();
+    let releaseSettled = false;
+    const broadcast = broadcastSignedTransaction(
+      createBroadcastStore(pool, {
+        afterReservationLocked: async () => {
+          locked.resolve();
+          await commit.promise;
+        },
+      }),
+      {
+        sendRawTransaction: async () => {
+          sends += 1;
+          return broadcastHash;
+        },
+      },
+      {
+        request: {
+          operationId: "op_1",
+          authorizationId: "approval_1:authorization",
+          adapterRequestId: "race_a",
+        },
+        signedTransactionId: "signed_1",
+        attemptId: "attempt_race_a",
+        rawTransaction: broadcastRawTransaction,
+      },
+    );
+    await locked.promise;
+    const release = (async () => {
+      const client = await releasePool.connect();
+      try {
+        await client.query("BEGIN");
+        releaseStarted.resolve();
+        await client.query(
+          "UPDATE budget_reservations SET status = 'RELEASED' WHERE reservation_id = 'res_1'",
+        );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    })()
+      .then(
+        () => ({ ok: true as const, error: null }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
+      .finally(() => {
+        releaseSettled = true;
+      });
+    await releaseStarted.promise;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(releaseSettled).toBe(false);
+
+    commit.resolve();
+    await expect(broadcast).resolves.toMatchObject({ ok: true });
+    const releaseResult = await release;
+    expect(releaseResult.ok).toBe(false);
+    expect(releaseResult.error).toMatchObject({
+      message: expect.stringMatching(/send-capable broadcast attempt/i),
+    });
+    await releasePool.end();
+
+    const state = await pool.query(
+      `SELECT r.status, b.available, b.reserved, b.finalized_spend,
+        (SELECT count(*)::int FROM broadcast_attempts WHERE reservation_id = r.reservation_id) attempts
+       FROM budget_reservations r JOIN budget_accounts b USING (budget_id)
+       WHERE r.reservation_id = 'res_1'`,
+    );
+    expect(state.rows[0]).toMatchObject({
+      status: "AUTHORIZED",
+      available: "90",
+      reserved: "10",
+      finalized_spend: "0",
+      attempts: 1,
+    });
+    expect(sends).toBe(1);
+  }, 15_000);
+
+  test("prevents real-store STARTED and send when release commits first", async () => {
+    await broadcastStartFixture();
+    const releaseClient = await pool.connect();
+    await releaseClient.query("BEGIN");
+    await releaseClient.query(
+      "SELECT 1 FROM budget_reservations WHERE reservation_id = 'res_1' FOR UPDATE",
+    );
+    await releaseClient.query(
+      "UPDATE budget_accounts SET available = 100, reserved = 0 WHERE budget_id = 'budget_1'",
+    );
+    await releaseClient.query(
+      "UPDATE budget_reservations SET status = 'RELEASED' WHERE reservation_id = 'res_1'",
+    );
+    const startPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: "race-b-start",
+    });
+    let sends = 0;
+    const broadcast = broadcastSignedTransaction(
+      createBroadcastStore(startPool),
+      {
+        sendRawTransaction: async () => {
+          sends += 1;
+          return broadcastHash;
+        },
+      },
+      {
+        request: {
+          operationId: "op_1",
+          authorizationId: "approval_1:authorization",
+          adapterRequestId: "race_b",
+        },
+        signedTransactionId: "signed_1",
+        attemptId: "attempt_race_b",
+        rawTransaction: broadcastRawTransaction,
+      },
+    );
+    await waitForDatabaseBlock("race-b-start");
+
+    await releaseClient.query("COMMIT");
+    releaseClient.release();
+    await expect(broadcast).rejects.toThrow(/execution-valid.*reservation/i);
+    await startPool.end();
+
+    const state = await pool.query(
+      `SELECT r.status, b.available, b.reserved, b.finalized_spend,
+        (SELECT count(*)::int FROM broadcast_attempts WHERE reservation_id = r.reservation_id) attempts
+       FROM budget_reservations r JOIN budget_accounts b USING (budget_id)
+       WHERE r.reservation_id = 'res_1'`,
+    );
+    expect(state.rows[0]).toMatchObject({
+      status: "RELEASED",
+      available: "100",
+      reserved: "0",
+      finalized_spend: "0",
+      attempts: 0,
+    });
+    expect(sends).toBe(0);
+  }, 15_000);
+
+  test("prevents real-store STARTED when expiry commits first", async () => {
+    await broadcastStartFixture();
+    const expiryClient = await pool.connect();
+    await expiryClient.query("BEGIN");
+    await expiryClient.query(
+      "SELECT 1 FROM budget_reservations WHERE reservation_id = 'res_1' FOR UPDATE",
+    );
+    await expiryClient.query(
+      "UPDATE budget_accounts SET available = 100, reserved = 0 WHERE budget_id = 'budget_1'",
+    );
+    await expiryClient.query(
+      "UPDATE budget_reservations SET status = 'EXPIRED' WHERE reservation_id = 'res_1'",
+    );
+    const startPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: "race-expiry-start",
+    });
+    const start = createBroadcastStore(startPool).startBroadcastAttempt(
+      {
+        signedTransactionId: "signed_1",
+        operationId: "op_1",
+        reservationId: "res_1",
+        envelopeId: "env_op_1_1",
+        envelopeRevision: 1,
+        envelopeHash: String(
+          (
+            await pool.query(
+              "SELECT envelope_hash FROM signed_transactions WHERE signed_transaction_id = 'signed_1'",
+            )
+          ).rows[0]?.envelope_hash,
+        ),
+        authorizationId: "approval_1:authorization",
+        fixtureInstanceId: fixtureId,
+        expectedTransactionHash: broadcastHash,
+      },
+      "attempt_expiry_race",
+    );
+    await waitForDatabaseBlock("race-expiry-start");
+
+    await expiryClient.query("COMMIT");
+    expiryClient.release();
+    await expect(start).rejects.toThrow(/execution-valid.*reservation/i);
+    await startPool.end();
+
+    const state = await pool.query(
+      `SELECT status,
+        (SELECT count(*)::int FROM broadcast_attempts WHERE reservation_id = 'res_1') attempts
+       FROM budget_reservations WHERE reservation_id = 'res_1'`,
+    );
+    expect(state.rows[0]).toMatchObject({ status: "EXPIRED", attempts: 0 });
+  }, 15_000);
+
+  test("keeps repeated real-store STARTED creation idempotent", async () => {
+    await broadcastStartFixture();
+    const signed =
+      await createBroadcastStore(pool).findSignedTransaction("signed_1");
+    if (!signed) throw new Error("missing signed transaction fixture");
+    const store = createBroadcastStore(pool);
+
+    const first = await store.startBroadcastAttempt(signed, "attempt_repeat");
+    const repeated = await store.startBroadcastAttempt(
+      signed,
+      "attempt_repeat_other_id",
+    );
+
+    expect(first.status).toBe("STARTED");
+    expect(repeated.attemptId).toBe(first.attemptId);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int count FROM broadcast_attempts WHERE reservation_id = 'res_1'",
+        )
+      ).rows[0]?.count,
+    ).toBe(1);
   });
 
   test("accepts a valid legacy v1 envelope and valid strict v2 envelope", async () => {

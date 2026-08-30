@@ -166,9 +166,9 @@ The inherited Vitest exit-135 event was not reproduced after integration. The tw
 | Scope | Current evidence |
 | --- | --- |
 | Broadcast | `adapters/local-anvil/test/broadcast-core.test.ts` — 12/12 focused local: canonical signed-byte hash binding, mutation/unrelated/malformed rejection before sender, matching acceptance, CONFLICT, UNKNOWN and conservative stale-nonce classification |
-| Reconciliation orchestration | `tests/db/execution-evidence.test.ts` — 28/28 focused local through `reconcileLocalChainEvidence()`, including exact success/revert, mismatch/cross-binding/auth cases, durable release fence, duplicate/concurrent retry and deterministic post-resolution/post-effect crash recovery |
+| Reconciliation orchestration and broadcast-fence races | `tests/db/execution-evidence.test.ts` — 32/32 focused local, including 4/4 deterministic real-store PostgreSQL cases for STARTED-first, RELEASED-first, EXPIRED-first and repeated STARTED idempotency; the suite retains exact reconciliation success/revert, mismatch/cross-binding/auth, duplicate/concurrent retry and post-resolution/post-effect crash recovery coverage |
 | Migration | `0023_p205_broadcast_safety.sql` is additive and forward-only; prior migrations are unchanged. It adds CONFLICT, exact legacy-evidence binding, signed-lifecycle canonical authorization, and the send-attempt release fence |
-| Full local gates | PASS — `npm ci`; `npm run check` 21 repository + 292 Vitest; audit 0 vulnerabilities; Forge 10/10; DB 100/100; concurrency 18/18; invariants 7/7; chain 10/10 |
+| Full local gates | PASS — `npm ci`; `npm run check` 21 repository + 292 Vitest; audit 0 vulnerabilities; Forge 10/10; DB 104/104; concurrency 18/18; invariants 7/7; chain 10/10 |
 | P2-06A compatibility | PASS on a disposable, unmerged compatibility branch — `npm run test:fault` 64/64, including deterministic forward-then-drop coverage |
 | Protected CI / Secret Scan | PENDING exact final head |
 | Scope boundary | P2-05D not implemented; P2-06B/C not started; S2 not accepted |

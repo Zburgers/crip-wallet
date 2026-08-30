@@ -74,6 +74,12 @@ P2-01 is complete locally with pinned contract tests and a checkout-bound fixtur
 
 External review `5060378379` at integration head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6` required remediation before P2-05D. The remediation binds the exact canonical signed bytes before RPC, distinguishes CONFLICT from UNKNOWN, fences every pre-broadcast release after a durable send-capable attempt, binds legacy evidence to the verified attempt/hash/nonce/receipt identity, and makes post-resolution reconciliation crash-resumable. Focused local evidence is recorded in `docs/TEST_MATRIX.md`; protected exact-final-head evidence remains mandatory before external re-review. P2-05D is still pending and S2 is still **NOT PASSED**.
 
+The final broadcast-fence race remediation serializes `STARTED` creation with
+release, expiry, and recovery on the same `budget_reservations` row lock. If
+release or expiry commits first, the store rejects attempt creation before the
+network boundary; if attempt creation commits first, the existing durable
+attempt trigger makes the competing release or expiry fail closed.
+
 ## Exit evidence
 
 WS-004 is complete only when protected current-head evidence proves the entire local fake-ERC-20 journey and the required failure/ambiguity cases in `docs/plans/PHASE-2.md`.
