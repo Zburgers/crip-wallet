@@ -154,6 +154,14 @@ export {
   type RawTransactionSender,
 } from "./broadcast-core.js";
 export { createBroadcastStore } from "./broadcast-store.js";
+export {
+  reconcileLocalChainEvidence,
+  type ReconciliationAudits,
+  type ReconciliationFailure,
+  type ReconciliationInput,
+  type ReconciliationResult,
+  type ReconciliationSuccess,
+} from "./reconciliation.js";
 
 import { Pool } from "pg";
 import { verifyComponentAction } from "@crip/trust-boundary";

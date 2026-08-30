@@ -83,6 +83,8 @@ export interface RecoveryResolution {
   reason: string;
   actualSpendAtomic?: string;
   proofReference?: string;
+  /** Only a verified status-0 chain receipt may release a broadcast hold. */
+  verifiedRevert?: boolean;
 }
 
 export interface ReserveRequest {
@@ -1179,6 +1181,7 @@ const recoveryPayload = (
   reason: input.reason,
   actualSpendAtomic: input.actualSpendAtomic ?? null,
   proofReference: input.proofReference ?? null,
+  ...(input.verifiedRevert ? { verifiedRevert: true } : {}),
   evidence: evidence
     ? {
         transactionHash: evidence.transaction_hash,
@@ -1539,6 +1542,47 @@ export const resolveRecovery = async (
           attemptId: input.attemptId,
           leaseVersion: Number(input.leaseVersion),
           reason: input.reason,
+        },
+      );
+    } else if (
+      input.outcome === "FAILED" &&
+      input.verifiedRevert === true &&
+      binding.reservation.status === "BROADCAST"
+    ) {
+      if (
+        !evidence ||
+        evidence.verification_status !== "VERIFIED" ||
+        input.proofReference !== evidence.receipt_reference ||
+        actualSpend !== "0"
+      )
+        throw new LedgerError(
+          "INVALID_BROADCAST_EVIDENCE",
+          "verified revert release requires a verified matching receipt and zero token spend",
+        );
+      await client.query(
+        `UPDATE budget_accounts SET available = available + $1::numeric,
+         reserved = reserved - $1::numeric, version = version + 1, updated_at = now()
+         WHERE budget_id = $2`,
+        [binding.reservation.amountAtomic, binding.reservation.budgetId],
+      );
+      await client.query(
+        "UPDATE budget_reservations SET status = 'RELEASED', updated_at = now() WHERE reservation_id = $1",
+        [input.reservationId],
+      );
+      next = { ...binding.reservation, status: "RELEASED" };
+      await writeRecoveryAudit(
+        client,
+        input.audit,
+        "budget.reservation.released",
+        next,
+        binding.correlation,
+        authenticated,
+        {
+          attemptId: input.attemptId,
+          leaseVersion: Number(input.leaseVersion),
+          reason: input.reason,
+          proofReference: input.proofReference,
+          actualSpendAtomic: "0",
         },
       );
     } else if (
