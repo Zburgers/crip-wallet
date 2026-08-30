@@ -767,8 +767,21 @@ describe.sequential("WP-05 authenticated reconciliation and recovery", () => {
   test("verified revert releases the reservation with zero token spend", async () => {
     await insertOperation("op_verified_revert");
     await reserve("op_verified_revert", "res_verified_revert", "15");
-    const value = evidence("g");
+    const value = evidence("b");
     await broadcast("op_verified_revert", "res_verified_revert", value);
+    // Reconciliation begins after the signer has advanced the operation.
+    await pool.query(
+      "UPDATE operations SET current_state = 'SIGNED', version = version + 1 WHERE operation_id = $1",
+      ["op_verified_revert"],
+    );
+    await verifyBroadcastEvidence(pool, {
+      reservationId: "res_verified_revert",
+      audit: reconcilerAudit(
+        "op_verified_revert",
+        "res_verified_revert",
+        value,
+      ),
+    });
     const lease = await claim(
       "op_verified_revert",
       "res_verified_revert",
