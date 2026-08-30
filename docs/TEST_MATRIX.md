@@ -157,7 +157,7 @@ The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, in
 | Combined local gates | PASS | Forge 10/10; concurrency 18/18; invariants 7/7; chain 10/10; audit 0 high vulnerabilities |
 | Protected remote | PASS | CI run `33299665297`; Secret Scan run `33299665282`; both tested exact head above |
 | P2-05D | PENDING | Clean vertical-slice E2E is not part of this recovery checkpoint |
-| P2-06A | SEPARATE | Compatibility branch fault gate 59/59; not merged into the product integration branch |
+| P2-06A | SEPARATE | Historical compatibility branch fault gate 59/59; not merged into the product integration branch |
 
 The inherited Vitest exit-135 event was not reproduced after integration. The two reported envelope-v2 failures were not reproduced on the clean packet history; the weakened user-edited test state is preserved separately on `preserve/phase2-dirty-state` and is not part of this checkpoint. Gate S2 remains **OPEN / NOT PASSED**.
 
@@ -169,5 +169,6 @@ The inherited Vitest exit-135 event was not reproduced after integration. The tw
 | Reconciliation orchestration | `tests/db/execution-evidence.test.ts` — 28/28 focused local through `reconcileLocalChainEvidence()`, including exact success/revert, mismatch/cross-binding/auth cases, durable release fence, duplicate/concurrent retry and deterministic post-resolution/post-effect crash recovery |
 | Migration | `0023_p205_broadcast_safety.sql` is additive and forward-only; prior migrations are unchanged. It adds CONFLICT, exact legacy-evidence binding, signed-lifecycle canonical authorization, and the send-attempt release fence |
 | Full local gates | PASS — `npm ci`; `npm run check` 21 repository + 292 Vitest; audit 0 vulnerabilities; Forge 10/10; DB 100/100; concurrency 18/18; invariants 7/7; chain 10/10 |
+| P2-06A compatibility | PASS on a disposable, unmerged compatibility branch — `npm run test:fault` 64/64, including deterministic forward-then-drop coverage |
 | Protected CI / Secret Scan | PENDING exact final head |
 | Scope boundary | P2-05D not implemented; P2-06B/C not started; S2 not accepted |
