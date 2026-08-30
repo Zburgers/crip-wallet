@@ -132,8 +132,8 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-030 | dependency/supply chain | PASS for lock/audit/action pins / monitored | ongoing; `viem` lock/audit at P2-02 |
 | TM-031 | constructor self-verification | PASS locally / PLANNED protected | P2-02 `viem` encoder + independent strict parser + 128 calldata mutation runs |
 | TM-032 | unbound signer transaction fields | PASS locally / PLANNED signer proof | P2-02 v2 schema/hash binds exact fields; P2-04 must prove signer exactness |
-| TM-033 | response-loss false failure/release | PLANNED | P2-05/P2-06 persist-before-send expected-hash/attempt fault proof |
-| TM-034 | receipt/cross-operation substitution | PLANNED | P2-05 transaction/receipt/log matching + ADR-0014 authenticated reconciler proof |
+| TM-033 | response-loss false failure/release | PASS focused local / PLANNED protected fault compatibility | exact-byte broadcast 12/12; DB release/recovery fence and crash-resume orchestration |
+| TM-034 | receipt/cross-operation substitution | PASS focused local / PLANNED protected | P2-05C entry-point suite covers tx/receipt/log, operation/reservation/fixture, auth and legacy-evidence mismatches |
 | TM-035 | local-chain reset confusion | PASS for P2-01 fixture / PASS locally P2-03 / PLANNED protected | genesis/fixture/deployment/code fingerprints plus P2-03 fixture-bound simulation evidence |
 
 ## Phase-2 implementation matrix
@@ -160,3 +160,14 @@ The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, in
 | P2-06A | SEPARATE | Compatibility branch fault gate 59/59; not merged into the product integration branch |
 
 The inherited Vitest exit-135 event was not reproduced after integration. The two reported envelope-v2 failures were not reproduced on the clean packet history; the weakened user-edited test state is preserved separately on `preserve/phase2-dirty-state` and is not part of this checkpoint. Gate S2 remains **OPEN / NOT PASSED**.
+
+### P2-05 external-review remediation checkpoint
+
+| Scope | Current evidence |
+| --- | --- |
+| Broadcast | `adapters/local-anvil/test/broadcast-core.test.ts` — 12/12 focused local: canonical signed-byte hash binding, mutation/unrelated/malformed rejection before sender, matching acceptance, CONFLICT, UNKNOWN and conservative stale-nonce classification |
+| Reconciliation orchestration | `tests/db/execution-evidence.test.ts` — 28/28 focused local through `reconcileLocalChainEvidence()`, including exact success/revert, mismatch/cross-binding/auth cases, durable release fence, duplicate/concurrent retry and deterministic post-resolution/post-effect crash recovery |
+| Migration | `0023_p205_broadcast_safety.sql` is additive and forward-only; prior migrations are unchanged. It adds CONFLICT, exact legacy-evidence binding, signed-lifecycle canonical authorization, and the send-attempt release fence |
+| Full local gates | PASS — `npm ci`; `npm run check` 21 repository + 292 Vitest; audit 0 vulnerabilities; Forge 10/10; DB 100/100; concurrency 18/18; invariants 7/7; chain 10/10 |
+| Protected CI / Secret Scan | PENDING exact final head |
+| Scope boundary | P2-05D not implemented; P2-06B/C not started; S2 not accepted |

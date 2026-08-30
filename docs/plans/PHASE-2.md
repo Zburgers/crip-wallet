@@ -258,7 +258,7 @@ P2-04 owns the migration, after P2-02/P2-03 contracts are stable.
 - Create `transaction_simulations` keyed by a simulation ID with operation ID, transfer-core candidate hash, fixture instance ID, chain/block identity, sender nonce, token/native balances, gas/fee fields, normalized outcome and evidence hash. Simulation precedes envelope creation, so do **not** key the row by an envelope revision that does not yet exist.
 - Do not create a persistent `transaction_candidates` table without a separately demonstrated recovery requirement.
 - Create `signed_transactions` bound one-to-one to operation/reservation/envelope/authorization/current fixture with expected transaction hash, signer component identity and signed-at time; never raw bytes/private material.
-- Create `broadcast_attempts` keyed by attempt ID and expected hash with STARTED/ACCEPTED/REJECTED/UNKNOWN classification under guarded transitions.
+- Create `broadcast_attempts` keyed by attempt ID and expected hash with STARTED/ACCEPTED/REJECTED/UNKNOWN/CONFLICT classification under guarded transitions. A durable send-capable attempt fences Phase-1 release paths; a valid contradictory returned hash is CONFLICT, while response loss remains UNKNOWN.
 - Create normalized `chain_transaction_evidence` and `chain_receipt_evidence` bound to operation/reservation/envelope/expected hash/current fixture/canonical block.
 - Add uniqueness and FK/constraint guards preventing a transaction hash/evidence row from crossing operation/reservation/envelope identity and preventing more than one economic reconciliation effect.
 - Require current canonical authorization before SIGNING/SIGNED and matching authenticated execution evidence for downstream financial transitions.
@@ -733,6 +733,10 @@ None. ADR-0015 is accepted. P2-02 is gated by **P2-01 review/stability**, not by
 The recovery integration branch is `integration/p2-05`. Its pre-documentation code head is `c0c4949590fbd7992f06537dc3cb93dd841a7936`, descended from P2-04C `0e00f212711c07aae363c28245d2ee453f8d84c2`. It integrates P2-05A persist-before-send broadcast, P2-05B independent untrusted chain-evidence verification, and the preserved P2-05C authenticated reconciliation path. Protected CI `33299665297` and Secret Scan `33299665282` both passed on that exact code head.
 
 Local evidence at this checkpoint includes `npm run check` (21 repository + 287 Vitest), audit with 0 high vulnerabilities, Forge 10/10, DB 82/82, concurrency 18/18, invariants 7/7, chain 10/10, envelope 68/68, transaction-pipeline 61/61, signer/adapter 36/36, broadcast 7/7, and reconciliation 10/10. The separate P2-06A compatibility branch passed its fault gate 59/59. P2-05D clean vertical-slice E2E remains pending; P2-06B/C/D have not started; S2 remains **OPEN / NOT PASSED**.
+
+### P2-05 external-review remediation
+
+External review `5060378379` identified broadcast and reconciliation safety gaps at reviewed head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6`. The remediation keeps ADR-0015 and the Phase-1 budget authority unchanged: exact canonical signed bytes are hashed before send; valid wrong returned hashes are CONFLICT; durable send-capable attempts fence pre-broadcast release; legacy evidence is DB-bound to the exact attempt/hash/nonce/receipt identity; and P2-05C retries serialize per operation and resume idempotently after economic resolution or effect persistence. Focused local suites pass; full current-head and protected evidence must be recorded before external re-review. P2-05D remains pending and S2 remains **OPEN / NOT PASSED**.
 
 ### P2-02 implementation/integration handoff
 

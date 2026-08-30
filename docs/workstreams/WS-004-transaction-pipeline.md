@@ -72,6 +72,8 @@ ADR-0015 is **ACCEPTED**. It resolves the previous exact-signing blocker by requ
 
 P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 through P2-04 are integrated in the accepted dependency order. P2-05A persists the expected hash and broadcast attempt before send; P2-05B independently verifies untrusted transaction/receipt/block/Transfer evidence; and P2-05C authenticates the reconciler before the existing lease-fenced exactly-once ledger recovery path. Integration head `c0c4949590fbd7992f06537dc3cb93dd841a7936` passed protected CI `33299665297` and Secret Scan `33299665282`. P2-05D remains pending, and P2-06A remains separate test infrastructure.
 
+External review `5060378379` at integration head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6` required remediation before P2-05D. The remediation binds the exact canonical signed bytes before RPC, distinguishes CONFLICT from UNKNOWN, fences every pre-broadcast release after a durable send-capable attempt, binds legacy evidence to the verified attempt/hash/nonce/receipt identity, and makes post-resolution reconciliation crash-resumable. Focused local evidence is recorded in `docs/TEST_MATRIX.md`; protected exact-final-head evidence remains mandatory before external re-review. P2-05D is still pending and S2 is still **NOT PASSED**.
+
 ## Exit evidence
 
 WS-004 is complete only when protected current-head evidence proves the entire local fake-ERC-20 journey and the required failure/ambiguity cases in `docs/plans/PHASE-2.md`.
