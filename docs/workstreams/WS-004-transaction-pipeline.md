@@ -2,7 +2,7 @@
 
 **Phase:** 2
 
-**Status:** OPEN / P2-03 COMPLETE LOCALLY; P2-04 NEXT; ADR-0015 ACCEPTED; S2 NOT PASSED
+**Status:** OPEN / P2-05A/B/C INTEGRATED; P2-05D PENDING; P2-06A SEPARATE; ADR-0015 ACCEPTED; S2 NOT PASSED
 
 **Dependency:** Gate S1 — PASS / ACCEPTED
 
@@ -70,7 +70,7 @@ The implementation-ready contract is in `docs/plans/PHASE-2.md`. It reuses the P
 
 ADR-0015 is **ACCEPTED**. It resolves the previous exact-signing blocker by requiring additive envelope v2 semantics, `accessList: []`, bounded canonical simulation freshness, local-Anvil IDs-only signer isolation without universal provider DB coupling, persist-before-send expected-hash evidence, and ADR-0014-authenticated reconciliation of untrusted chain evidence.
 
-P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 is integrated at coordinator head `733b32f` from stable head `343de49`. P2-03 now provides strict executable/evidence schemas, canonical loopback simulation, exact EIP-1559 resolution, native fee enforcement, evidence hashing and bounded freshness. Local checks pass; the default full chain gate retains an inherited 5-second fixture reset-test timeout, while the fixture test passes 9/9 with a 15-second diagnostic timeout and the focused P2-03 chain test passes 1/1. Protected current-head evidence is not claimed. P2-04 may consume the resulting exact candidate and simulation evidence.
+P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 through P2-04 are integrated in the accepted dependency order. P2-05A persists the expected hash and broadcast attempt before send; P2-05B independently verifies untrusted transaction/receipt/block/Transfer evidence; and P2-05C authenticates the reconciler before the existing lease-fenced exactly-once ledger recovery path. Integration head `c0c4949590fbd7992f06537dc3cb93dd841a7936` passed protected CI `33299665297` and Secret Scan `33299665282`. P2-05D remains pending, and P2-06A remains separate test infrastructure.
 
 ## Exit evidence
 

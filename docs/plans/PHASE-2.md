@@ -8,7 +8,7 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-01 is implemented locally. P2-02 is integrated at coordinator head `733b32f`. P2-03 is implemented locally; P2-04 is next. ADR-0015 is accepted. Gate S2 is **OPEN / NOT PASSED**.
+**Status:** P2-02 through P2-04 are integrated on `integration/p2-05`; P2-05A/B/C are integrated at code head `c0c4949590fbd7992f06537dc3cb93dd841a7936`; P2-05D is pending; P2-06A remains separate test infrastructure. ADR-0015 is accepted. Gate S2 is **OPEN / NOT PASSED**.
 
 ---
 
@@ -727,6 +727,12 @@ None. ADR-0015 is accepted. P2-02 is gated by **P2-01 review/stability**, not by
 ---
 
 ## 14. Current handoff
+
+### P2-05A/B/C integration checkpoint
+
+The recovery integration branch is `integration/p2-05`. Its pre-documentation code head is `c0c4949590fbd7992f06537dc3cb93dd841a7936`, descended from P2-04C `0e00f212711c07aae363c28245d2ee453f8d84c2`. It integrates P2-05A persist-before-send broadcast, P2-05B independent untrusted chain-evidence verification, and the preserved P2-05C authenticated reconciliation path. Protected CI `33299665297` and Secret Scan `33299665282` both passed on that exact code head.
+
+Local evidence at this checkpoint includes `npm run check` (21 repository + 287 Vitest), audit with 0 high vulnerabilities, Forge 10/10, DB 82/82, concurrency 18/18, invariants 7/7, chain 10/10, envelope 68/68, transaction-pipeline 61/61, signer/adapter 36/36, broadcast 7/7, and reconciliation 10/10. The separate P2-06A compatibility branch passed its fault gate 59/59. P2-05D clean vertical-slice E2E remains pending; P2-06B/C/D have not started; S2 remains **OPEN / NOT PASSED**.
 
 ### P2-02 implementation/integration handoff
 

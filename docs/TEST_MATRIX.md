@@ -138,10 +138,25 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 
 ## Phase-2 implementation matrix
 
-The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, including inherited S0/S1 gates, is maintained in `docs/plans/PHASE-2.md`. ADR-0015 is accepted and P2-02 is no longer blocked on product-owner architecture approval. `PASS locally / PLANNED protected` records the exact local integration evidence without claiming protected current-head CI or Secret Scan.
+The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, including inherited S0/S1 gates, is maintained in `docs/plans/PHASE-2.md`. ADR-0015 is accepted and P2-02 is no longer blocked on product-owner architecture approval.
 | P2-01A | pinned fake ERC-20 toolchain and contract | PASS | `npm run contracts:test` — 10/10 |
 | P2-01B | checkout-bound fixture, unique instance identity and local-chain boundary | PASS | Protected CI `33189082028` on `25e8147f`; Forge 10/10; chain 9/9 including reset → redeploy stale-instance proof |
 | P2-02A | additive envelope v2 and hash dispatch | PASS locally / PLANNED protected | `npx vitest run packages/schemas/test/envelope-v2.test.ts`; 60 tests; v1 regression suite 47 tests; exact v2 hash vector |
 | P2-02BCD | static transfer construction, independent decoder and verifier | PASS locally / PLANNED protected | `npx vitest run packages/transaction-pipeline/test/transfer-core.test.ts`; 27 tests including 128 calldata mutation runs |
 | P2-02 integration | combined P2-02 local review gate | PASS locally / PLANNED protected | `npm ci`; `npm run check`; audit 0 vulnerabilities; Forge 10/10; DB 71/71; concurrency 18/18; invariants 7/7; focused P2-02 87 tests |
 | P2-03 | canonical simulation, exact executable resolution, fee enforcement and freshness | PASS locally / PLANNED protected | 20 focused unit tests; 1 focused loopback chain test; 21 repository + 225 package tests; Forge 10/10; DB 71/71; concurrency 18/18; invariants 7/7; audit 0 vulnerabilities. Default all-chain invocation also hit the inherited 5-second P2-01 fixture reset-test timeout; no skip or protected claim. |
+
+### P2-05A/B/C integration checkpoint
+
+| Packet | Status | Evidence at exact code head `c0c4949590fbd7992f06537dc3cb93dd841a7936` |
+| --- | --- | --- |
+| P2-02/P2-03/P2-04 | PASS locally and integrated | `npm run check`: 21 repository + 287 Vitest; envelope 68/68; transaction-pipeline 61/61; signer/adapter 36/36 |
+| P2-05A | PASS locally and integrated | Broadcast suite 7/7; expected hash and STARTED attempt durable before send; uncertainty retained |
+| P2-05B | PASS locally and integrated | Chain-evidence suite included in pipeline gate; transaction/receipt/block/Transfer and fixture binding are independently checked |
+| P2-05C | PASS locally and integrated | Reconciliation/recovery suite 10/10; DB gate 82/82; verified revert releases zero token spend while native fees remain separate |
+| Combined local gates | PASS | Forge 10/10; concurrency 18/18; invariants 7/7; chain 10/10; audit 0 high vulnerabilities |
+| Protected remote | PASS | CI run `33299665297`; Secret Scan run `33299665282`; both tested exact head above |
+| P2-05D | PENDING | Clean vertical-slice E2E is not part of this recovery checkpoint |
+| P2-06A | SEPARATE | Compatibility branch fault gate 59/59; not merged into the product integration branch |
+
+The inherited Vitest exit-135 event was not reproduced after integration. The two reported envelope-v2 failures were not reproduced on the clean packet history; the weakened user-edited test state is preserved separately on `preserve/phase2-dirty-state` and is not part of this checkpoint. Gate S2 remains **OPEN / NOT PASSED**.
