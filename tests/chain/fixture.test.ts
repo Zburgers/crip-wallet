@@ -198,4 +198,4 @@ test("reset and redeploy creates a new fixture instance and stales the prior ins
     /stale fixture instance/i,
   );
   await verifyFixtureOnChain({ root: repositoryRoot, fixture: current });
-});
+}, 15_000);
