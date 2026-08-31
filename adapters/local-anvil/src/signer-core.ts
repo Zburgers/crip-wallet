@@ -139,6 +139,17 @@ export interface SigningContext {
     policyDocument: unknown;
   };
   authorization: {
+    authorizationKind: "OWNER_APPROVAL" | "AUTONOMOUS_POLICY";
+    approvalId: string | null;
+    ownerAuthenticationId: string | null;
+    approvalStatus: string | null;
+    approvalApproverId: string | null;
+    approvalConsumedAt: string | null;
+    policyDecisionId: string;
+    policyDecisionHash: string;
+    policyDecisionStatus: string;
+    decisionPolicyId: string;
+    decisionPolicyVersion: number;
     reservationId: string;
     envelopeId: string;
     envelopeRevision: number;
@@ -291,7 +302,10 @@ const constraintsFrom = (
   policyDocument: unknown,
 ): ActiveFeeAndExecutionConstraints | null => {
   const intent = intentPayload as { maximumNetworkFee?: unknown } | null;
-  const policy = policyDocument as { maximumNetworkFeeAtomic?: unknown } | null;
+  const policy = policyDocument as {
+    maximumNetworkFeeAtomic?: unknown;
+    networkFees?: { maximumPerTransactionAtomic?: unknown };
+  } | null;
   if (
     !intent ||
     typeof intent !== "object" ||
@@ -308,10 +322,13 @@ const constraintsFrom = (
     !isAtomic(fee.atomic)
   )
     return null;
-  if (!isAtomic(policy.maximumNetworkFeeAtomic)) return null;
+  const policyMaximumNetworkFeeAtomic =
+    policy.maximumNetworkFeeAtomic ??
+    policy.networkFees?.maximumPerTransactionAtomic;
+  if (!isAtomic(policyMaximumNetworkFeeAtomic)) return null;
   return {
     intentMaximumNetworkFeeAtomic: fee.atomic,
-    policyMaximumNetworkFeeAtomic: policy.maximumNetworkFeeAtomic,
+    policyMaximumNetworkFeeAtomic,
   };
 };
 
@@ -478,18 +495,31 @@ export const signAuthorizedTransferCore = async (
     return auditRefusal(refuse("SIGNER_CREDENTIAL_INVALID"));
 
   const existing = await deps.store.findDurableSignedEvidence(ids);
-  if (existing && !options.rematerializeExistingEvidence)
-    return {
-      ok: true,
-      transactionHash: existing.transactionHash,
-      fromDurableEvidence: true,
-      authorization: deps.authorizeResult(
-        resultPayload(ids, existing.transactionHash),
-      ),
-    };
 
   const { authorization } = context;
   if (!authorization) return auditRefusal(refuse("AUTHORIZATION_NOT_FOUND"));
+
+  const authorizationEvidenceOk =
+    (authorization.authorizationKind === "OWNER_APPROVAL" &&
+      authorization.policyDecisionStatus === "REQUIRE_APPROVAL" &&
+      authorization.approvalId !== null &&
+      authorization.ownerAuthenticationId !== null &&
+      authorization.approvalStatus === "CONSUMED" &&
+      authorization.approvalApproverId !== null &&
+      authorization.approvalConsumedAt !== null) ||
+    (authorization.authorizationKind === "AUTONOMOUS_POLICY" &&
+      authorization.policyDecisionStatus === "ALLOW_AUTONOMOUS" &&
+      authorization.approvalId === null &&
+      authorization.ownerAuthenticationId === null &&
+      authorization.approvalStatus === null &&
+      authorization.approvalApproverId === null &&
+      authorization.approvalConsumedAt === null);
+  if (
+    !authorizationEvidenceOk ||
+    authorization.decisionPolicyId !== context.operation.policyId ||
+    authorization.decisionPolicyVersion !== context.operation.policyVersion
+  )
+    return auditRefusal(refuse("AUTHORIZATION_INVALID"));
 
   if (!context.envelope) return auditRefusal(refuse("ENVELOPE_NOT_FOUND"));
   const payload = context.envelope.payload as Record<string, unknown> | null;
@@ -504,6 +534,8 @@ export const signAuthorizedTransferCore = async (
   const envelope = parsedEnvelope.data;
   if (context.envelope.envelopeHash !== hashExecutionEnvelope(envelope))
     return auditRefusal(refuse("ENVELOPE_INVALID"));
+  if (authorization.policyDecisionHash !== envelope.policyDecisionHash)
+    return auditRefusal(refuse("AUTHORIZATION_INVALID"));
   if (
     authorization.envelopeId !== envelope.envelopeId ||
     authorization.envelopeRevision !== envelope.revision ||
@@ -592,7 +624,12 @@ export const signAuthorizedTransferCore = async (
     envelope.expectedAssetDeltas[0]?.to ===
       envelope.decodedArguments.recipient &&
     envelope.expectedAssetDeltas[0]?.amountAtomic ===
-      envelope.decodedArguments.amountAtomic;
+      envelope.decodedArguments.amountAtomic &&
+    ((authorization.authorizationKind === "OWNER_APPROVAL" &&
+      envelope.approvalRequirement === "owner") ||
+      (authorization.authorizationKind === "AUTONOMOUS_POLICY" &&
+        envelope.approvalRequirement === "none" &&
+        envelope.riskDecision === "ALLOW"));
   if (!envelopeShapeOk) return auditRefusal(refuse("ENVELOPE_INVALID"));
 
   const constraints = constraintsFrom(
@@ -664,6 +701,16 @@ export const signAuthorizedTransferCore = async (
   });
   if (!freshness.ok)
     return auditRefusal(refuse("SIMULATION_STALE", freshness.code));
+
+  if (existing && !options.rematerializeExistingEvidence)
+    return {
+      ok: true,
+      transactionHash: existing.transactionHash,
+      fromDurableEvidence: true,
+      authorization: deps.authorizeResult(
+        resultPayload(ids, existing.transactionHash),
+      ),
+    };
 
   if (!existing) {
     try {

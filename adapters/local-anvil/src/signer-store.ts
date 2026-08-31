@@ -20,6 +20,17 @@ interface ContextRow {
   policy_version: string | number;
   intent_payload: unknown;
   policy_document: unknown;
+  auth_authorization_kind: "OWNER_APPROVAL" | "AUTONOMOUS_POLICY" | null;
+  auth_approval_id: string | null;
+  auth_owner_authentication_id: string | null;
+  auth_policy_decision_id: string | null;
+  auth_policy_decision_hash: string | null;
+  auth_policy_decision_status: string | null;
+  auth_decision_policy_id: string | null;
+  auth_decision_policy_version: string | number | null;
+  auth_approval_status: string | null;
+  auth_approval_approver_id: string | null;
+  auth_approval_consumed_at: string | null;
   auth_reservation_id: string | null;
   auth_envelope_id: string | null;
   auth_envelope_revision: string | number | null;
@@ -84,6 +95,18 @@ interface SigningAuthorityRow {
   envelope_revision: string | number;
   envelope_hash: string;
   authorization_id: string;
+  authorization_kind: "OWNER_APPROVAL" | "AUTONOMOUS_POLICY";
+  approval_id: string | null;
+  owner_authentication_id: string | null;
+  policy_decision_id: string;
+  policy_decision_hash: string;
+  policy_decision_status: string;
+  persisted_policy_decision_hash: string;
+  decision_policy_id: string;
+  decision_policy_version: string | number;
+  approval_status: string | null;
+  approval_approver_id: string | null;
+  approval_consumed_at: string | null;
   authorization_expires_at: Date | string;
   reservation_status: string;
   invalidation_id: string | null;
@@ -142,6 +165,18 @@ const loadContext = async (
        i.payload AS intent_payload,
        w.owner_id,
        pv.document AS policy_document,
+       ae.authorization_kind AS auth_authorization_kind,
+       ae.approval_id AS auth_approval_id,
+       ae.owner_authentication_id AS auth_owner_authentication_id,
+       ae.policy_decision_id AS auth_policy_decision_id,
+       ae.policy_decision_hash AS auth_policy_decision_hash,
+       pd.decision AS auth_policy_decision_status,
+       pd.decision_hash AS auth_persisted_decision_hash,
+       pd.policy_id AS auth_decision_policy_id,
+       pd.policy_version AS auth_decision_policy_version,
+       approval.status AS auth_approval_status,
+       approval.approver_id AS auth_approval_approver_id,
+       approval.consumed_at::text AS auth_approval_consumed_at,
        ae.reservation_id AS auth_reservation_id,
        ae.envelope_id AS auth_envelope_id,
        ae.envelope_revision AS auth_envelope_revision,
@@ -175,6 +210,11 @@ const loadContext = async (
      JOIN policy_versions pv ON pv.policy_id = o.policy_id AND pv.version = o.policy_version
      LEFT JOIN authorization_evidence ae
        ON ae.authorization_id = $2 AND ae.operation_id = o.operation_id
+     LEFT JOIN policy_decisions pd
+       ON pd.operation_id = ae.operation_id
+      AND pd.decision_id = ae.policy_decision_id
+     LEFT JOIN approval_requests approval
+       ON approval.approval_id = ae.approval_id
      LEFT JOIN execution_envelopes e
        ON e.operation_id = ae.operation_id AND e.envelope_id = ae.envelope_id
      LEFT JOIN budget_reservations br ON br.reservation_id = ae.reservation_id
@@ -238,11 +278,23 @@ const loadContext = async (
       policyDocument: row.policy_document,
     },
     authorization:
-      row.auth_envelope_id === null
+      row.auth_authorization_kind === null
         ? null
         : {
+            authorizationKind: row.auth_authorization_kind,
+            approvalId: row.auth_approval_id,
+            ownerAuthenticationId: row.auth_owner_authentication_id,
+            approvalStatus: row.auth_approval_status,
+            approvalApproverId: row.auth_approval_approver_id,
+            approvalConsumedAt: row.auth_approval_consumed_at,
+            policyDecisionId: row.auth_policy_decision_id ?? "",
+            policyDecisionHash: row.auth_policy_decision_hash ?? "",
+            policyDecisionStatus: row.auth_policy_decision_status ?? "",
+            decisionPolicyId: row.auth_decision_policy_id ?? "",
+            decisionPolicyVersion:
+              numeric(row.auth_decision_policy_version) ?? 0,
             reservationId: row.auth_reservation_id ?? "",
-            envelopeId: row.auth_envelope_id,
+            envelopeId: row.auth_envelope_id ?? "",
             envelopeRevision: numeric(row.auth_envelope_revision) ?? 0,
             envelopeHash: row.auth_envelope_hash ?? "",
             expiresAt: row.auth_expires_at,
@@ -322,7 +374,16 @@ const assertCurrentSigningAuthority = async (
             o.intent_id, o.agent_id, o.wallet_id, w.owner_id,
             o.policy_id, o.policy_version,
             ae.reservation_id, ae.envelope_id, ae.envelope_revision,
-            ae.envelope_hash, ae.authorization_id,
+            ae.envelope_hash, ae.authorization_id, ae.authorization_kind,
+            ae.approval_id, ae.owner_authentication_id,
+            ae.policy_decision_id, ae.policy_decision_hash,
+            pd.decision AS policy_decision_status,
+            pd.decision_hash AS persisted_policy_decision_hash,
+            pd.policy_id AS decision_policy_id,
+            pd.policy_version AS decision_policy_version,
+            approval.status AS approval_status,
+            approval.approver_id AS approval_approver_id,
+            approval.consumed_at::text AS approval_consumed_at,
             ae.expires_at AS authorization_expires_at,
             br.status AS reservation_status,
             ai.invalidation_id,
@@ -350,6 +411,11 @@ const assertCurrentSigningAuthority = async (
      JOIN local_chain_fixtures f ON f.is_current
      LEFT JOIN authorization_invalidations ai
        ON ai.authorization_id = ae.authorization_id
+     LEFT JOIN policy_decisions pd
+       ON pd.operation_id = ae.operation_id
+      AND pd.decision_id = ae.policy_decision_id
+     LEFT JOIN approval_requests approval
+       ON approval.approval_id = ae.approval_id
      WHERE o.operation_id = $1
        AND ae.expires_at > now()
        AND NOT EXISTS (
@@ -366,6 +432,23 @@ const assertCurrentSigningAuthority = async (
     !["AUTHORIZED", "SIGNING"].includes(row.operation_state) ||
     row.reservation_status !== "AUTHORIZED" ||
     row.invalidation_id !== null ||
+    (row.authorization_kind === "OWNER_APPROVAL"
+      ? row.policy_decision_status !== "REQUIRE_APPROVAL" ||
+        row.approval_id === null ||
+        row.owner_authentication_id === null ||
+        row.approval_status !== "CONSUMED" ||
+        row.approval_approver_id === null ||
+        row.approval_consumed_at === null
+      : row.authorization_kind !== "AUTONOMOUS_POLICY" ||
+        row.policy_decision_status !== "ALLOW_AUTONOMOUS" ||
+        row.approval_id !== null ||
+        row.owner_authentication_id !== null ||
+        row.approval_status !== null ||
+        row.approval_approver_id !== null ||
+        row.approval_consumed_at !== null) ||
+    row.persisted_policy_decision_hash !== row.policy_decision_hash ||
+    row.decision_policy_id !== row.policy_id ||
+    Number(row.decision_policy_version) !== Number(row.policy_version) ||
     (expected !== undefined &&
       (row.reservation_id !== expected.reservationId ||
         row.envelope_id !== expected.envelopeId ||
