@@ -347,20 +347,33 @@ const assertOperationState = async (expected: string): Promise<void> => {
 
 test("P2-05D clean autonomous journey uses production writers end to end", async () => {
   await assertOperationState("POLICY_PRECHECKED");
+  const lifecycleStates = ["DRAFT", "VALIDATED", "POLICY_PRECHECKED"];
+  const advance = async (input: {
+    expected: string;
+    next: string;
+    audit?: Parameters<typeof advanceOperationLifecycle>[1]["audit"];
+  }): Promise<void> => {
+    await advanceOperationLifecycle(pool, { operationId, ...input });
+    lifecycleStates.push(input.next);
+  };
   const intent = (
     await pool.query<{ payload: unknown }>(
       "SELECT payload FROM intents WHERE intent_id = $1",
       [intentId],
     )
   ).rows[0]!.payload as Parameters<typeof constructTransferCore>[0];
-  const decision = evaluatePolicy(policy, intent, {
+  const precheckDecision = evaluatePolicy(policy, intent, {
     evaluatedAt: nowSecond(),
     totalSpentAtomic: "0",
     enforcement: { budget: "CONTROL_PLANE", recipient: "CONTROL_PLANE" },
   });
-  assert.equal(decision.decision, "ALLOW_AUTONOMOUS", JSON.stringify(decision));
   assert.equal(
-    decision.rules.every((rule) => rule.result === "pass"),
+    precheckDecision.decision,
+    "ALLOW_AUTONOMOUS",
+    JSON.stringify(precheckDecision),
+  );
+  assert.equal(
+    precheckDecision.rules.every((rule) => rule.result === "pass"),
     true,
   );
 
@@ -373,11 +386,10 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
       operationId,
       policyId,
       policyVersion: 1,
-      policyDecisionHash: decision.decisionHash,
+      policyDecisionHash: precheckDecision.decisionHash,
     },
   });
-  await advanceOperationLifecycle(pool, {
-    operationId,
+  await advance({
     expected: "POLICY_PRECHECKED",
     next: "CONSTRUCTED",
   });
@@ -385,8 +397,7 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
   const decoded = decodeTransferIndependent(core.calldata);
   assert.equal(decoded.ok, true);
   if (!decoded.ok) return;
-  await advanceOperationLifecycle(pool, {
-    operationId,
+  await advance({
     expected: "CONSTRUCTED",
     next: "DECODED",
   });
@@ -400,8 +411,7 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
   });
   assert.equal(verifiedCore.ok, true);
   if (!verifiedCore.ok) return;
-  await advanceOperationLifecycle(pool, {
-    operationId,
+  await advance({
     expected: "DECODED",
     next: "VERIFIED",
   });
@@ -439,12 +449,24 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     fixtureInstanceId: fixture.fixtureInstanceId,
   });
   await assertOperationState("SIMULATED");
+  lifecycleStates.push("SIMULATED");
+  const decision = evaluatePolicy(policy, intent, {
+    evaluatedAt: nowSecond(),
+    totalSpentAtomic: "0",
+    enforcement: { budget: "CONTROL_PLANE", recipient: "CONTROL_PLANE" },
+  });
+  assert.equal(decision.decision, "ALLOW_AUTONOMOUS", JSON.stringify(decision));
+  assert.equal(
+    decision.rules.every((rule) => rule.result === "pass"),
+    true,
+  );
   await persistPolicyDecision(pool, {
     decisionId,
     operationId,
     decision,
   });
   await assertOperationState("POLICY_FINALIZED");
+  lifecycleStates.push("POLICY_FINALIZED");
 
   const senderTokenBefore = await publicClient.readContract({
     address: fixture.tokenAddress,
@@ -474,8 +496,7 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
       assertedCorrelation: { ...correlation, reservationId, budgetId },
     },
   });
-  await advanceOperationLifecycle(pool, {
-    operationId,
+  await advance({
     expected: "POLICY_FINALIZED",
     next: "BUDGET_RESERVED",
     audit: audit("budget-reserved"),
@@ -547,6 +568,7 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     audit: audit("envelope-finalized"),
   });
   await assertOperationState("ENVELOPE_FINALIZED");
+  lifecycleStates.push("ENVELOPE_FINALIZED");
   const authorization = await authorizeAutonomous(
     pool,
     {
@@ -566,6 +588,8 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     },
   );
   assert.equal(authorization.authorizationKind, "AUTONOMOUS_POLICY");
+  await assertOperationState("AUTHORIZED");
+  lifecycleStates.push("AUTHORIZED");
 
   const execution = await spawnExecutionProcess({
     root,
@@ -580,6 +604,8 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     "evidence-persisted",
     "broadcast-started",
   ]);
+  await assertOperationState("SIGNED");
+  lifecycleStates.push("SIGNING", "SIGNED");
 
   const tx = await publicClient.getTransaction({
     hash: execution.expectedTransactionHash as `0x${string}`,
@@ -702,6 +728,7 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
   });
   assert.equal(reconciliation.ok, true);
   if (!reconciliation.ok) return;
+  await assertOperationState("RECONCILED");
   const senderTokenAfter = await publicClient.readContract({
     address: fixture.tokenAddress,
     abi: transferAbi,
@@ -759,6 +786,173 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     [operationId],
   );
   assert.equal(persisted.rows[0]?.count, "1");
+  const auditEvidence = await pool.query<{
+    event_type: string;
+    state: string | null;
+    previous_state: string | null;
+    reservation_id: string;
+    operation_id: string;
+  }>(
+    `SELECT event_type, data ->> 'state' AS state,
+            data ->> 'previousState' AS previous_state,
+            reservation_id, operation_id
+     FROM audit_events
+     WHERE operation_id = $1
+     ORDER BY sequence_no`,
+    [operationId],
+  );
+  assert.equal(auditEvidence.rows.length > 0, true);
+  assert.equal(
+    auditEvidence.rows.every(
+      (row) =>
+        row.operation_id === operationId &&
+        row.reservation_id === reservationId,
+    ),
+    true,
+  );
+  for (const eventType of [
+    "budget.reservation.created",
+    "budget.reservation.authorized",
+    "signing.started",
+    "transaction.signed",
+    "budget.reservation.broadcast",
+    "budget.reservation.evidence.verified",
+    "execution.recovery.claimed",
+    "budget.reservation.finalized",
+    "execution.recovery.resolved",
+  ]) {
+    assert.equal(
+      auditEvidence.rows.some((row) => row.event_type === eventType),
+      true,
+      `missing correlated audit event ${eventType}`,
+    );
+  }
+  const auditedStates = new Set(
+    auditEvidence.rows.flatMap((row) =>
+      row.state === null ? [] : [row.state],
+    ),
+  );
+  for (const state of [
+    "BUDGET_RESERVED",
+    "ENVELOPE_FINALIZED",
+    "AUTHORIZED",
+    "BROADCAST",
+    "PENDING_CONFIRMATION",
+    "CONFIRMED",
+    "RECONCILED",
+  ]) {
+    assert.equal(
+      auditedStates.has(state),
+      true,
+      `missing lifecycle audit state ${state}`,
+    );
+  }
+  lifecycleStates.push(
+    "BROADCAST",
+    "PENDING_CONFIRMATION",
+    "CONFIRMED",
+    "RECONCILED",
+  );
+  assert.deepEqual(lifecycleStates, [
+    "DRAFT",
+    "VALIDATED",
+    "POLICY_PRECHECKED",
+    "CONSTRUCTED",
+    "DECODED",
+    "VERIFIED",
+    "SIMULATED",
+    "POLICY_FINALIZED",
+    "BUDGET_RESERVED",
+    "ENVELOPE_FINALIZED",
+    "AUTHORIZED",
+    "SIGNING",
+    "SIGNED",
+    "BROADCAST",
+    "PENDING_CONFIRMATION",
+    "CONFIRMED",
+    "RECONCILED",
+  ]);
+  const identity = await pool.query<{
+    intent_id: string;
+    operation_id: string;
+    reservation_id: string;
+    envelope_id: string;
+    envelope_hash: string;
+    decision_id: string;
+    decision_hash: string;
+    authorization_id: string;
+    authorization_kind: string;
+    simulation_id: string;
+    simulation_hash: string;
+    signed_hash: string;
+    attempt_id: string;
+    transaction_hash: string;
+    receipt_hash: string;
+    block_hash: string;
+    recovery_attempt_id: string;
+    effect_id: string;
+  }>(
+    `SELECT i.intent_id, o.operation_id, r.reservation_id,
+            e.envelope_id, e.envelope_hash,
+            pd.decision_id, pd.decision_hash,
+            ae.authorization_id, ae.authorization_kind,
+            s.simulation_id, s.evidence_hash AS simulation_hash,
+            st.expected_transaction_hash AS signed_hash,
+            ba.attempt_id, tx.transaction_hash,
+            cr.transaction_hash AS receipt_hash,
+            tx.block_hash, ra.attempt_id AS recovery_attempt_id,
+            ee.effect_id
+     FROM operations o
+     JOIN intents i ON i.intent_id = o.intent_id
+     JOIN budget_reservations r ON r.operation_id = o.operation_id
+     JOIN execution_envelopes e ON e.operation_id = o.operation_id
+     JOIN policy_decisions pd ON pd.operation_id = o.operation_id
+     JOIN authorization_evidence ae ON ae.operation_id = o.operation_id
+     JOIN transaction_simulations s ON s.operation_id = o.operation_id
+     JOIN signed_transactions st ON st.operation_id = o.operation_id
+     JOIN broadcast_attempts ba ON ba.operation_id = o.operation_id
+     JOIN chain_transaction_evidence tx ON tx.broadcast_attempt_id = ba.attempt_id
+     JOIN chain_receipt_evidence cr ON cr.transaction_evidence_id = tx.transaction_evidence_id
+     JOIN recovery_attempts ra ON ra.operation_id = o.operation_id
+     JOIN execution_economic_effects ee ON ee.operation_id = o.operation_id
+     WHERE o.operation_id = $1
+       AND r.reservation_id = $2
+       AND e.envelope_id = $3
+       AND ae.authorization_id = $4
+       AND st.expected_transaction_hash = $5
+       AND tx.transaction_hash = $5
+       AND cr.transaction_hash = $5`,
+    [
+      operationId,
+      reservationId,
+      envelopeId,
+      authorizationId,
+      execution.expectedTransactionHash,
+    ],
+  );
+  assert.equal(identity.rows.length, 1);
+  const identityRow = identity.rows[0]!;
+  assert.equal(identityRow.intent_id, intentId);
+  assert.equal(identityRow.operation_id, operationId);
+  assert.equal(identityRow.reservation_id, reservationId);
+  assert.equal(identityRow.envelope_id, envelopeId);
+  assert.equal(identityRow.envelope_hash, envelope.envelopeHash);
+  assert.equal(identityRow.decision_id, decisionId);
+  assert.equal(identityRow.decision_hash, decision.decisionHash);
+  assert.equal(identityRow.authorization_id, authorizationId);
+  assert.equal(identityRow.authorization_kind, "AUTONOMOUS_POLICY");
+  assert.equal(identityRow.simulation_id, `simulation:${operationId}`);
+  assert.equal(
+    identityRow.simulation_hash,
+    simulationResult.simulation.evidenceHash,
+  );
+  assert.equal(identityRow.signed_hash, execution.expectedTransactionHash);
+  assert.equal(identityRow.attempt_id, execution.broadcastAttemptId);
+  assert.equal(identityRow.transaction_hash, execution.expectedTransactionHash);
+  assert.equal(identityRow.receipt_hash, execution.expectedTransactionHash);
+  assert.equal(identityRow.block_hash, blockByHash.hash);
+  assert.equal(identityRow.recovery_attempt_id, execution.broadcastAttemptId);
+  assert.match(identityRow.effect_id, /^effect:/);
   const leakage = stringifySafe({
     execution,
     reconciliation,

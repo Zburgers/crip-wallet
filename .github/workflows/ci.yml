@@ -55,6 +55,9 @@ jobs:
       - name: Deploy checkout-bound Phase-2 fixture
         run: npm run fixture:phase2
 
+      - name: Run P2-05D clean vertical-slice E2E
+        run: npm run test:e2e
+
       - name: Run local Phase-2 fixture chain gate
         run: npm run test:chain
 

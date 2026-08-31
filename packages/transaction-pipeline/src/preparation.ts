@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from "pg";
 import { appendAuditEvent, type AuditContext } from "@crip/audit";
 import {
   canonicalExecutionEnvelopeV2Schema,
+  canonicalizeIdempotencyPayload,
   hashExecutionEnvelope,
   policyDecisionSchema,
   simulationEvidenceSchema,
@@ -288,6 +289,73 @@ export const persistSimulation = async (
         simulation.evidenceHash,
       ],
     );
+    const persisted = await client.query<{
+      operation_id: string;
+      transfer_core_candidate_hash: string;
+      fixture_instance_id: string;
+      chain_id: string;
+      block_number: string;
+      block_hash: string;
+      sender_address: string;
+      sender_nonce: string;
+      token_balance_atomic: string;
+      native_balance_wei: string;
+      gas_estimate: string;
+      gas_limit: string;
+      base_fee_per_gas: string;
+      max_priority_fee_per_gas: string;
+      max_fee_per_gas: string;
+      access_list: unknown;
+      outcome: string;
+      expected_asset_deltas: unknown;
+      maximum_native_fee_atomic: string;
+      simulator_version: string;
+      evidence_hash: string;
+    }>(
+      `SELECT operation_id, transfer_core_candidate_hash, fixture_instance_id,
+              chain_id, block_number::text, block_hash, sender_address,
+              sender_nonce::text, token_balance_atomic::text,
+              native_balance_wei::text, gas_estimate::text, gas_limit::text,
+              base_fee_per_gas::text, max_priority_fee_per_gas::text,
+              max_fee_per_gas::text, access_list, outcome,
+              expected_asset_deltas, maximum_native_fee_atomic::text,
+              simulator_version, evidence_hash
+       FROM transaction_simulations
+       WHERE simulation_id = $1
+       FOR UPDATE`,
+      [input.simulationId],
+    );
+    const row = persisted.rows[0];
+    const expectedDeltas = simulation.expectedAssetDeltas as never;
+    const actualDeltas = row?.expected_asset_deltas as never;
+    const bindingMatches =
+      row?.operation_id === input.operationId &&
+      row.transfer_core_candidate_hash === simulation.candidateHash &&
+      row.fixture_instance_id === simulation.fixtureInstanceId &&
+      row.chain_id === simulation.chainId &&
+      row.block_number === simulation.blockNumber &&
+      row.block_hash === simulation.blockHash &&
+      row.sender_address === simulation.from &&
+      row.sender_nonce === simulation.senderNonce &&
+      row.token_balance_atomic === simulation.tokenBalance &&
+      row.native_balance_wei === simulation.nativeBalance &&
+      row.gas_estimate === simulation.gasEstimate &&
+      row.gas_limit === simulation.gasLimit &&
+      row.base_fee_per_gas === simulation.baseFeePerGas &&
+      row.max_priority_fee_per_gas === simulation.maxPriorityFeePerGas &&
+      row.max_fee_per_gas === simulation.maxFeePerGas &&
+      canonicalizeIdempotencyPayload(row.access_list as never) ===
+        canonicalizeIdempotencyPayload(simulation.accessList as never) &&
+      row.outcome === "SUCCESS" &&
+      canonicalizeIdempotencyPayload(actualDeltas) ===
+        canonicalizeIdempotencyPayload(expectedDeltas) &&
+      row.maximum_native_fee_atomic === simulation.maximumNativeFeeAtomic &&
+      row.simulator_version === simulation.simulatorVersion &&
+      row.evidence_hash === simulation.evidenceHash;
+    if (!bindingMatches)
+      throw new PreparationError(
+        "simulation id is bound to different evidence",
+      );
     await transition(
       client,
       input.operationId,
@@ -336,6 +404,28 @@ export const persistExecutionEnvelope = async (
         JSON.stringify(envelope),
       ],
     );
+    const persisted = await client.query<{
+      operation_id: string;
+      revision: number;
+      envelope_hash: string;
+      payload: unknown;
+    }>(
+      `SELECT operation_id, revision, envelope_hash, payload
+       FROM execution_envelopes
+       WHERE envelope_id = $1
+       FOR UPDATE`,
+      [envelope.envelopeId],
+    );
+    const row = persisted.rows[0];
+    if (
+      !row ||
+      row.operation_id !== input.operationId ||
+      Number(row.revision) !== envelope.revision ||
+      row.envelope_hash !== envelope.envelopeHash ||
+      canonicalizeIdempotencyPayload(row.payload as never) !==
+        canonicalizeIdempotencyPayload(envelope as never)
+    )
+      throw new PreparationError("envelope id is bound to different evidence");
     await transition(
       client,
       input.operationId,

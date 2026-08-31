@@ -464,10 +464,9 @@ BEGIN
 END;
 $$;
 
--- The Phase-1 fence-binding trigger also guarded authorization_evidence, but
--- its approval_id lookup is intentionally invalid for autonomous evidence.
--- Keep approval_decisions on the original trigger and give the canonical root
--- an operation-based guard for the autonomous kind.
+-- The Phase-1 fence-binding trigger also guarded authorization_evidence. The
+-- canonical root must preserve its approval-snapshot semantics for owner
+-- evidence while using current authoritative fences for autonomous evidence.
 DROP TRIGGER authorization_evidence_fence_binding_guard ON authorization_evidence;
 
 CREATE OR REPLACE FUNCTION enforce_autonomous_authorization_fence_binding() RETURNS trigger
@@ -475,19 +474,29 @@ LANGUAGE plpgsql AS $$
 DECLARE
   expected record;
 BEGIN
-  SELECT
-    system.fence_version AS system_fence_version, system.state AS system_state,
-    owner.fence_version AS owner_fence_version, owner.state AS owner_state,
-    agent.fence_version AS agent_fence_version, agent.state AS agent_state,
-    policy.fence_version AS policy_fence_version, policy.state AS policy_state
-  INTO expected
-  FROM operations o
-  JOIN agents ag ON ag.agent_id = o.agent_id
-  JOIN control_fences owner ON owner.scope_type = 'OWNER' AND owner.scope_id = ag.owner_id
-  JOIN control_fences agent ON agent.scope_type = 'AGENT' AND agent.scope_id = o.agent_id
-  JOIN control_fences policy ON policy.scope_type = 'POLICY' AND policy.scope_id = o.policy_id
-  JOIN control_fences system ON system.scope_type = 'SYSTEM' AND system.scope_id = 'system'
-  WHERE o.operation_id = NEW.operation_id;
+  IF NEW.authorization_kind = 'OWNER_APPROVAL' THEN
+    SELECT system_fence_version, system_state,
+           owner_fence_version, owner_state,
+           agent_fence_version, agent_state,
+           policy_fence_version, policy_state
+    INTO expected
+    FROM approval_requests
+    WHERE approval_id = NEW.approval_id;
+  ELSE
+    SELECT
+      system.fence_version AS system_fence_version, system.state AS system_state,
+      owner.fence_version AS owner_fence_version, owner.state AS owner_state,
+      agent.fence_version AS agent_fence_version, agent.state AS agent_state,
+      policy.fence_version AS policy_fence_version, policy.state AS policy_state
+    INTO expected
+    FROM operations o
+    JOIN agents ag ON ag.agent_id = o.agent_id
+    JOIN control_fences owner ON owner.scope_type = 'OWNER' AND owner.scope_id = ag.owner_id
+    JOIN control_fences agent ON agent.scope_type = 'AGENT' AND agent.scope_id = o.agent_id
+    JOIN control_fences policy ON policy.scope_type = 'POLICY' AND policy.scope_id = o.policy_id
+    JOIN control_fences system ON system.scope_type = 'SYSTEM' AND system.scope_id = 'system'
+    WHERE o.operation_id = NEW.operation_id;
+  END IF;
 
   IF NOT FOUND
      OR NEW.system_fence_version IS DISTINCT FROM expected.system_fence_version
@@ -498,7 +507,7 @@ BEGIN
      OR NEW.agent_state IS DISTINCT FROM expected.agent_state
      OR NEW.policy_fence_version IS DISTINCT FROM expected.policy_fence_version
      OR NEW.policy_state IS DISTINCT FROM expected.policy_state THEN
-    RAISE EXCEPTION 'autonomous authorization fence snapshot does not match authoritative control state: %', NEW.authorization_id
+    RAISE EXCEPTION 'authorization fence snapshot does not match authoritative control state: %', NEW.authorization_id
       USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
