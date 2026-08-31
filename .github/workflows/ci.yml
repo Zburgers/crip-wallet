@@ -56,7 +56,7 @@ jobs:
         run: npm run fixture:phase2
 
       - name: Run local Phase-2 fixture chain gate
-        run: npm run test:chain -- fixture.test.ts
+        run: npm run test:chain
 
       - name: Run PostgreSQL integration gate
         run: npm run test:db
