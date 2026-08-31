@@ -203,6 +203,7 @@ the protected checks. All chain evidence below is local-only Anvil
 | P2-05D E2E | PASS — `tests/chain/p2-05d-e2e.test.ts` 1/1; no protected-state lifecycle/evidence seeding |
 | Database / concurrency / invariants / chain | PASS — 119/119, 18/18, 7/7, 10/10 |
 | Forge / complete check / audit | PASS — 10/10, 21 repository + 314 Vitest, 0 high vulnerabilities |
+| Protected current-head evidence | PASS — CI `33365440241` and Secret Scan `33365440250` on `f5d433b97c19d028bcde99741976cb4debb77d03` |
 | Scope | P2-06A remains separate and unmerged; P2-06B/C/D not started; no S2 claim |
 
 Clean E2E identity and economic proof: fixture instance

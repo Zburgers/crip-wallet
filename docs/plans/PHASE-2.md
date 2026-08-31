@@ -741,8 +741,9 @@ same-child signer/broadcaster composition, independent chain-evidence
 verification, and ADR-0014 authenticated reconciliation. The fresh E2E passes
 1/1 with no direct protected-state seeding. Exact local identities, economics,
 leakage results and test counts are recorded in `docs/TEST_MATRIX.md`.
-Protected current-head CI and Secret Scan remain required for external
-acceptance review; S2 is not claimed.
+Protected CI `33365440241` and Secret Scan `33365440250` pass on
+`f5d433b97c19d028bcde99741976cb4debb77d03`; the final documentation handoff
+SHA is reported separately. S2 is not claimed.
 
 ### P2-05A/B/C integration checkpoint (historical)
 
