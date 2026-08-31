@@ -244,14 +244,6 @@ type CommonRow = Omit<
   | "revoked_at"
   | "consumed_at"
   | "reason"
-  | "current_system_fence_version"
-  | "current_system_state"
-  | "current_owner_fence_version"
-  | "current_owner_state"
-  | "current_agent_fence_version"
-  | "current_agent_state"
-  | "current_policy_fence_version"
-  | "current_policy_state"
 >;
 
 const timestamp = (value: TimestampValue, label: string): string => {
@@ -396,7 +388,7 @@ const fenceSnapshot = (row: CommonRow | ApprovalRow): ControlFenceSnapshot => ({
   policyState: row.policy_state,
 });
 
-const fencesAreActiveAndCurrent = (row: ApprovalRow): boolean => {
+const fencesAreActiveAndCurrent = (row: ApprovalRow | CommonRow): boolean => {
   const snapshot = fenceSnapshot(row);
   return (
     snapshot.systemState === "ACTIVE" &&
@@ -606,6 +598,14 @@ const loadCommonByIds = async (
     agent_state: currentFences.agentState,
     policy_fence_version: currentFences.policyFenceVersion,
     policy_state: currentFences.policyState,
+    current_system_fence_version: currentFences.systemFenceVersion,
+    current_system_state: currentFences.systemState,
+    current_owner_fence_version: currentFences.ownerFenceVersion,
+    current_owner_state: currentFences.ownerState,
+    current_agent_fence_version: currentFences.agentFenceVersion,
+    current_agent_state: currentFences.agentState,
+    current_policy_fence_version: currentFences.policyFenceVersion,
+    current_policy_state: currentFences.policyState,
   };
 };
 
@@ -1968,7 +1968,7 @@ const assertAutonomousBinding = (
     envelope.budgetReservationId !== row.reservation_id ||
     envelope.approvalRequirement !== "none" ||
     envelope.riskDecision !== "ALLOW" ||
-    !fencesAreActive(row) ||
+    !fencesAreActiveAndCurrent(row) ||
     Date.parse(now) < Date.parse(envelope.createdAt) ||
     Date.parse(now) >= Date.parse(envelope.expiresAt) ||
     Date.parse(timestamp(row.reservation_expires_at, "reservation expiry")) <=
