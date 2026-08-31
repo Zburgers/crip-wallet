@@ -659,8 +659,10 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     const rows = await pool.query<{ filename: string }>(
       "SELECT filename FROM schema_migrations ORDER BY filename",
     );
-    expect(rows.rows).toHaveLength(23);
-    expect(rows.rows.at(-1)?.filename).toBe("0023_p205_broadcast_safety.sql");
+    expect(rows.rows).toHaveLength(24);
+    expect(rows.rows.at(-1)?.filename).toBe(
+      "0024_canonical_autonomous_authorization.sql",
+    );
   });
 
   test("serializes release behind real-store STARTED creation", async () => {

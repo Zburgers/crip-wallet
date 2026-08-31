@@ -27,6 +27,8 @@ export type ApprovalErrorCode =
   | "APPROVAL_REJECTED"
   | "APPROVAL_REVOKED"
   | "APPROVAL_REPLAYED"
+  | "AUTONOMOUS_POLICY_REQUIRED"
+  | "AUTONOMOUS_CONFLICT"
   | "REVALIDATION_REQUIRED"
   | "AUTHORIZATION_STATE_INVALID";
 
@@ -41,6 +43,8 @@ export class ApprovalError extends Error {
 }
 
 export type ApprovalAuditContext = AuditContext;
+
+export type AuthorizationKind = "OWNER_APPROVAL" | "AUTONOMOUS_POLICY";
 
 export interface CreateApprovalRequest {
   approvalId: string;
@@ -94,6 +98,18 @@ export interface ConsumeApprovalRequest {
   audit: ApprovalAuditContext;
 }
 
+export interface AuthorizeAutonomousInput {
+  authorizationId: string;
+  operationId: string;
+  reservationId: string;
+  envelopeId: string;
+  envelopeRevision: number;
+  envelopeHash: `0x${string}`;
+  policyDecisionId: string;
+  policyDecisionHash: `0x${string}`;
+  idempotencyKey: string;
+}
+
 export interface ApprovalSnapshot {
   approvalId: string;
   operationId: string;
@@ -121,7 +137,8 @@ export interface ApprovalSnapshot {
 
 export interface AuthorizationEvidence {
   authorizationId: string;
-  approvalId: string;
+  authorizationKind: AuthorizationKind;
+  approvalId: string | null;
   operationId: string;
   reservationId: string;
   envelopeId: string;
@@ -131,7 +148,7 @@ export interface AuthorizationEvidence {
   policyDecisionHash: string;
   policyId: string;
   policyVersion: number;
-  approverId: string;
+  approverId: string | null;
   issuedAt: string;
   expiresAt: string;
   authorizedAt: string;
@@ -194,6 +211,7 @@ type ApprovalRow = {
   policy_wallet_id: string;
   policy_owner_id: string;
   wallet_owner_id: string;
+  policy_status: string;
   system_fence_version: string | number;
   system_state: "ACTIVE" | "PAUSED";
   owner_fence_version: string | number;
@@ -342,7 +360,10 @@ const bindingData = (
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> => ({
   reservationId: row.reservation_id,
-  approvalId: "approval_id" in row ? row.approval_id : undefined,
+  approvalId:
+    "approval_id" in row && row.approval_id !== null
+      ? row.approval_id
+      : undefined,
   envelopeId: row.envelope_id,
   envelopeRevision: row.envelope_revision,
   envelopeHash: row.envelope_hash,
@@ -446,7 +467,8 @@ const approvalSelect = `
          i.agent_id AS intent_agent_id, i.wallet_id AS intent_wallet_id,
          i.policy_id AS intent_policy_id, i.policy_version AS intent_policy_version,
          p.agent_id AS policy_agent_id, p.wallet_id AS policy_wallet_id,
-         p.owner_id AS policy_owner_id, wallet.owner_id AS wallet_owner_id
+         p.owner_id AS policy_owner_id, wallet.owner_id AS wallet_owner_id,
+         p.status AS policy_status
   FROM approval_requests a
   JOIN operations o ON o.operation_id = a.operation_id
   JOIN budget_reservations r ON r.operation_id = a.operation_id
@@ -482,7 +504,8 @@ const commonSelect = `
          i.agent_id AS intent_agent_id, i.wallet_id AS intent_wallet_id,
          i.policy_id AS intent_policy_id, i.policy_version AS intent_policy_version,
          p.agent_id AS policy_agent_id, p.wallet_id AS policy_wallet_id,
-         p.owner_id AS policy_owner_id, wallet.owner_id AS wallet_owner_id
+         p.owner_id AS policy_owner_id, wallet.owner_id AS wallet_owner_id,
+         p.status AS policy_status
   FROM operations o
   JOIN budget_reservations r ON r.operation_id = o.operation_id
     AND r.reservation_id = $4
@@ -538,15 +561,18 @@ const loadApproval = async (
   };
 };
 
-const loadCommon = async (
+const loadCommonByIds = async (
   client: PoolClient,
-  request: CreateApprovalRequest,
+  operationId: string,
+  envelopeId: string,
+  policyDecisionId: string,
+  reservationId: string,
 ): Promise<CommonRow> => {
   const initial = await client.query<CommonRow>(commonSelect, [
-    request.operationId,
-    request.envelopeId,
-    request.policyDecisionId,
-    request.reservationId,
+    operationId,
+    envelopeId,
+    policyDecisionId,
+    reservationId,
   ]);
   const identity = initial.rows[0];
   if (!identity)
@@ -562,12 +588,7 @@ const loadCommon = async (
   );
   const result = await client.query<CommonRow>(
     `${commonSelect} FOR UPDATE OF o, r, b, e, d`,
-    [
-      request.operationId,
-      request.envelopeId,
-      request.policyDecisionId,
-      request.reservationId,
-    ],
+    [operationId, envelopeId, policyDecisionId, reservationId],
   );
   const row = result.rows[0];
   if (!row)
@@ -586,6 +607,51 @@ const loadCommon = async (
     policy_fence_version: currentFences.policyFenceVersion,
     policy_state: currentFences.policyState,
   };
+};
+
+const loadCommon = async (
+  client: PoolClient,
+  request: CreateApprovalRequest,
+): Promise<CommonRow> =>
+  loadCommonByIds(
+    client,
+    request.operationId,
+    request.envelopeId,
+    request.policyDecisionId,
+    request.reservationId,
+  );
+
+const loadAutonomousAuthorityIds = async (
+  client: PoolClient,
+  operationId: string,
+): Promise<{
+  reservation_id: string;
+  envelope_id: string;
+  policy_decision_id: string;
+}> => {
+  const result = await client.query<{
+    reservation_id: string;
+    envelope_id: string;
+    policy_decision_id: string;
+  }>(
+    `SELECT r.reservation_id, e.envelope_id, d.decision_id AS policy_decision_id
+     FROM operations o
+     JOIN budget_reservations r ON r.operation_id = o.operation_id
+     JOIN execution_envelopes e ON e.operation_id = o.operation_id
+     JOIN policy_decisions d ON d.operation_id = o.operation_id
+       AND d.decision_hash = e.payload ->> 'policyDecisionHash'
+     WHERE o.operation_id = $1
+     ORDER BY e.revision DESC
+     LIMIT 1`,
+    [operationId],
+  );
+  const authority = result.rows[0];
+  if (!authority)
+    throw new ApprovalError(
+      "REVALIDATION_REQUIRED",
+      "authoritative autonomous binding rows are incomplete or ambiguous",
+    );
+  return authority;
 };
 
 const persistedEnvelope = (row: CommonRow | ApprovalRow): ExecutionEnvelope => {
@@ -1819,6 +1885,7 @@ export const consumeApproval = async (
       kind: "authorized" as const,
       value: {
         authorizationId,
+        authorizationKind: "OWNER_APPROVAL" as const,
         approvalId: row.approval_id,
         operationId: row.operation_id,
         reservationId: row.reservation_id,
@@ -1851,4 +1918,377 @@ export const consumeApproval = async (
       "approval was invalidated by envelope replacement",
     );
   return outcome.value;
+};
+
+const autonomousConsumerId = "autonomous-policy-writer";
+
+const assertAutonomousBinding = (
+  row: CommonRow,
+  request: AuthorizeAutonomousInput,
+  now: string,
+  expectedState: "ENVELOPE_FINALIZED" | "AUTHORIZED",
+): ExecutionEnvelope => {
+  const envelope = persistedEnvelope(row);
+  if (
+    row.operation_id !== request.operationId ||
+    row.reservation_id !== request.reservationId ||
+    row.envelope_id !== request.envelopeId ||
+    row.envelope_revision !== request.envelopeRevision ||
+    row.envelope_hash !== request.envelopeHash ||
+    row.policy_decision_id !== request.policyDecisionId ||
+    row.policy_decision_hash !== request.policyDecisionHash
+  ) {
+    throw new ApprovalError(
+      "APPROVAL_BINDING_MISMATCH",
+      "autonomous request does not match persisted binding claims",
+    );
+  }
+  if (row.policy_decision_status !== "ALLOW_AUTONOMOUS") {
+    throw new ApprovalError(
+      "AUTONOMOUS_POLICY_REQUIRED",
+      "only a persisted ALLOW_AUTONOMOUS decision can authorize autonomously",
+    );
+  }
+  if (
+    row.persisted_envelope_revision !== row.envelope_revision ||
+    row.persisted_envelope_hash !== row.envelope_hash ||
+    row.persisted_decision_hash !== row.policy_decision_hash ||
+    row.decision_policy_id !== row.policy_id ||
+    row.decision_policy_version !== row.policy_version ||
+    row.policy_status !== "active" ||
+    row.current_state !== expectedState ||
+    row.reservation_status !==
+      (expectedState === "AUTHORIZED" ? "AUTHORIZED" : "HELD") ||
+    envelope.intentId !== row.intent_id ||
+    envelope.agentId !== row.agent_id ||
+    envelope.walletId !== row.wallet_id ||
+    envelope.policyId !== row.policy_id ||
+    envelope.policyVersion !== row.policy_version ||
+    envelope.policyDecisionHash !== row.policy_decision_hash ||
+    envelope.budgetReservationId !== row.reservation_id ||
+    envelope.approvalRequirement !== "none" ||
+    envelope.riskDecision !== "ALLOW" ||
+    !fencesAreActive(row) ||
+    Date.parse(now) < Date.parse(envelope.createdAt) ||
+    Date.parse(now) >= Date.parse(envelope.expiresAt) ||
+    Date.parse(timestamp(row.reservation_expires_at, "reservation expiry")) <=
+      Date.parse(now)
+  ) {
+    throw new ApprovalError(
+      "REVALIDATION_REQUIRED",
+      "persisted autonomous authorization binding is stale or inconsistent",
+    );
+  }
+  return envelope;
+};
+
+const autonomousAuthorizationRow = async (
+  client: PoolClient,
+  authorizationId: string,
+): Promise<{
+  authorization_kind: AuthorizationKind;
+  authorization_id: string;
+  approval_id: string | null;
+  operation_id: string;
+  reservation_id: string;
+  envelope_id: string;
+  envelope_revision: number;
+  envelope_hash: string;
+  policy_decision_id: string;
+  policy_decision_hash: string;
+  policy_id: string;
+  policy_version: number;
+  approver_id: string | null;
+  issued_at: Date | string;
+  expires_at: Date | string;
+  authorized_at: Date | string;
+  consumed_at: Date | string;
+  consumer_id: string;
+  consumption_nonce: string;
+  system_fence_version: string | number;
+  system_state: "ACTIVE" | "PAUSED";
+  owner_fence_version: string | number;
+  owner_state: "ACTIVE" | "REVOKED";
+  agent_fence_version: string | number;
+  agent_state: "ACTIVE" | "REVOKED";
+  policy_fence_version: string | number;
+  policy_state: "ACTIVE" | "REVOKED";
+} | null> => {
+  const result = await client.query(
+    `SELECT authorization_kind, authorization_id, approval_id, operation_id,
+            reservation_id, envelope_id, envelope_revision, envelope_hash,
+            policy_decision_id, policy_decision_hash, policy_id, policy_version,
+            approver_id, issued_at, expires_at, authorized_at, consumed_at,
+            consumer_id, consumption_nonce, system_fence_version, system_state,
+            owner_fence_version, owner_state, agent_fence_version, agent_state,
+            policy_fence_version, policy_state
+     FROM authorization_evidence
+     WHERE authorization_id = $1
+     FOR UPDATE`,
+    [authorizationId],
+  );
+  return result.rows[0] ?? null;
+};
+
+const mapAutonomousAuthorization = (
+  row: NonNullable<Awaited<ReturnType<typeof autonomousAuthorizationRow>>>,
+): AuthorizationEvidence => ({
+  authorizationId: row.authorization_id,
+  authorizationKind: row.authorization_kind,
+  approvalId: row.approval_id,
+  operationId: row.operation_id,
+  reservationId: row.reservation_id,
+  envelopeId: row.envelope_id,
+  envelopeRevision: Number(row.envelope_revision),
+  envelopeHash: row.envelope_hash,
+  policyDecisionId: row.policy_decision_id,
+  policyDecisionHash: row.policy_decision_hash,
+  policyId: row.policy_id,
+  policyVersion: Number(row.policy_version),
+  approverId: row.approver_id,
+  issuedAt: timestamp(row.issued_at, "issued_at"),
+  expiresAt: timestamp(row.expires_at, "expires_at"),
+  authorizedAt: timestamp(row.authorized_at, "authorized_at"),
+  consumedAt: timestamp(row.consumed_at, "consumed_at"),
+  consumerId: row.consumer_id,
+  consumptionNonce: row.consumption_nonce,
+  controlFences: {
+    systemFenceVersion: Number(row.system_fence_version),
+    systemState: row.system_state,
+    ownerFenceVersion: Number(row.owner_fence_version),
+    ownerState: row.owner_state,
+    agentFenceVersion: Number(row.agent_fence_version),
+    agentState: row.agent_state,
+    policyFenceVersion: Number(row.policy_fence_version),
+    policyState: row.policy_state,
+  },
+});
+
+/**
+ * Create the canonical autonomous authorization from PostgreSQL authority.
+ * Caller fields are references and equality claims only; no transaction,
+ * policy, fence, approval, or expiry authority is accepted from the caller.
+ */
+export const authorizeAutonomous = async (
+  pool: Pool,
+  request: AuthorizeAutonomousInput,
+  audit: ApprovalAuditContext,
+): Promise<AuthorizationEvidence> => {
+  id(request.authorizationId, "authorizationId");
+  id(request.operationId, "operationId");
+  id(request.reservationId, "reservationId");
+  id(request.envelopeId, "envelopeId");
+  id(request.policyDecisionId, "policyDecisionId");
+  id(request.idempotencyKey, "idempotencyKey");
+  hash(request.envelopeHash, "envelopeHash");
+  hash(request.policyDecisionHash, "policyDecisionHash");
+  if (
+    !Number.isInteger(request.envelopeRevision) ||
+    request.envelopeRevision <= 0
+  )
+    throw new ApprovalError(
+      "APPROVAL_BINDING_MISMATCH",
+      "envelopeRevision must be positive",
+    );
+
+  return withSerializableTransaction(pool, async (client) => {
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext('crip-wallet-autonomous-authorization:' || $1))",
+      [request.operationId],
+    );
+    const existing = await autonomousAuthorizationRow(
+      client,
+      request.authorizationId,
+    );
+    const now = nowOr(undefined);
+    if (existing) {
+      const row = await loadCommonByIds(
+        client,
+        existing.operation_id,
+        existing.envelope_id,
+        existing.policy_decision_id,
+        existing.reservation_id,
+      );
+      assertAutonomousBinding(row, request, now, "AUTHORIZED");
+      const expectedNonce = `${request.idempotencyKey}:autonomous`;
+      if (
+        existing.authorization_kind !== "AUTONOMOUS_POLICY" ||
+        existing.approval_id !== null ||
+        existing.approver_id !== null ||
+        existing.consumer_id !== autonomousConsumerId ||
+        existing.consumption_nonce !== expectedNonce
+      )
+        throw new ApprovalError(
+          "AUTONOMOUS_CONFLICT",
+          "authorization ID is already bound to different autonomous evidence",
+        );
+      return mapAutonomousAuthorization(existing);
+    }
+
+    const authority = await loadAutonomousAuthorityIds(
+      client,
+      request.operationId,
+    );
+    const row = await loadCommonByIds(
+      client,
+      request.operationId,
+      authority.envelope_id,
+      authority.policy_decision_id,
+      authority.reservation_id,
+    );
+    const existingOperationAuthorization = await client.query<{
+      authorization_id: string;
+    }>(
+      `SELECT authorization_id FROM authorization_evidence
+       WHERE operation_id = $1
+       FOR UPDATE`,
+      [request.operationId],
+    );
+    if (existingOperationAuthorization.rowCount)
+      throw new ApprovalError(
+        "AUTONOMOUS_CONFLICT",
+        "operation already has canonical authorization evidence",
+      );
+    const envelope = assertAutonomousBinding(
+      row,
+      request,
+      now,
+      "ENVELOPE_FINALIZED",
+    );
+    ensureLatestEnvelope(row);
+    const activeApproval = await client.query(
+      `SELECT 1 FROM approval_requests
+       WHERE operation_id = $1 AND status IN ('PENDING', 'APPROVED')
+       FOR UPDATE`,
+      [request.operationId],
+    );
+    if (activeApproval.rowCount)
+      throw new ApprovalError(
+        "AUTONOMOUS_CONFLICT",
+        "operation has an active owner approval request",
+      );
+
+    const authorizedAt = now;
+    const issuedAt = timestamp(envelope.createdAt, "envelope.createdAt");
+    const expiresAt = timestamp(envelope.expiresAt, "envelope.expiresAt");
+    const consumptionNonce = `${request.idempotencyKey}:autonomous`;
+    await updateOperation(
+      client,
+      request.operationId,
+      "ENVELOPE_FINALIZED",
+      "AUTHORIZED",
+    );
+    const reservationUpdate = await client.query(
+      `UPDATE budget_reservations
+       SET status = 'AUTHORIZED', updated_at = now()
+       WHERE operation_id = $1 AND reservation_id = $2 AND status = 'HELD'`,
+      [request.operationId, request.reservationId],
+    );
+    if (reservationUpdate.rowCount !== 1)
+      throw new ApprovalError(
+        "AUTHORIZATION_STATE_INVALID",
+        "reservation changed before autonomous authorization could be committed",
+      );
+    await client.query(
+      `INSERT INTO authorization_evidence
+        (authorization_id, authorization_kind, approval_id, operation_id,
+         reservation_id, envelope_id, envelope_revision, envelope_hash,
+         policy_decision_id, policy_decision_hash, policy_id, policy_version,
+         approver_id, issued_at, expires_at, authorized_at, consumed_at,
+         consumer_id, consumption_nonce, system_fence_version, system_state,
+         owner_fence_version, owner_state, agent_fence_version, agent_state,
+         policy_fence_version, policy_state)
+       VALUES ($1, 'AUTONOMOUS_POLICY', NULL, $2, $3, $4, $5, $6, $7, $8,
+               $9, $10, NULL, $11, $12, $13, $13, $14, $15, $16, $17,
+               $18, $19, $20, $21, $22, $23)`,
+      [
+        request.authorizationId,
+        row.operation_id,
+        row.reservation_id,
+        envelope.envelopeId,
+        envelope.revision,
+        envelope.envelopeHash,
+        row.policy_decision_id,
+        row.policy_decision_hash,
+        row.policy_id,
+        row.policy_version,
+        issuedAt,
+        expiresAt,
+        authorizedAt,
+        autonomousConsumerId,
+        consumptionNonce,
+        row.system_fence_version,
+        row.system_state,
+        row.owner_fence_version,
+        row.owner_state,
+        row.agent_fence_version,
+        row.agent_state,
+        row.policy_fence_version,
+        row.policy_state,
+      ],
+    );
+    const next = {
+      ...row,
+      issued_at: issuedAt,
+      expires_at: expiresAt,
+      approval_id: null,
+      approver_id: null,
+    };
+    await append(
+      client,
+      next,
+      audit,
+      "budget.reservation.authorized",
+      "autonomous-authorized-budget",
+      {
+        authorizationId: request.authorizationId,
+        consumerId: autonomousConsumerId,
+        consumptionNonce,
+        authorizedAt,
+        consumedAt: authorizedAt,
+        decision: "ALLOW_AUTONOMOUS",
+      },
+    );
+    await append(
+      client,
+      next,
+      audit,
+      "operation.state.changed",
+      "autonomous-authorized-operation",
+      {
+        authorizationId: request.authorizationId,
+        previousState: "ENVELOPE_FINALIZED",
+        state: "AUTHORIZED",
+      },
+    );
+    return mapAutonomousAuthorization({
+      authorization_kind: "AUTONOMOUS_POLICY",
+      authorization_id: request.authorizationId,
+      approval_id: null,
+      operation_id: row.operation_id,
+      reservation_id: row.reservation_id,
+      envelope_id: envelope.envelopeId,
+      envelope_revision: envelope.revision,
+      envelope_hash: envelope.envelopeHash,
+      policy_decision_id: row.policy_decision_id,
+      policy_decision_hash: row.policy_decision_hash,
+      policy_id: row.policy_id,
+      policy_version: row.policy_version,
+      approver_id: null,
+      issued_at: issuedAt,
+      expires_at: expiresAt,
+      authorized_at: authorizedAt,
+      consumed_at: authorizedAt,
+      consumer_id: autonomousConsumerId,
+      consumption_nonce: consumptionNonce,
+      system_fence_version: row.system_fence_version,
+      system_state: row.system_state,
+      owner_fence_version: row.owner_fence_version,
+      owner_state: row.owner_state,
+      agent_fence_version: row.agent_fence_version,
+      agent_state: row.agent_state,
+      policy_fence_version: row.policy_fence_version,
+      policy_state: row.policy_state,
+    });
+  });
 };

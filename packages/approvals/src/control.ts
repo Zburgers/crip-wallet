@@ -509,17 +509,19 @@ const invalidateAffectedAuthorizations = async (
     await invalidatePending(client, request, row, fenceVersion, state);
 
   const authorized = await client.query<ControlOperationRow>(
-    `SELECT a.approval_id, a.operation_id, a.reservation_id, r.budget_id,
-            r.amount_atomic, a.envelope_id, a.envelope_revision, a.envelope_hash,
-            a.policy_decision_id, a.policy_decision_hash, a.policy_version,
-            a.approver_id, a.nonce, a.issued_at, a.expires_at,
+    `SELECT a.approval_id, e.operation_id, e.reservation_id, r.budget_id,
+            r.amount_atomic, e.envelope_id, e.envelope_revision, e.envelope_hash,
+            e.policy_decision_id, e.policy_decision_hash, e.policy_version,
+            a.approver_id, COALESCE(a.nonce, e.consumption_nonce) AS nonce,
+            e.issued_at, e.expires_at,
             e.authorization_id,
             ag.owner_id, o.agent_id, o.wallet_id, o.intent_id, o.policy_id,
             o.current_state, r.status AS reservation_status
      FROM authorization_evidence e
-     JOIN approval_requests a ON a.approval_id = e.approval_id
+     LEFT JOIN approval_requests a ON a.approval_id = e.approval_id
      JOIN operations o ON o.operation_id = e.operation_id
-     JOIN budget_reservations r ON r.operation_id = o.operation_id
+     JOIN budget_reservations r ON r.operation_id = e.operation_id
+       AND r.reservation_id = e.reservation_id
      JOIN budget_accounts b ON b.budget_id = r.budget_id
      JOIN agents ag ON ag.agent_id = o.agent_id
      LEFT JOIN authorization_invalidations ai ON ai.authorization_id = e.authorization_id
@@ -528,7 +530,7 @@ const invalidateAffectedAuthorizations = async (
        AND r.status = 'AUTHORIZED'
        AND ${predicate}
      ORDER BY e.authorization_id
-     FOR UPDATE OF e, a, o, r, b`,
+     FOR UPDATE OF e, o, r, b`,
     args,
   );
   const controlEventId = `${request.audit.eventId}:fence:${fenceVersion}`;
