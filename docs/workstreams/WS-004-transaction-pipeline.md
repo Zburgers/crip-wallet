@@ -70,7 +70,7 @@ The implementation-ready contract is in `docs/plans/PHASE-2.md`. It reuses the P
 
 ADR-0015 is **ACCEPTED**. It resolves the previous exact-signing blocker by requiring additive envelope v2 semantics, `accessList: []`, bounded canonical simulation freshness, local-Anvil IDs-only signer isolation without universal provider DB coupling, persist-before-send expected-hash evidence, and ADR-0014-authenticated reconciliation of untrusted chain evidence.
 
-P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 through P2-04 are integrated in the accepted dependency order. P2-05A persists the expected hash and broadcast attempt before send; P2-05B independently verifies untrusted transaction/receipt/block/Transfer evidence; P2-05C authenticates the reconciler before the existing lease-fenced exactly-once ledger recovery path; and P2-05D is implemented at `a888977` with a fresh clean E2E. P2-06A remains separate test infrastructure.
+P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 through P2-04 are integrated in the accepted dependency order. P2-05A persists the expected hash and broadcast attempt before send; P2-05B independently verifies untrusted transaction/receipt/block/Transfer evidence; P2-05C authenticates the reconciler before the existing lease-fenced exactly-once ledger recovery path; and P2-05D is implemented at remediation code SHA `a45c32d46330230614c8a72b44c0941dd0cf1850` with a fresh clean E2E. P2-06A remains separate test infrastructure.
 
 External review `5060378379` at integration head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6` required remediation before P2-05D. The remediation binds the exact canonical signed bytes before RPC, distinguishes CONFLICT from UNKNOWN, fences every pre-broadcast release after a durable send-capable attempt, binds legacy evidence to the verified attempt/hash/nonce/receipt identity, and makes post-resolution reconciliation crash-resumable. This is historical context; protected exact-final-head evidence remains mandatory before external re-review. P2-05D is now implemented and S2 is **NOT PASSED**.
 
@@ -86,7 +86,7 @@ The clean vertical-slice attempt at reviewed checkpoint `2f78b0f3c888ca6b8b06340
 
 ADR-0016 and ADR-0017 are **Accepted — 2026-08-31 by product owner**. PRE-A
 and PRE-B are integrated and security-reviewed on `integration/p2-05d` at
-implementation SHA `a888977`. P2-06A remains separate; P2-06B/C/D remain
+remediation code SHA `a45c32d46330230614c8a72b44c0941dd0cf1850`. P2-06A remains separate; P2-06B/C/D remain
 unstarted; S2 remains **NOT PASSED**.
 
 The P2-05D clean vertical slice uses production lifecycle/evidence writers,

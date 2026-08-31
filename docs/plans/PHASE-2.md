@@ -734,7 +734,8 @@ At reviewed checkpoint `2f78b0f3c888ca6b8b06340b8c4a308d1bb7053f`, P2-05A/B/C re
 
 ### P2-05D implementation checkpoint
 
-The clean vertical slice is implemented at `a888977` on `integration/p2-05d`.
+The clean vertical slice is implemented at remediation code SHA
+`a45c32d46330230614c8a72b44c0941dd0cf1850` on `integration/p2-05d`.
 It uses production preparation writers for lifecycle, simulation, policy and
 envelope persistence, production `authorizeAutonomous`, the restricted
 same-child signer/broadcaster composition, independent chain-evidence

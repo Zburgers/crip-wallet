@@ -185,36 +185,36 @@ The inherited Vitest exit-135 event was not reproduced after integration. The tw
 
 ### P2-05D final integration checkpoint
 
-Implementation/test SHA: `a888977` (`feat: complete p2-05d production path`).
+Remediation code SHA: `a45c32d46330230614c8a72b44c0941dd0cf1850`.
 The full final branch SHA is the documentation handoff commit reported with
 the protected checks. All chain evidence below is local-only Anvil
 `eip155:31337`; S2 remains **OPEN / NOT PASSED**.
 
 | Scope | Result |
 | --- | --- |
-| PRE-A/PRE-B integration | PASS — PRE-A `c1f6ab9...a70b6`; PRE-B commits `d251726` and `84e8500`; signer consumes `OWNER_APPROVAL` and `AUTONOMOUS_POLICY` through one exact path |
+| PRE-A/PRE-B integration | PASS — PRE-A `c1f6ab9167c9960e8ef1f822f7351a3ad04a70b6`; PRE-B commits `d251726` and `84e85007864c1cbf7326288e4651048cebf493f3`; signer consumes `OWNER_APPROVAL` and `AUTONOMOUS_POLICY` through one exact path |
 | Autonomous authorization | PASS — `tests/db/autonomous-authorization.test.ts` 15/15; production `authorizeAutonomous` only accepts persisted `ALLOW_AUTONOMOUS` and current common controls |
-| Owner approval regression | PASS — `tests/db/approval.test.ts` 25/25; genuine approval evidence remains required |
-| Migration | PASS — fresh 0023 → 0024 database gate; `npm run test:db` 119/119; migrations 0001–0023 unchanged |
+| Owner approval regression | PASS — `tests/db/approval.test.ts` 26/26 (25 historical + owner fence-snapshot regression); genuine approval evidence remains required |
+| Migration | PASS — fresh 0023 → 0024 database gate; `npm run test:db` 122/122; migrations 0001–0023 unchanged |
 | Signer / keys / execution handoff | PASS — signer-core 26/26, signer-keys 2/2, execution-core 18/18, frozen vector 1/1 |
 | Broadcaster | PASS — `broadcast-core.test.ts` 12/12; exact hash binding, STARTED-before-send, UNKNOWN/CONFLICT handling |
 | Chain evidence | PASS — `chain-evidence.test.ts` 20/20; transaction/receipt/block/standard Transfer matching |
-| Reconciliation | PASS — included in DB 119/119 and the clean E2E; authenticated lease-fenced exactly-once effect |
+| Reconciliation | PASS — included in DB 122/122 and the clean E2E; authenticated lease-fenced exactly-once effect |
 | P2-05D E2E | PASS — `tests/chain/p2-05d-e2e.test.ts` 1/1; no protected-state lifecycle/evidence seeding |
-| Database / concurrency / invariants / chain | PASS — 119/119, 18/18, 7/7, 10/10 |
+| Database / concurrency / invariants / chain | PASS — 122/122, 18/18, 7/7, 10/10 |
 | Forge / complete check / audit | PASS — 10/10, 21 repository + 314 Vitest, 0 high vulnerabilities |
-| Protected current-head evidence | PASS — CI `33365440241` and Secret Scan `33365440250` on `f5d433b97c19d028bcde99741976cb4debb77d03` |
+| Protected remediation evidence | PASS — CI `33441013501` and Secret Scan `33441013543` on code SHA `a45c32d46330230614c8a72b44c0941dd0cf1850`; final documentation-head checks are reported separately |
 | Scope | P2-06A remains separate and unmerged; P2-06B/C/D not started; no S2 claim |
 
 Clean E2E identity and economic proof: fixture instance
-`303e12c6-362a-4222-952d-1a8b29d370a2`; operation `op_p205d_e2e`; reservation
+`33c6581c-6af0-489a-a1e9-0e171e022281`; operation `op_p205d_e2e`; reservation
 `res_p205d_e2e`; envelope `env_p205d_e2e_1` /
-`0x612c0f3b1760a4b755e703dcc53adc1b3422ac6a7c01f12e9cc676c5844ef53e`;
+`0xf4155e8dfe39d494c5c1bba0c745494baceb3a9ec44fac711b421579dfdecc9f`;
 decision `decision_p205d_e2e` = `ALLOW_AUTONOMOUS` /
-`0xdeb89086c7511d975358f0a4266f5f96790caf32f72143a1ffba30b1c503372a`;
+`0x25e2f8f9e04eac2f97c20067d13aa79a9c892c9e8ec0b5199a50c8640729be76`;
 authorization `auth_p205d_e2e` = `AUTONOMOUS_POLICY`; simulation
 `simulation:op_p205d_e2e` /
-`0xaabfb57b4609457c5725883c58a1942a2db37b59cb52ce16a6b06b1db32bb012`;
+`0xfc8103e4da0c49245dd307e74cf6ebf90dfbc26aa38b4933c877799c9d8bc09a`;
 signed transaction `signed:op_p205d_e2e:1`; expected hash
 `0x6e49129c1ec079bca131564a7f79d7c99f11ada25ad80baabce148ea62569c55`;
 attempt `attempt:op_p205d_e2e:1` = `ACCEPTED`; receipt block `2`;
