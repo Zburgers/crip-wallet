@@ -604,6 +604,13 @@ describe("signer-local execution handoff", () => {
       },
       undefined,
     ],
+    [
+      "policy version change",
+      (value: SigningContext) => {
+        value.operation.policyVersion = 2;
+      },
+      undefined,
+    ],
   ] as const)(
     "rejects %s before rematerialization or STARTED",
     async (_label, mutateContext, mutateRpc) => {
