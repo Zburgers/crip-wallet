@@ -4,6 +4,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { generateComponentCredential } from "@crip/trust-boundary";
+import { applyMigrations } from "@crip/budget-ledger";
 import { Pool } from "pg";
 
 import { loadLocalRuntime } from "./local-runtime.mjs";
@@ -74,6 +75,7 @@ export const provisionPhase2SignerCredential = async ({
     max: 1,
   });
   try {
+    await applyMigrations(pool);
     await pool.query(
       `INSERT INTO trusted_component_credentials
          (credential_id, component_id, component_role, public_key)
