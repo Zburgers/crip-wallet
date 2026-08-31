@@ -1,6 +1,6 @@
 # ADR-0017 - Signer-Local Signed-Byte Broadcast Handoff
 
-**Status:** Proposed
+**Status:** Accepted — 2026-08-31 by product owner
 
 **Date:** 2026-08-31
 
@@ -99,9 +99,9 @@ No signed-byte persistence migration is permitted. Both ADR-0016 and this decisi
 
 - No public RPC, production custody, general signing API, encrypted raw-byte store, or P2-06 fault-matrix implementation.
 - No provider-neutral mandate for this local process topology.
-- No implementation or acceptance claim is made by this Proposed ADR.
+- Implementation evidence is recorded in the P2-05D integration checkpoint in
+  `docs/TEST_MATRIX.md` and the exact final commit reported with that evidence.
 
 ## Relationship to existing ADRs
 
 This extends ADR-0005, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0014, and ADR-0015. ADR-0015 is not rewritten. Its exact envelope, signer-local byte, persist-before-send, ambiguity, and recovery requirements remain controlling.
-

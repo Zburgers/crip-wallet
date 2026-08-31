@@ -1,6 +1,6 @@
 # ADR-0016 - Canonical Autonomous Authorization
 
-**Status:** Proposed
+**Status:** Accepted — 2026-08-31 by product owner
 
 **Date:** 2026-08-31
 
@@ -88,9 +88,9 @@ Rejected. It falsely attributes autonomous policy authority to a human and weake
 
 - No public-network, production-custody, new owner identity, new policy mode, or interface work.
 - No change to envelope v1/v2 hashing or approval semantics.
-- No implementation or acceptance claim is made by this Proposed ADR.
+- Implementation evidence is recorded in the P2-05D integration checkpoint in
+  `docs/TEST_MATRIX.md` and the exact final commit reported with that evidence.
 
 ## Relationship to existing ADRs
 
 This extends ADR-0003, ADR-0005, ADR-0008, ADR-0010, ADR-0012, ADR-0014, and ADR-0015. ADR-0015 is not rewritten. If accepted, this ADR supplies the missing canonical autonomous authority consumed by its signer boundary.
-

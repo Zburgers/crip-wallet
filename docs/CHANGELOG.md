@@ -7,6 +7,9 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ### Phase 2
 
+- Completed P2-05D on `integration/p2-05d` implementation SHA `a888977`: integrated PRE-A canonical autonomous authorization with PRE-B signer-local execution, accepted ADR-0016/0017, added production lifecycle/evidence preparation writers, and added a fresh no-direct-seeding autonomous ERC-20 E2E through authenticated reconciliation. Local evidence is 1/1 E2E, 119/119 DB, 18/18 concurrency, 7/7 invariants, 10/10 chain, 10/10 Forge, 21 repository + 314 Vitest, and 0 high audit vulnerabilities. The local proof remains S2 OPEN / NOT PASSED pending protected exact-final-head evidence and external acceptance review.
+- Corrected the ERC-20 Transfer event topic for new P2-05 evidence in forward migration 0024 without editing migrations 0001–0023; existing rows with the legacy incorrect topic remain unverifiable and fail closed.
+
 - Opened Phase 2 / WS-004 from current `main` for the local fake-ERC-20 vertical slice: construct, independently verify, simulate, authorize, locally sign, broadcast, confirm and reconcile.
 - Added `docs/plans/PHASE-2.md` and `docs/workstreams/WS-004-transaction-pipeline.md` with explicit local-only boundaries, packet order, S2 evidence requirements and chain-level ambiguity/fault coverage.
 - Preserved the prohibition on public RPC, testnet/mainnet, real funds, production custody and production identity.

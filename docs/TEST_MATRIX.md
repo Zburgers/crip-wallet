@@ -159,14 +159,14 @@ The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, in
 | P2-05D | PENDING | Clean vertical-slice E2E is not part of this recovery checkpoint |
 | P2-06A | SEPARATE | Historical compatibility branch fault gate 59/59; not merged into the product integration branch |
 
-### P2-05D architecture gap proposal
+### P2-05D architecture gap proposal (historical)
 
 | Scope | Status | Required evidence before status may advance |
 | --- | --- | --- |
 | ADR-0016 canonical autonomous authorization | PROPOSED / NOT IMPLEMENTED | Migration-upgrade, owner-regression, autonomous writer, direct-forgery, invalidation, and deterministic concurrency suites |
 | ADR-0017 signer-local execution handoff | PROPOSED / NOT IMPLEMENTED | Same-child sign/broadcast, exact hash, crash barriers, rematerialization, no-resign state fences, and output/DB/audit/key leakage suites |
 | PRE-A/PRE-B integration | BLOCKED ON PRODUCT-OWNER DECISION | Combined authorization/signer/broadcast security review and all inherited gates |
-| P2-05D | PENDING | Fresh clean vertical slice through production transition writers; no protected-state seeding |
+| P2-05D | PENDING at this historical checkpoint | Fresh clean vertical slice through production transition writers; no protected-state seeding |
 | Gate S2 | OPEN / NOT PASSED | Full Phase-2 closeout and protected exact-SHA evidence |
 
 The inherited Vitest exit-135 event was not reproduced after integration. The two reported envelope-v2 failures were not reproduced on the clean packet history; the weakened user-edited test state is preserved separately on `preserve/phase2-dirty-state` and is not part of this checkpoint. Gate S2 remains **OPEN / NOT PASSED**.
@@ -181,4 +181,47 @@ The inherited Vitest exit-135 event was not reproduced after integration. The tw
 | Full local gates | PASS — `npm ci`; `npm run check` 21 repository + 292 Vitest; audit 0 vulnerabilities; Forge 10/10; DB 104/104; concurrency 18/18; invariants 7/7; chain 10/10 |
 | P2-06A compatibility | PASS on a disposable, unmerged compatibility branch — `npm run test:fault` 64/64, including deterministic forward-then-drop coverage |
 | Protected CI / Secret Scan | PENDING exact final head |
-| Scope boundary | P2-05D not implemented; P2-06B/C not started; S2 not accepted |
+| Scope boundary | P2-05D not implemented at this historical checkpoint; P2-06B/C not started; S2 not accepted |
+
+### P2-05D final integration checkpoint
+
+Implementation/test SHA: `a888977` (`feat: complete p2-05d production path`).
+The full final branch SHA is the documentation handoff commit reported with
+the protected checks. All chain evidence below is local-only Anvil
+`eip155:31337`; S2 remains **OPEN / NOT PASSED**.
+
+| Scope | Result |
+| --- | --- |
+| PRE-A/PRE-B integration | PASS — PRE-A `c1f6ab9...a70b6`; PRE-B commits `d251726` and `84e8500`; signer consumes `OWNER_APPROVAL` and `AUTONOMOUS_POLICY` through one exact path |
+| Autonomous authorization | PASS — `tests/db/autonomous-authorization.test.ts` 15/15; production `authorizeAutonomous` only accepts persisted `ALLOW_AUTONOMOUS` and current common controls |
+| Owner approval regression | PASS — `tests/db/approval.test.ts` 25/25; genuine approval evidence remains required |
+| Migration | PASS — fresh 0023 → 0024 database gate; `npm run test:db` 119/119; migrations 0001–0023 unchanged |
+| Signer / keys / execution handoff | PASS — signer-core 26/26, signer-keys 2/2, execution-core 18/18, frozen vector 1/1 |
+| Broadcaster | PASS — `broadcast-core.test.ts` 12/12; exact hash binding, STARTED-before-send, UNKNOWN/CONFLICT handling |
+| Chain evidence | PASS — `chain-evidence.test.ts` 20/20; transaction/receipt/block/standard Transfer matching |
+| Reconciliation | PASS — included in DB 119/119 and the clean E2E; authenticated lease-fenced exactly-once effect |
+| P2-05D E2E | PASS — `tests/chain/p2-05d-e2e.test.ts` 1/1; no protected-state lifecycle/evidence seeding |
+| Database / concurrency / invariants / chain | PASS — 119/119, 18/18, 7/7, 10/10 |
+| Forge / complete check / audit | PASS — 10/10, 21 repository + 314 Vitest, 0 high vulnerabilities |
+| Scope | P2-06A remains separate and unmerged; P2-06B/C/D not started; no S2 claim |
+
+Clean E2E identity and economic proof: fixture instance
+`303e12c6-362a-4222-952d-1a8b29d370a2`; operation `op_p205d_e2e`; reservation
+`res_p205d_e2e`; envelope `env_p205d_e2e_1` /
+`0x612c0f3b1760a4b755e703dcc53adc1b3422ac6a7c01f12e9cc676c5844ef53e`;
+decision `decision_p205d_e2e` = `ALLOW_AUTONOMOUS` /
+`0xdeb89086c7511d975358f0a4266f5f96790caf32f72143a1ffba30b1c503372a`;
+authorization `auth_p205d_e2e` = `AUTONOMOUS_POLICY`; simulation
+`simulation:op_p205d_e2e` /
+`0xaabfb57b4609457c5725883c58a1942a2db37b59cb52ce16a6b06b1db32bb012`;
+signed transaction `signed:op_p205d_e2e:1`; expected hash
+`0x6e49129c1ec079bca131564a7f79d7c99f11ada25ad80baabce148ea62569c55`;
+attempt `attempt:op_p205d_e2e:1` = `ACCEPTED`; receipt block `2`;
+recovery outcome `CONFIRMED`; effect `effect:attempt:op_p205d_e2e:1`.
+Token moved `123456` atomic units exactly (sender
+`1000000000000 -> 999999876544`, recipient `0 -> 123456`). Native balance
+was `9999999696272999696273` and became `9999999600017614894520`; gas used
+`51267` at effective gas price `1877531059`, for verified native fee
+`96255384801753`. Ledger ended `allocated=1000000`, `available=876544`,
+`reserved=0`, `finalized_spend=123456`. Raw signed bytes and the signer key
+were absent from the persisted/output leakage scan.

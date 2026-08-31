@@ -8,7 +8,7 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-02 through P2-04 are integrated on `integration/p2-05`; P2-05A/B/C are integrated at code head `c0c4949590fbd7992f06537dc3cb93dd841a7936`; P2-05D is pending; P2-06A remains separate test infrastructure. ADR-0015 is accepted. Gate S2 is **OPEN / NOT PASSED**.
+**Status:** P2-02 through P2-04 are integrated on `integration/p2-05`; P2-05A/B/C are reviewed and integrated; P2-05D is implemented on `integration/p2-05d` and READY FOR EXTERNAL ACCEPTANCE REVIEW. P2-06A remains separate test infrastructure; P2-06B/C/D have not started. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 remains **OPEN / NOT PASSED**.
 
 ---
 
@@ -716,7 +716,7 @@ Residual MVP risk: a fully compromised local host/signer can defeat local fake-v
 
 ### Blocking architecture questions
 
-P2-05D exposed two non-regression architecture gaps after the accepted P2-05A/B/C checkpoint: `ALLOW_AUTONOMOUS` has no canonical non-approval authorization writer, and signer-local serialized bytes have no production composition into the accepted broadcaster. Proposed ADR-0016 and ADR-0017 and the implementation-ready package in `docs/plans/2026-08-31-p2-05d-architecture-gap-closure.md` require product-owner decision before implementation. ADR-0015 remains accepted and is not rewritten.
+At the pre-implementation checkpoint, P2-05D exposed two non-regression architecture gaps: `ALLOW_AUTONOMOUS` had no canonical non-approval authorization writer, and signer-local serialized bytes had no production composition into the accepted broadcaster. Product-owner decisions accepted ADR-0016 and ADR-0017; the implementation-ready package in `docs/plans/2026-08-31-p2-05d-architecture-gap-closure.md` is retained as historical context. ADR-0015 remains accepted and is not rewritten.
 
 ### Packet-owned non-blocking decisions
 
@@ -728,19 +728,31 @@ P2-05D exposed two non-regression architecture gaps after the accepted P2-05A/B/
 
 ## 14. Current handoff
 
-### P2-05D architecture gap proposal
+### P2-05D architecture gap proposal (historical)
 
-At reviewed checkpoint `2f78b0f3c888ca6b8b06340b8c4a308d1bb7053f`, P2-05A/B/C remain reviewed and accepted. P2-05D is truthfully blocked on the two composition/authority gaps above; this is not a regression in those packets. The proposed dependency order is parallel PRE-A canonical autonomous authorization and PRE-B signer-local execution work, followed by serialized integration/security review and a fresh P2-05D retry. No implementation, migration, P2-05D evidence, P2-06B/C/D work, or S2 acceptance is claimed by the proposal.
+At reviewed checkpoint `2f78b0f3c888ca6b8b06340b8c4a308d1bb7053f`, P2-05A/B/C remained reviewed and accepted. This proposal was resolved by the product-owner decisions and implementation recorded below; it is retained as historical context.
 
-### P2-05A/B/C integration checkpoint
+### P2-05D implementation checkpoint
+
+The clean vertical slice is implemented at `a888977` on `integration/p2-05d`.
+It uses production preparation writers for lifecycle, simulation, policy and
+envelope persistence, production `authorizeAutonomous`, the restricted
+same-child signer/broadcaster composition, independent chain-evidence
+verification, and ADR-0014 authenticated reconciliation. The fresh E2E passes
+1/1 with no direct protected-state seeding. Exact local identities, economics,
+leakage results and test counts are recorded in `docs/TEST_MATRIX.md`.
+Protected current-head CI and Secret Scan remain required for external
+acceptance review; S2 is not claimed.
+
+### P2-05A/B/C integration checkpoint (historical)
 
 The recovery integration branch is `integration/p2-05`. Its pre-documentation code head is `c0c4949590fbd7992f06537dc3cb93dd841a7936`, descended from P2-04C `0e00f212711c07aae363c28245d2ee453f8d84c2`. It integrates P2-05A persist-before-send broadcast, P2-05B independent untrusted chain-evidence verification, and the preserved P2-05C authenticated reconciliation path. Protected CI `33299665297` and Secret Scan `33299665282` both passed on that exact code head.
 
-Local evidence at this checkpoint includes `npm run check` (21 repository + 287 Vitest), audit with 0 high vulnerabilities, Forge 10/10, DB 82/82, concurrency 18/18, invariants 7/7, chain 10/10, envelope 68/68, transaction-pipeline 61/61, signer/adapter 36/36, broadcast 7/7, and reconciliation 10/10. The separate P2-06A compatibility branch passed its fault gate 59/59. P2-05D clean vertical-slice E2E remains pending; P2-06B/C/D have not started; S2 remains **OPEN / NOT PASSED**.
+Local evidence at this historical checkpoint included `npm run check` (21 repository + 287 Vitest), audit with 0 high vulnerabilities, Forge 10/10, DB 82/82, concurrency 18/18, invariants 7/7, chain 10/10, envelope 68/68, transaction-pipeline 61/61, signer/adapter 36/36, broadcast 7/7, and reconciliation 10/10. The separate P2-06A compatibility branch passed its fault gate 59/59. The current P2-05D implementation evidence is recorded in the checkpoint above; P2-06B/C/D have not started; S2 remains **OPEN / NOT PASSED**.
 
-### P2-05 external-review remediation
+### P2-05 external-review remediation (historical)
 
-External review `5060378379` identified broadcast and reconciliation safety gaps at reviewed head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6`. The remediation keeps ADR-0015 and the Phase-1 budget authority unchanged: exact canonical signed bytes are hashed before send; valid wrong returned hashes are CONFLICT; durable send-capable attempts fence pre-broadcast release; legacy evidence is DB-bound to the exact attempt/hash/nonce/receipt identity; and P2-05C retries serialize per operation and resume idempotently after economic resolution or effect persistence. Focused local suites pass; full current-head and protected evidence must be recorded before external re-review. P2-05D remains pending and S2 remains **OPEN / NOT PASSED**.
+External review `5060378379` identified broadcast and reconciliation safety gaps at reviewed head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6`. The remediation keeps ADR-0015 and the Phase-1 budget authority unchanged: exact canonical signed bytes are hashed before send; valid wrong returned hashes are CONFLICT; durable send-capable attempts fence pre-broadcast release; legacy evidence is DB-bound to the exact attempt/hash/nonce/receipt identity; and P2-05C retries serialize per operation and resume idempotently after economic resolution or effect persistence. This is historical remediation context; the current P2-05D evidence is recorded above and protected current-head evidence remains required for external review. S2 remains **OPEN / NOT PASSED**.
 
 ### P2-02 implementation/integration handoff
 
