@@ -142,6 +142,7 @@ export {
 } from "./signer-client.js";
 export {
   broadcastSignedTransaction,
+  canonicalSignedTransactionHash,
   ProvenPreAcceptanceRejection,
   type BroadcastAttempt,
   type BroadcastAttemptStatus,
@@ -155,6 +156,20 @@ export {
 } from "./broadcast-core.js";
 export { createBroadcastStore } from "./broadcast-store.js";
 export {
+  executeAuthorizedTransferCore,
+  type ExecuteAuthorizedTransferDeps,
+  type ExecuteAuthorizedTransferFailure,
+  type ExecuteAuthorizedTransferOutcome,
+  type ExecuteAuthorizedTransferSuccess,
+  type ExecutionSerializationStore,
+} from "./execution-core.js";
+export { createExecutionSerializationStore } from "./execution-store.js";
+export {
+  spawnExecutionProcess,
+  type ExecutionClientResult,
+  type SpawnExecutionOptions,
+} from "./execution-client.js";
+export {
   reconcileLocalChainEvidence,
   type ReconciliationAudits,
   type ReconciliationFailure,
@@ -166,7 +181,7 @@ export {
 import { Pool } from "pg";
 import { verifyComponentAction } from "@crip/trust-boundary";
 
-import { spawnSignerProcess as spawnSigner } from "./signer-client.js";
+import { spawnExecutionProcess as spawnExecution } from "./execution-client.js";
 
 /**
  * Parent-side signer wiring for the reference adapter. Each signing request
@@ -181,14 +196,16 @@ export const createLocalAnvilSignerHandler = (input: {
   timeoutMs?: number;
 }): LocalAnvilReferenceHandlers => ({
   signAuthorizedTransfer: async (request) => {
-    const result = await spawnSigner({
+    const result = await spawnExecution({
       root: input.root,
       ids: request,
       ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
     });
-    if (!result.ok || !result.transactionHash || !result.authorization)
+    if (!result.ok || !result.expectedTransactionHash || !result.authorization)
       throw new Error(
-        `local signer refused the authorized transfer: ${result.code ?? "INTERNAL"}`,
+        `local signer refused the authorized transfer: ${
+          "code" in result ? result.code : "INTERNAL"
+        }`,
       );
     const publicKey = await input.pool
       .query<{ public_key: string }>(
@@ -202,7 +219,7 @@ export const createLocalAnvilSignerHandler = (input: {
       operationId: request.operationId,
       authorizationId: request.authorizationId,
       adapterRequestId: request.adapterRequestId,
-      transactionHash: result.transactionHash,
+      transactionHash: result.expectedTransactionHash,
     };
     const verified = verifyComponentAction(
       result.authorization,
@@ -211,7 +228,7 @@ export const createLocalAnvilSignerHandler = (input: {
       payload,
     );
     if (!verified) throw new Error("signer component authorization is invalid");
-    return { transactionHash: result.transactionHash };
+    return { transactionHash: result.expectedTransactionHash };
   },
   getStatus: async (request) => ({
     operationId: request.operationId,

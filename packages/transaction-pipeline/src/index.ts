@@ -24,6 +24,13 @@ export { constructTransferCore } from "./construct-transfer.js";
 export { decodeTransferIndependent } from "./decode-transfer.js";
 export { verifyTransferCore } from "./verify-transfer.js";
 export {
+  advanceOperationLifecycle,
+  persistExecutionEnvelope,
+  persistPolicyDecision,
+  persistSimulation,
+  PreparationError,
+} from "./preparation.js";
+export {
   verifyUntrustedChainEvidence,
   type ChainEvidenceExpectation,
   type ChainEvidenceHash,

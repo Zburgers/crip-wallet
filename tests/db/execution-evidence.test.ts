@@ -72,7 +72,7 @@ const broadcastHash = keccak256(broadcastRawTransaction);
 const address = (suffix: string): string => `0x${suffix.padStart(40, "0")}`;
 const fixtureId = "11111111-1111-4111-8111-111111111111";
 const zeroLogTopic =
-  "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a9df523b3ef";
+  "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const ownerCredential = createLocalOwnerTestCredential(
   "owner_1",
   "evidence_owner_key",
@@ -659,8 +659,10 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     const rows = await pool.query<{ filename: string }>(
       "SELECT filename FROM schema_migrations ORDER BY filename",
     );
-    expect(rows.rows).toHaveLength(23);
-    expect(rows.rows.at(-1)?.filename).toBe("0023_p205_broadcast_safety.sql");
+    expect(rows.rows).toHaveLength(24);
+    expect(rows.rows.at(-1)?.filename).toBe(
+      "0024_canonical_autonomous_authorization.sql",
+    );
   });
 
   test("serializes release behind real-store STARTED creation", async () => {
