@@ -13,6 +13,8 @@ const recipient = "0x2222222222222222222222222222222222222222" as const;
 const transactionHash = `0x${"12".repeat(32)}` as const;
 const blockHash = `0x${"34".repeat(32)}` as const;
 const transferTopic =
+  "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const legacyIncorrectTransferTopic =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a9df523b3ef";
 const topicAddress = (address: string) =>
   `0x${"0".repeat(24)}${address.slice(2)}`;
@@ -198,6 +200,27 @@ describe("P2-05B untrusted chain evidence verification", () => {
         },
       },
     });
+  });
+
+  it("rejects the legacy incorrect Transfer topic", () => {
+    const result = verifyUntrustedChainEvidence(expectation, {
+      ...evidence,
+      receipt: {
+        ...receipt,
+        logs: [
+          {
+            ...transferLog,
+            topics: [
+              legacyIncorrectTransferTopic,
+              topicAddress(wallet),
+              topicAddress(recipient),
+            ],
+          },
+        ],
+      },
+    });
+    expectMismatch(result, "TRANSFER_MISSING");
+    expectMismatch(result, "UNEXPECTED_LOG");
   });
 
   it.each([

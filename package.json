@@ -36,7 +36,9 @@
     "fixture:phase2": "node tooling/phase2-fixture.mjs",
     "signer:provision": "node tooling/phase2-signer-credential.mjs",
     "pretest:chain": "npm run build --workspaces --if-present",
-    "test:chain": "node tooling/phase2-test-gate.mjs chain",
+    "test:chain": "node tooling/phase2-test-gate.mjs chain fixture.test.ts simulation.test.ts",
+    "test:e2e": "npm run signer:provision && node tooling/phase2-test-gate.mjs chain p2-05d-e2e.test.ts",
+    "pretest:e2e": "npm run build --workspaces --if-present",
     "dev:up": "bash scripts/dev-up.sh",
     "dev:status": "bash scripts/dev-status.sh",
     "dev:down": "bash scripts/dev-down.sh"

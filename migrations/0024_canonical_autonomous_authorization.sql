@@ -1,6 +1,20 @@
 -- P2-05D-PRE-A: keep one canonical authorization root while separating
 -- human approval evidence from persisted autonomous policy authority.
 
+-- Migration 0022 carried a transcription error for the ERC-20 Transfer topic.
+-- Correct future evidence writes without editing the checksum-locked 0022.
+-- Existing rows carrying the invalid topic remain unverifiable and fail closed.
+ALTER TABLE chain_transfer_logs
+  DROP CONSTRAINT chain_log_signature;
+
+ALTER TABLE chain_transfer_logs
+  ALTER COLUMN event_signature SET DEFAULT '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+
+ALTER TABLE chain_transfer_logs
+  ADD CONSTRAINT chain_log_signature CHECK (
+    event_signature = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+  ) NOT VALID;
+
 ALTER TABLE authorization_evidence
   ADD COLUMN authorization_kind text NOT NULL DEFAULT 'OWNER_APPROVAL';
 
