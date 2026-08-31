@@ -221,7 +221,20 @@ export interface SignerStore {
   ): Promise<void>;
 }
 
-export type SignerPhase = "signing-started" | "evidence-persisted";
+export type SignerPhase =
+  "signing-started" | "evidence-persisted" | "broadcast-started";
+
+export interface SignerCoreOptions {
+  /** Permit exact, hash-gated rematerialization of proven pre-send evidence. */
+  rematerializeExistingEvidence?: boolean;
+  /** Internal same-child handoff; never serialize this material to a parent. */
+  onSignedMaterial?(material: {
+    signedTransactionId: string;
+    expectedTransactionHash: Hash;
+    rawTransaction?: string;
+    fromDurableEvidence: boolean;
+  }): void;
+}
 
 export interface SignerDeps {
   store: SignerStore;
@@ -238,6 +251,8 @@ export interface SignerDeps {
    */
   signTransaction(fields: ExactTransactionFields): Promise<{
     transactionHash: Hash;
+    /** Private child-local bytes; never part of SignerOutcome or parent IPC. */
+    rawTransaction?: string;
   }>;
   /** Signs only the result reference; the component key remains signer-local. */
   authorizeResult(payload: Record<string, unknown>): ComponentAuthorization;
@@ -421,6 +436,7 @@ const asTraceId = (traceId: string): string =>
 export const signAuthorizedTransferCore = async (
   deps: SignerDeps,
   requestInput: unknown,
+  options: SignerCoreOptions = {},
 ): Promise<SignerOutcome> => {
   const parsedRequest = authorizedTransferRequestSchema.safeParse(requestInput);
   if (!parsedRequest.success) return refuse("INVALID_REQUEST");
@@ -462,7 +478,7 @@ export const signAuthorizedTransferCore = async (
     return auditRefusal(refuse("SIGNER_CREDENTIAL_INVALID"));
 
   const existing = await deps.store.findDurableSignedEvidence(ids);
-  if (existing)
+  if (existing && !options.rematerializeExistingEvidence)
     return {
       ok: true,
       transactionHash: existing.transactionHash,
@@ -527,7 +543,10 @@ export const signAuthorizedTransferCore = async (
       Date.parse(context.reservation.expiresAt) <= now.getTime())
   )
     return auditRefusal(refuse("RESERVATION_INVALID"));
-  if (!["AUTHORIZED", "SIGNING"].includes(context.operation.state))
+  if (
+    !["AUTHORIZED", "SIGNING"].includes(context.operation.state) &&
+    !(existing && context.operation.state === "SIGNED")
+  )
     return auditRefusal(refuse("OPERATION_NOT_AUTHORIZED"));
 
   const fenceByScope = new Map(
@@ -646,14 +665,16 @@ export const signAuthorizedTransferCore = async (
   if (!freshness.ok)
     return auditRefusal(refuse("SIMULATION_STALE", freshness.code));
 
-  try {
-    await deps.store.beginSigning(ids, audit);
-  } catch {
-    return auditRefusal(refuse("OPERATION_NOT_AUTHORIZED"));
+  if (!existing) {
+    try {
+      await deps.store.beginSigning(ids, audit);
+    } catch {
+      return auditRefusal(refuse("OPERATION_NOT_AUTHORIZED"));
+    }
+    deps.onPhase?.("signing-started");
   }
-  deps.onPhase?.("signing-started");
 
-  let signature: { transactionHash: Hash };
+  let signature: { transactionHash: Hash; rawTransaction?: string };
   try {
     signature = await deps.signTransaction({
       chainId: 31337,
@@ -673,6 +694,28 @@ export const signAuthorizedTransferCore = async (
   if (!HASH_PATTERN.test(signature.transactionHash))
     return auditRefusal(refuse("INTERNAL"));
 
+  const signedTransactionId = `signed:${ids.operationId}:${envelope.revision}`;
+  if (existing) {
+    if (signature.transactionHash !== existing.transactionHash)
+      return auditRefusal(refuse("INTERNAL"));
+    options.onSignedMaterial?.({
+      signedTransactionId,
+      expectedTransactionHash: existing.transactionHash,
+      ...(signature.rawTransaction === undefined
+        ? {}
+        : { rawTransaction: signature.rawTransaction }),
+      fromDurableEvidence: true,
+    });
+    return {
+      ok: true,
+      transactionHash: existing.transactionHash,
+      fromDurableEvidence: true,
+      authorization: deps.authorizeResult(
+        resultPayload(ids, existing.transactionHash),
+      ),
+    };
+  }
+
   const signedAt = deps
     .now()
     .toISOString()
@@ -680,7 +723,7 @@ export const signAuthorizedTransferCore = async (
   try {
     await deps.store.persistSignedEvidence(
       {
-        signedTransactionId: `signed:${ids.operationId}:${envelope.revision}`,
+        signedTransactionId,
         ids,
         reservationId: envelope.budgetReservationId,
         envelopeId: envelope.envelopeId,
@@ -709,6 +752,14 @@ export const signAuthorizedTransferCore = async (
     return auditRefusal(refuse("PERSISTENCE_FAILED"));
   }
   deps.onPhase?.("evidence-persisted");
+  options.onSignedMaterial?.({
+    signedTransactionId,
+    expectedTransactionHash: signature.transactionHash,
+    ...(signature.rawTransaction === undefined
+      ? {}
+      : { rawTransaction: signature.rawTransaction }),
+    fromDurableEvidence: false,
+  });
 
   return {
     ok: true,

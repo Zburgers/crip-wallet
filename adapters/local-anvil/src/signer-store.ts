@@ -464,6 +464,7 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
           ...auditCorrelation(authority),
           eventType: "signing.started",
           data: {
+            reservationId: authority.reservation_id,
             authorizationId: ids.authorizationId,
             credentialId: audit.credentialId,
             componentId: audit.actorId,
@@ -533,6 +534,7 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
           ...auditCorrelation(authority),
           eventType: "transaction.signed",
           data: {
+            reservationId: authority.reservation_id,
             authorizationId: input.ids.authorizationId,
             envelopeId: input.envelopeId,
             envelopeRevision: input.envelopeRevision,
@@ -583,6 +585,7 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
         ...auditCorrelation(authority),
         eventType: "signing.failed",
         data: {
+          reservationId: authority.reservation_id,
           reasonCode,
           credentialId: audit.credentialId,
           componentId: audit.actorId,
