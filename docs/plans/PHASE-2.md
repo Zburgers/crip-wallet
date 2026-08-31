@@ -716,7 +716,7 @@ Residual MVP risk: a fully compromised local host/signer can defeat local fake-v
 
 ### Blocking architecture questions
 
-None. ADR-0015 is accepted. P2-02 is gated by **P2-01 review/stability**, not by an unresolved architecture decision.
+P2-05D exposed two non-regression architecture gaps after the accepted P2-05A/B/C checkpoint: `ALLOW_AUTONOMOUS` has no canonical non-approval authorization writer, and signer-local serialized bytes have no production composition into the accepted broadcaster. Proposed ADR-0016 and ADR-0017 and the implementation-ready package in `docs/plans/2026-08-31-p2-05d-architecture-gap-closure.md` require product-owner decision before implementation. ADR-0015 remains accepted and is not rewritten.
 
 ### Packet-owned non-blocking decisions
 
@@ -727,6 +727,10 @@ None. ADR-0015 is accepted. P2-02 is gated by **P2-01 review/stability**, not by
 ---
 
 ## 14. Current handoff
+
+### P2-05D architecture gap proposal
+
+At reviewed checkpoint `2f78b0f3c888ca6b8b06340b8c4a308d1bb7053f`, P2-05A/B/C remain reviewed and accepted. P2-05D is truthfully blocked on the two composition/authority gaps above; this is not a regression in those packets. The proposed dependency order is parallel PRE-A canonical autonomous authorization and PRE-B signer-local execution work, followed by serialized integration/security review and a fresh P2-05D retry. No implementation, migration, P2-05D evidence, P2-06B/C/D work, or S2 acceptance is claimed by the proposal.
 
 ### P2-05A/B/C integration checkpoint
 

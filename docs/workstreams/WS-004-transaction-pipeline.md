@@ -80,6 +80,12 @@ release or expiry commits first, the store rejects attempt creation before the
 network boundary; if attempt creation commits first, the existing durable
 attempt trigger makes the competing release or expiry fail closed.
 
+## Proposed P2-05D architecture gap closure
+
+The clean vertical-slice attempt at reviewed checkpoint `2f78b0f3c888ca6b8b06340b8c4a308d1bb7053f` correctly stopped without protected-state seeding. Proposed ADR-0016 adds a canonical `AUTONOMOUS_POLICY` kind to the existing authorization root while preserving owner approval. Proposed ADR-0017 keeps exact serialized bytes in the restricted local execution child and composes the unchanged P2-05A broadcaster there, with deterministic rematerialization allowed only when signed evidence exists and no attempt exists. The implementation package is `docs/plans/2026-08-31-p2-05d-architecture-gap-closure.md`.
+
+These decisions are **Proposed**, not implemented or accepted. PRE-A and PRE-B may be coded in parallel after approval, but their integration/security review must be serialized before P2-05D is retried. P2-06A remains separate; P2-06B/C/D remain unstarted; S2 remains **NOT PASSED**.
+
 ## Exit evidence
 
 WS-004 is complete only when protected current-head evidence proves the entire local fake-ERC-20 journey and the required failure/ambiguity cases in `docs/plans/PHASE-2.md`.

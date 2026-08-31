@@ -159,6 +159,16 @@ The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, in
 | P2-05D | PENDING | Clean vertical-slice E2E is not part of this recovery checkpoint |
 | P2-06A | SEPARATE | Historical compatibility branch fault gate 59/59; not merged into the product integration branch |
 
+### P2-05D architecture gap proposal
+
+| Scope | Status | Required evidence before status may advance |
+| --- | --- | --- |
+| ADR-0016 canonical autonomous authorization | PROPOSED / NOT IMPLEMENTED | Migration-upgrade, owner-regression, autonomous writer, direct-forgery, invalidation, and deterministic concurrency suites |
+| ADR-0017 signer-local execution handoff | PROPOSED / NOT IMPLEMENTED | Same-child sign/broadcast, exact hash, crash barriers, rematerialization, no-resign state fences, and output/DB/audit/key leakage suites |
+| PRE-A/PRE-B integration | BLOCKED ON PRODUCT-OWNER DECISION | Combined authorization/signer/broadcast security review and all inherited gates |
+| P2-05D | PENDING | Fresh clean vertical slice through production transition writers; no protected-state seeding |
+| Gate S2 | OPEN / NOT PASSED | Full Phase-2 closeout and protected exact-SHA evidence |
+
 The inherited Vitest exit-135 event was not reproduced after integration. The two reported envelope-v2 failures were not reproduced on the clean packet history; the weakened user-edited test state is preserved separately on `preserve/phase2-dirty-state` and is not part of this checkpoint. Gate S2 remains **OPEN / NOT PASSED**.
 
 ### P2-05 external-review remediation checkpoint

@@ -125,3 +125,11 @@ P2-03 provides local executable evidence for the canonical-block, loopback-only,
 RPC-disagreement, fee-ceiling, token/native separation, exact-field mutation,
 and bounded-freshness controls. This is local evidence only; protected current-
 head CI, Secret Scan, signing, broadcast, and reconciliation remain outstanding.
+
+## Proposed P2-05D gap controls
+
+Proposed ADR-0016 addresses autonomous-authority forgery, approval fabrication, cross-kind races, and invalidation drift by keeping one canonical authorization root with mutually exclusive owner-approval and autonomous-policy evidence. Only a persisted immutable `ALLOW_AUTONOMOUS` decision may authorize the latter, and the signer must apply the same common hard-control revalidation.
+
+Proposed ADR-0017 addresses raw-byte leakage and the signed-evidence/pre-send crash gap by composing signing and the accepted broadcaster inside the restricted local child. Serialized bytes remain volatile. Deterministic rematerialization is permitted only with durable signed evidence and no attempt, after full current revalidation and durable-hash equality. Any send-capable attempt prohibits re-signing and uses expected-hash recovery.
+
+The proposals introduce a narrow dependency on deterministic behavior of the locked transaction serializer/signature stack and increase the restricted child's TCB by granting loopback send capability. Golden signed vectors, dependency-review gates, strict process output scans, loopback/fixture checks, and reuse of the accepted broadcaster are required mitigations. These controls are not evidence until implemented and reviewed; Gate S2 remains **NOT PASSED**.
