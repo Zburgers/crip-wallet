@@ -348,6 +348,7 @@ const assertOperationState = async (expected: string): Promise<void> => {
 test("P2-05D clean autonomous journey uses production writers end to end", async () => {
   await assertOperationState("POLICY_PRECHECKED");
   const lifecycleStates = ["DRAFT", "VALIDATED", "POLICY_PRECHECKED"];
+  const policyEvaluatedAt = nowSecond();
   const advance = async (input: {
     expected: string;
     next: string;
@@ -363,7 +364,7 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     )
   ).rows[0]!.payload as Parameters<typeof constructTransferCore>[0];
   const precheckDecision = evaluatePolicy(policy, intent, {
-    evaluatedAt: nowSecond(),
+    evaluatedAt: policyEvaluatedAt,
     totalSpentAtomic: "0",
     enforcement: { budget: "CONTROL_PLANE", recipient: "CONTROL_PLANE" },
   });
@@ -451,7 +452,7 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
   await assertOperationState("SIMULATED");
   lifecycleStates.push("SIMULATED");
   const decision = evaluatePolicy(policy, intent, {
-    evaluatedAt: nowSecond(),
+    evaluatedAt: policyEvaluatedAt,
     totalSpentAtomic: "0",
     enforcement: { budget: "CONTROL_PLANE", recipient: "CONTROL_PLANE" },
   });
