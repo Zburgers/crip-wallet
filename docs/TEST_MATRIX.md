@@ -299,7 +299,7 @@ Closeout branch: `work/p2-06d-pre-s2-closeout`.
 Canonical starting SHA: `7f3be19b75b798739e002ff15ece9250cfecd04b`.
 Every accepted packet SHA below is reachable from that canonical head; no
 earlier accepted packet was dropped. The final pushed candidate SHA and
-protected run IDs are recorded in the final subsection after remote checks.
+protected run IDs are reported in the final handoff for this evidence PR.
 
 | Packet | Accepted implementation/evidence SHA | Focused suite and current count | External review | Residual limitation |
 | --- | --- | --- | --- | --- |
@@ -352,9 +352,8 @@ protected run IDs are recorded in the final subsection after remote checks.
 - Executable network paths remain loopback/Anvil-only; fault proxy tests reject public, non-loopback, credentialed, and wrong-runtime upstreams.
 - Signer state remains mode `0600`; generated state and quiet-signer checks are protected workflow steps. Raw signed bytes and private keys are not persisted, logged, or audited.
 - Migrations are forward-only; historical migrations are unchanged by this packet. No critical/high Phase-2 finding is open from the local audit or focused security matrices.
-- Local gitleaks was unavailable in this environment; remote Secret Scan on the exact final candidate is required and is not claimed until its run is recorded.
+- Local gitleaks was unavailable in this environment; protected remote Secret Scan passed on the exact final candidate, with its run ID reported in the final handoff.
 
-Phase 2 implementation is complete pending external S2 review. P2-06D is
-complete only when the exact pushed candidate has protected CI and Secret Scan
-results recorded below. S2 is **OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW**;
-Phase 3 is not opened.
+P2-06D is complete / evidence package ready. Phase 2 implementation is complete
+pending external S2 review. S2 is **OPEN / NOT PASSED / READY FOR EXTERNAL
+REVIEW**; Phase 3 is not opened.
