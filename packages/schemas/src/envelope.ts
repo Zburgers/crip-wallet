@@ -37,7 +37,7 @@ const maximumFeeConstraintsSchema = z.strictObject({
 });
 
 /** Exact immutable execution object bound to approval and authorization. */
-export const canonicalExecutionEnvelopeSchema = z
+export const canonicalExecutionEnvelopeV1Schema = z
   .strictObject({
     schemaVersion: versionSchema,
     envelopeId: canonicalIdentifierSchema,
@@ -82,11 +82,108 @@ export const canonicalExecutionEnvelopeSchema = z
     }
   });
 
+/** Strict Phase-2 envelope for one local EIP-1559 ERC-20 execution. */
+export const canonicalExecutionEnvelopeV2Schema = z
+  .strictObject({
+    schemaVersion: z.literal("2.0"),
+    envelopeId: canonicalIdentifierSchema,
+    revision: z.number().int().positive().safe(),
+    supersedesEnvelopeId: canonicalIdentifierSchema.optional(),
+    intentId: canonicalIdentifierSchema,
+    intentHash: canonicalHashSchema,
+    agentId: canonicalIdentifierSchema,
+    walletId: canonicalIdentifierSchema,
+    adapterId: canonicalIdentifierSchema,
+    adapterVersion: semverSchema,
+    chainId: z.literal("eip155:31337"),
+    from: evmAddressSchema,
+    to: evmAddressSchema,
+    value: atomicUnitSchema,
+    calldata: z.string().regex(/^0x(?:[0-9a-f]{2})*$/),
+    decodedFunction: z.literal("erc20.transfer"),
+    decodedArguments: decodedArgumentsSchema,
+    expectedAssetDeltas: z.array(assetDeltaSchema).min(1),
+    simulationBlockNumber: atomicUnitSchema,
+    simulationBlockHash: evmHashSchema,
+    simulationResultHash: evmHashSchema,
+    nonceStrategy: z.enum(["pending", "latest", "explicit"]),
+    nonce: atomicUnitSchema,
+    transactionType: z.literal("eip1559"),
+    gasLimit: atomicUnitSchema,
+    maxPriorityFeePerGas: atomicUnitSchema,
+    accessList: z.tuple([]),
+    maximumFeeConstraints: maximumFeeConstraintsSchema,
+    policyId: canonicalIdentifierSchema,
+    policyVersion: z.number().int().positive().safe(),
+    policyDecisionHash: evmHashSchema,
+    budgetReservationId: canonicalIdentifierSchema,
+    createdAt: utcSecondSchema,
+    expiresAt: utcSecondSchema,
+    riskDecision: z.enum(["ALLOW", "REVIEW", "DENY"]),
+    approvalRequirement: z.enum(["none", "owner"]),
+    envelopeHash: evmHashSchema,
+  })
+  .superRefine((envelope, context) => {
+    if (Date.parse(envelope.createdAt) >= Date.parse(envelope.expiresAt)) {
+      context.addIssue({
+        code: "custom",
+        path: ["expiresAt"],
+        message: "expiresAt must be later than createdAt",
+      });
+    }
+
+    const priorityFee = atomicUnitSchema.safeParse(
+      envelope.maxPriorityFeePerGas,
+    );
+    const maxFee = atomicUnitSchema.safeParse(
+      envelope.maximumFeeConstraints.maxFeePerGas,
+    );
+    if (
+      priorityFee.success &&
+      maxFee.success &&
+      BigInt(priorityFee.data) > BigInt(maxFee.data)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["maxPriorityFeePerGas"],
+        message: "maxPriorityFeePerGas must not exceed maxFeePerGas",
+      });
+    }
+  });
+
+/** Version-dispatched strict envelope schema. */
+export const canonicalExecutionEnvelopeSchema = z.union([
+  canonicalExecutionEnvelopeV1Schema,
+  canonicalExecutionEnvelopeV2Schema,
+]);
+
 /** Alias used by callers that do not need the canonical prefix in the name. */
 export const executionEnvelopeSchema = canonicalExecutionEnvelopeSchema;
+export type ExecutionEnvelopeV1 = z.infer<
+  typeof canonicalExecutionEnvelopeV1Schema
+>;
+export type ExecutionEnvelopeV2 = z.infer<
+  typeof canonicalExecutionEnvelopeV2Schema
+>;
 export type ExecutionEnvelope = z.infer<
   typeof canonicalExecutionEnvelopeSchema
 >;
+
+const parseExecutionEnvelope = (candidate: unknown): ExecutionEnvelope => {
+  if (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    "schemaVersion" in candidate
+  ) {
+    const version = (candidate as { schemaVersion?: unknown }).schemaVersion;
+    if (version === "1.0")
+      return canonicalExecutionEnvelopeV1Schema.parse(candidate);
+    if (version === "2.0")
+      return canonicalExecutionEnvelopeV2Schema.parse(candidate);
+  }
+
+  return canonicalExecutionEnvelopeSchema.parse(candidate);
+};
 
 /** Domain separator included in every execution-envelope hash preimage. */
 export const ENVELOPE_HASH_DOMAIN = "crip/execution-envelope";
@@ -94,10 +191,13 @@ export const ENVELOPE_HASH_DOMAIN = "crip/execution-envelope";
 /** Hash-preimage version, independent from the JSON schema version. */
 export const ENVELOPE_HASH_VERSION = "v1";
 
+/** Hash-preimage version for the additive Phase-2 envelope. */
+export const ENVELOPE_HASH_VERSION_V2 = "v2";
+
 type CanonicalJsonValue = Parameters<typeof canonicalizeIdempotencyPayload>[0];
 
 const envelopeHashInput = (candidate: unknown): CanonicalJsonValue => {
-  const parsed = canonicalExecutionEnvelopeSchema.parse(candidate);
+  const parsed = parseExecutionEnvelope(candidate);
   const boundFields = Object.fromEntries(
     Object.entries(parsed).filter(([key]) => key !== "envelopeHash"),
   );
@@ -113,13 +213,19 @@ export const serializeExecutionEnvelope = (candidate: unknown): Uint8Array =>
   utf8ToBytes(canonicalizeExecutionEnvelope(candidate));
 
 /** Build the versioned, domain-separated Keccak hash preimage. */
-export const buildEnvelopeHashPreimage = (candidate: unknown): Uint8Array =>
-  concatBytes(
+export const buildEnvelopeHashPreimage = (candidate: unknown): Uint8Array => {
+  const parsed = parseExecutionEnvelope(candidate);
+  const hashVersion =
+    parsed.schemaVersion === "1.0"
+      ? ENVELOPE_HASH_VERSION
+      : ENVELOPE_HASH_VERSION_V2;
+  return concatBytes(
     utf8ToBytes(ENVELOPE_HASH_DOMAIN),
-    utf8ToBytes(ENVELOPE_HASH_VERSION),
+    utf8ToBytes(hashVersion),
     Uint8Array.from([0]),
-    serializeExecutionEnvelope(candidate),
+    serializeExecutionEnvelope(parsed),
   );
+};
 
 /** Hash the exact envelope-bound fields with Ethereum-compatible Keccak-256. */
 export const hashExecutionEnvelope = (candidate: unknown): string =>
@@ -127,7 +233,7 @@ export const hashExecutionEnvelope = (candidate: unknown): string =>
 
 /** Replace the derived envelope hash with the hash of the validated bound fields. */
 export const attachEnvelopeHash = (candidate: unknown): ExecutionEnvelope => {
-  const parsed = canonicalExecutionEnvelopeSchema.parse(candidate);
+  const parsed = parseExecutionEnvelope(candidate);
   return {
     ...parsed,
     envelopeHash: hashExecutionEnvelope(parsed),

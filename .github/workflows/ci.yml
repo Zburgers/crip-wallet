@@ -49,6 +49,15 @@ jobs:
       - name: Verify local service state
         run: npm run dev:status
 
+      - name: Run pinned MockERC20 Forge tests
+        run: npm run contracts:test
+
+      - name: Deploy checkout-bound Phase-2 fixture
+        run: npm run fixture:phase2
+
+      - name: Run local Phase-2 fixture chain gate
+        run: npm run test:chain
+
       - name: Run PostgreSQL integration gate
         run: npm run test:db
 
@@ -58,10 +67,20 @@ jobs:
       - name: Run invariant and property gate
         run: npm run test:invariants
 
+      - name: Run P2-05D clean vertical-slice E2E
+        run: npm run test:e2e
+
+      - name: Run P2-06 fault matrix
+        run: npm run test:fault
+
+      - name: Run P2-06 adversarial matrix
+        run: npm run test:adversarial
+
       - name: Verify generated-state permissions and quiet signer logs
         run: |
           test "$(stat -c %a .local/runtime.env)" = 600
           test "$(stat -c %a .local/anvil/anvil.json)" = 600
+          test "$(stat -c %a .local/phase2-fixture.json)" = 600
           readonly REPO_ROOT="$(pwd -P)"
           source scripts/local-context.sh
           test "$(docker compose --project-name "$CRIP_COMPOSE_PROJECT" --env-file .local/runtime.env logs --no-color anvil 2>&1 | wc -l)" -eq 0

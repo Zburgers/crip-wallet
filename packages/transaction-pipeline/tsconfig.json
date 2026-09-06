@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false,
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "tsBuildInfoFile": "../../.local/tsbuild/transaction-pipeline.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "references": [{ "path": "../schemas" }]
+}

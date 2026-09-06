@@ -5,6 +5,37 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ## Unreleased
 
+### Phase 2
+
+- Final Phase-2 closeout: external S2 acceptance review `5126373971` accepted the governing local fake-ERC20 MVP boundary; PR #17 merged at canonical SHA `34e0b53af07abff20fc36a737c17d6b0107e57bc`. Phase 2 / WS-004 is COMPLETE / ACCEPTED, the scope remains local-only, and Phase 3 is not opened.
+
+- Reconciled final S2 evidence provenance in the docs-only P2-06D remediation: S2 requirement evidence is PASS while Gate S2 remains OPEN / NOT PASSED pending external acceptance; corrected final P2-05D/P2-06A accepted heads and recorded the protected P2-06D implementation/evidence head `6efdfd7c91b437da94b8b0e84e929f01b7aa4f46`. Fresh checks for the new docs-only head are recorded in PR #17.
+
+- Completed P2-06D / evidence package ready from canonical SHA `7f3be19b75b798739e002ff15ece9250cfecd04b`: added explicit protected CI steps for `npm run test:fault` and `npm run test:adversarial`, fixed an expected-rejection timing race in the real-store expiry test, and recorded fresh local evidence of check `21 + 344`, Forge `10/10`, chain `10/10`, E2E `1/1`, DB `126/126`, concurrency `18/18`, invariants `7/7`, fault `133/133`, adversarial `169/169`, and audit `0`. Phase 2 implementation is complete pending external S2 review; S2 remains OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW.
+
+- Integrated externally accepted P2-06B and P2-06C on `integration/p2-06bc` from canonical base `b27202edac48cd183ec1bac8856b905447d91f49`; preserved the complete P2-06B remediation range, added the substitution/reconciliation matrix, and kept P2-06D pending. Combined local evidence is fault 133/133, adversarial 169/169, DB 126/126, concurrency 18/18, invariants 7/7, chain 10/10, E2E 1/1, Forge 10/10, check 21 repository + 344 Vitest, and audit 0 high vulnerabilities. S2 remains OPEN / NOT PASSED.
+
+- Integrated P2-06A on canonical Phase-2 branch `phase-2/ws-004-local-erc20` (PR #5; P2-05 ACCEPTED; PRs #8 and #12 merged/closed): deterministic loopback Anvil fault proxy, method-aware fault modes, request/forward barriers, exact counters, receipt release, runtime validation and raw-transaction redaction. P2-06B/C/D remain pending; S2 remains OPEN / NOT PASSED.
+
+- Completed P2-05D remediation on `integration/p2-05d` code SHA `a45c32d46330230614c8a72b44c0941dd0cf1850`: integrated PRE-A canonical autonomous authorization with PRE-B signer-local execution, preserved owner-approval fence snapshots, bound preparation ID collisions, ordered final policy evaluation after exact executable verification, and added an explicit protected E2E step. Local evidence is 1/1 E2E, 122/122 DB, 18/18 concurrency, 7/7 invariants, 10/10 chain, 10/10 Forge, 21 repository + 314 Vitest, and 0 high audit vulnerabilities. Protected CI `33441013501` and Secret Scan `33441013543` pass on that exact code SHA; S2 remains OPEN / NOT PASSED pending external acceptance review.
+- Corrected the ERC-20 Transfer event topic for new P2-05 evidence in forward migration 0024 without editing migrations 0001–0023; existing rows with the legacy incorrect topic remain unverifiable and fail closed.
+
+- Opened Phase 2 / WS-004 from current `main` for the local fake-ERC-20 vertical slice: construct, independently verify, simulate, authorize, locally sign, broadcast, confirm and reconcile.
+- Added `docs/plans/PHASE-2.md` and `docs/workstreams/WS-004-transaction-pipeline.md` with explicit local-only boundaries, packet order, S2 evidence requirements and chain-level ambiguity/fault coverage.
+- Preserved the prohibition on public RPC, testnet/mainnet, real funds, production custody and production identity.
+- Replaced the Phase-2 bootstrap outline with an implementation-ready architecture and packet plan covering exact interfaces, envelope/data migration impact, independent verification, simulation freshness, signer isolation, persist-before-send broadcast recovery, evidence-bound reconciliation, deterministic faults and S2 reproduction.
+- **Accepted ADR-0015** as the Phase-2 exact-EVM execution contract. Envelope v2 uses schema version `2.0` and a distinct v2 hash-preimage version; binds every unsigned EIP-1559 field including resolved nonce, priority/max fee and `accessList: []`; preserves envelope v1 unchanged; uses bounded canonical simulation freshness; keeps the IDs-only DB-loaded signer as a local-Anvil reference-adapter mechanism rather than universal provider DB coupling; persists expected transaction hash/broadcast attempt before send; and preserves ADR-0014 authenticated reconciliation of untrusted chain evidence.
+- P2-02 is no longer blocked on product-owner architecture approval. It remains sequenced after P2-01 review/stabilization and must implement the accepted ADR rather than redesigning the execution boundary.
+- Reconciled `docs/SECURITY.md` with current gate authority: S0 PASS, S1 PASS / ACCEPTED, S2 OPEN / NOT PASSED. Historical WP-03/WP-04 blocked language is now explicitly framed as checkpoint history rather than current status.
+- Implemented P2-01: a digest-pinned minimal MockERC20, secure checkout-bound deployment, genesis/fixture/code fingerprints, cryptographically random per-deployment fixture instances, clean-reset stale-instance enforcement, and fail-closed chain tests. Protected evidence is 10/10 Forge tests and 9/9 fixture tests on implementation head `25e8147f` (CI `33189082028`, Secret Scan `33189082181`); this does not claim S2 completion.
+- Integrated P2-02 locally on stable head `343de49` as `9d58f47`, combining additive envelope v2/hash dispatch with the `viem` `2.56.0` static transfer constructor, independent strict decoder and fail-closed verifier. Local integration evidence includes 87 focused P2-02 tests, 21 repository + 205 package checks, 10/10 Forge tests, 71/71 DB tests, 18/18 concurrency tests, 7/7 invariant tests and 0 high-severity audit findings. Protected current-head CI and Secret Scan are not claimed; P2-03 is the next packet.
+- Implemented P2-03 locally from coordinator SHA `733b32f`: strict executable/evidence schemas, canonical block-pinned loopback simulation, explicit pending nonce and EIP-1559 resolution, 10% integer gas margin, native-fee ceiling/balance enforcement, normalized evidence hashing, exact-field verification, and bounded freshness where an unrelated newer head remains valid. Focused evidence is 20 unit tests plus 1 chain test; protected current-head CI and Secret Scan are not claimed.
+
+### Dependencies
+
+- Merged `typescript-eslint` 8.67.0 and `@types/node` 26.2.0 after protected CI and Secret Scan passed on their update PRs.
+- Kept TypeScript pinned at 6.0.3. Dependabot PR #2 for TypeScript 7.0.2 is intentionally ignored for the TypeScript 7 major line because `typescript-eslint@8.67.0` declares TypeScript `<6.1.0`; the attempted update fails closed during `npm ci` with `ERESOLVE`.
+
 ### Security
 
 - WP-07 closes the alternate authorization path. Protected reservation states require canonical authorization evidence and the database rejects manufactured authorization/broadcast/finalization state.
@@ -13,6 +44,7 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 - WP-09 hardens recovery claims: lease duration is authenticated and bounded, lease validity/expiry uses PostgreSQL time, and caller-supplied time cannot steal a live lease.
 - WP-10 closes the reservation-to-envelope revocation/pause gap and atomically releases eligible held reservations before an envelope exists.
 - WP-11 places DB, deterministic concurrency and invariant/property suites inside the protected `validate` workflow so a core financial/authorization regression can no longer merge behind a static-only green check.
+- ADR-0015 closes the **architecture-level** unbound-EVM-field gap but does not claim implementation proof. P2-02 through P2-06 still own schema/DB mutation tests, independent decode, simulation freshness, signer isolation, persist-before-send ambiguity handling, chain-evidence verification and exactly-once reconciliation evidence.
 
 ### Governance / planning
 

@@ -11,6 +11,7 @@ import type { PoolClient } from "pg";
 export type AuditActorType =
   "owner" | "agent" | "service" | "system" | "worker" | "adapter";
 export type AuditEventType =
+  | "policy.evaluated"
   | "budget.reservation.created"
   | "budget.reservation.authorized"
   | "budget.reservation.broadcast"
@@ -34,7 +35,14 @@ export type AuditEventType =
   | "execution.recovery.claimed"
   | "execution.recovery.ambiguous"
   | "execution.recovery.resolved"
-  | "execution.recovery.conflict";
+  | "execution.recovery.conflict"
+  | "signing.started"
+  | "signing.failed"
+  | "transaction.signed"
+  | "transaction.constructed"
+  | "transaction.decoded"
+  | "transaction.verified"
+  | "transaction.simulated";
 
 export interface ComponentAuthorization {
   credentialId: string;

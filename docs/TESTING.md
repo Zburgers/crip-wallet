@@ -22,7 +22,7 @@ behavior, invariant, threat, tooling, suite command, or release gate.
 | Database | migrations, reservation, idempotency, audit | `npm run test:db` |
 | Concurrency | simultaneous reservations/approval/control races | `npm run test:concurrency` |
 | Property | generated transition and accounting sequences | `npm run test:invariants` |
-| Chain | mock token, build/decode/simulate/broadcast/reconcile | `npm run test:chain` |
+| Chain | mock token and local fixture; later build/decode/simulate/broadcast/reconcile | `npm run test:chain` |
 | Adversarial | all threat fixtures and bypass attempts | `npm run test:adversarial` |
 | E2E | owner/agent journeys through public interfaces | `npm run test:e2e` |
 | Browser | dashboard UX, approvals, controls, accessibility | `npm run test:browser` |
@@ -62,6 +62,40 @@ chain 31337 and generated disposable state under `.local/`.
 `CRIP_POSTGRES_PORT=<other-port> npm run test:concurrency` is expected to fail
 before connecting when it disagrees with the persisted runtime, protecting the
 suite's destructive `TRUNCATE ... CASCADE` setup.
+
+## Phase-2 local fixture gate
+
+The P2-01 fixture is deliberately narrower than the complete S2 transaction
+pipeline. It proves the disposable fixed-supply token and the checkout-bound
+Anvil boundary without claiming construction, signing, broadcast recovery, or
+reconciliation.
+
+- `npm run contracts:test`: pinned Forge/Anvil Docker image; 10 MockERC20 tests.
+- `npm run fixture:phase2`: verifies loopback/31337 runtime identity, deploys
+  only from a clean Anvil reset, verifies deployment receipt, bytecode hash,
+  metadata and initial supply, and writes `.local/phase2-fixture.json` mode
+  `0600` without private-key material.
+- `npm run test:chain -- fixture.test.ts`: 9 Vitest tests covering positive
+  fixture verification and transfer behavior, public-host/wrong-chain guards,
+  checkout binding, malformed Anvil state, stale/code-hash mismatch, and
+  reset/redeploy instance staleness and secret-free output.
+
+The chain suite is fail-closed when the requested suite is missing. A transfer
+mutates disposable Anvil state; rerun the lifecycle and fixture commands from a
+fresh reset before rerunning the suite.
+
+P2-03 adds `packages/transaction-pipeline/test/simulation.test.ts` (15
+deterministic unit tests), `packages/schemas/test/evm-execution.test.ts` (5
+schema tests), and `tests/chain/simulation.test.ts` (1 loopback test). The
+resolver uses a canonical block snapshot, pending nonce, token/native balances,
+a 10% integer gas margin, explicit EIP-1559 fees and `accessList: []`.
+Freshness permits an unrelated newer head within the configured block-age
+window, but rejects canonicality, fixture, nonce, balance, fee, and executable
+field changes. Revert evidence is normalized and hashed; no signer, broadcast,
+or migration is involved. The fixture reset/redeploy test can exceed its
+existing 5-second default timeout in a cold container; diagnose that inherited
+P2-01 test with `--testTimeout=15000` rather than weakening the gate or calling
+the full chain suite concurrently.
 
 ## Evidence promotion
 
