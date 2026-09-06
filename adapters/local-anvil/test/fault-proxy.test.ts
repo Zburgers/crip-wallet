@@ -304,6 +304,29 @@ describe("local Anvil fault proxy", () => {
     expect(snapshot).toContain("REDACTED");
   });
 
+  it("resolves request barriers deterministically and counts exact traffic", async () => {
+    const { proxy, upstream } = await proxyFor("passthrough", "0x7a69");
+    const request = proxy.waitForRequest("eth_chainId");
+    const forward = proxy.waitForForward("eth_chainId");
+    const response = await rpc(proxy.url, "eth_chainId");
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: 1,
+      result: "0x7a69",
+    });
+    await expect(request).resolves.toMatchObject({
+      method: "eth_chainId",
+      forwarded: false,
+    });
+    await expect(forward).resolves.toMatchObject({
+      method: "eth_chainId",
+      forwarded: true,
+    });
+    expect(proxy.requestCount("eth_chainId")).toBe(1);
+    expect(proxy.forwardCount("eth_chainId")).toBe(1);
+    expect(upstream.calls).toHaveLength(1);
+  });
+
   it("supports method-scoped mode control and reliable cleanup", async () => {
     const { proxy, upstream } = await proxyFor("passthrough");
     proxy.setMode("explicit-rpc-rejection", {
