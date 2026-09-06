@@ -8,7 +8,7 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-05 is ACCEPTED on canonical branch `phase-2/ws-004-local-erc20` / PR #5; auxiliary PRs #8 and #12 are merged/closed. P2-06A is integrated/accepted as test infrastructure; P2-06B/C are integrated and externally accepted; P2-06D is COMPLETE / EVIDENCE READY. S2 requirement evidence is PASS; external S2 acceptance is PENDING. Phase 2 implementation is COMPLETE / READY FOR EXTERNAL S2 ACCEPTANCE REVIEW. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 remains **OPEN / NOT PASSED / READY FOR EXTERNAL ACCEPTANCE**.
+**Status:** P2-05 is ACCEPTED on canonical branch `phase-2/ws-004-local-erc20` / PR #5; auxiliary PRs #8 and #12 are merged/closed. P2-06A/B/C/D are integrated and externally accepted; P2-06D is COMPLETE / ACCEPTED. S2 requirement evidence is PASS; external S2 acceptance review `5126373971` is PASS / ACCEPTED. Phase 2 / WS-004 is COMPLETE / ACCEPTED for the governing local MVP boundary. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 is **PASS / ACCEPTED**; Phase 3 is NOT OPENED.
 
 ---
 
@@ -19,7 +19,7 @@
 - Accepted `main` baseline / Phase-2 branch point: `f733a41ed16c44ad631f0a5a4b52e8096ab70eed`.
 - Planning commit: `51a0ba471d9dbc829821b474782183206902cff8`.
 - PR: #5, open draft.
-- Accepted gates: S0 PASS; S1 PASS / ACCEPTED; S2 OPEN / NOT PASSED.
+- Accepted gates: S0 PASS; S1 PASS / ACCEPTED; S2 PASS / ACCEPTED.
 - Existing packages to consume: `packages/schemas`, `packages/policy-engine`, `packages/budget-ledger`, `packages/approvals`, `packages/audit`, and `packages/trust-boundary`.
 - Existing migrations: forward-only `0001` through corrective `0021`; never edit their meaning/checksums.
 - Existing Phase-1 handoff: an operation/reservation in `AUTHORIZED`, immutable `authorization_evidence`, one current envelope revision, no active invalidation, and matching ACTIVE system/owner/agent/policy fence snapshots.
@@ -579,10 +579,10 @@ Never proxy non-loopback destinations. Deterministic barriers for: unavailable b
 
 #### P2-06B - Broadcast/crash matrix
 
-**Current checkpoint:** P2-06B/C are implemented, integrated and externally
-accepted. P2-06D is COMPLETE / EVIDENCE READY; S2 requirement evidence is PASS,
-external S2 acceptance is PENDING, and Gate S2 remains **OPEN / NOT PASSED /
-READY FOR EXTERNAL ACCEPTANCE**.
+**Current checkpoint:** P2-06B/C/D are implemented, integrated and externally
+accepted. S2 requirement evidence is PASS, external S2 acceptance review
+`5126373971` is PASS / ACCEPTED, and Gate S2 is **PASS / ACCEPTED** for the
+governing local MVP boundary.
 
 Cover RPC unavailable, rejection before acceptance, request transmitted/response lost, known hash/no receipt, duplicate broadcast, receipt revert, stale nonce, crash before send, crash after send, recovery retry after uncertainty.
 
@@ -618,8 +618,8 @@ npm run dev:down
 ```
 
 Every command must be real (no no-op pass). Protected current-head CI and Secret
-Scan must pass before this packet is marked complete; independent external review
-must decide S2 acceptance.
+Scan passed the accepted implementation/provenance heads, and external review
+`5126373971` accepted S2 for the governing local boundary.
 
 ---
 
@@ -699,24 +699,24 @@ Residual MVP risk: a fully compromised local host/signer can defeat local fake-v
 ## 12. S2 closeout checklist
 
 - [x] ADR-0015 accepted and governing docs aligned; accepted ADRs are not edited in place to change prior meaning.
-- [ ] P2-01 reviewed: pinned local contract toolchain + fake token + unique fixture instance + reset/public-chain guards.
-- [ ] Fresh clone/current head installs with lockfile and zero high vulnerabilities.
-- [ ] Existing S0/S1 repository, unit, DB, concurrency, invariant and security gates pass unchanged.
-- [ ] Anvil is loopback-only 31337 and current fixture instance/code hash is verified after clean reset.
-- [ ] Envelope v1 frozen vectors remain exact; envelope v2 schema/hash vectors are deterministic and domain-separated.
-- [ ] Constructor and independent decoder use separate implementations; all static mutation vectors fail closed.
-- [ ] Simulation is fixture/block/nonce/balance/fee bound; unrelated fresh head does not cause a liveness loop; genuinely stale evidence cannot sign.
-- [ ] Every unsigned type-2 field, including `accessList: []`, is envelope-bound and signer-exact.
-- [ ] Native max fee is enforced before envelope and pre-sign and never touches ERC-20 budget accounting.
-- [ ] Local signer accepts IDs only; no raw/message/typed signing surface; no secret/raw signed bytes in API/log/audit/fixture.
-- [ ] Expected transaction hash + STARTED attempt are durable before send; response loss remains uncertain.
-- [ ] Transaction, receipt, canonical block, fixture and exact `Transfer` evidence match envelope/operation/reservation.
-- [ ] ADR-0014 authenticated reconciler evidence gates exactly-once economic resolution.
-- [ ] Success finalizes once; verified status-0/pre-broadcast failure resolves safely; ambiguity/mismatch disputes and retains.
-- [ ] All required deterministic fault/adversarial cases pass without sleep races.
-- [ ] Complete correlated append-only audit timeline exists and contains no prohibited data.
-- [ ] Protected current-head CI and Secret Scan pass and exact evidence IDs/counts are recorded in `docs/TEST_MATRIX.md`.
-- [ ] Independent reviewer confirms no public/testnet/mainnet/real-fund/production-custody path and no Phase-3 overclaim.
+- [x] P2-01 reviewed: pinned local contract toolchain + fake token + unique fixture instance + reset/public-chain guards.
+- [x] Fresh clone/current head installs with lockfile and zero high vulnerabilities.
+- [x] Existing S0/S1 repository, unit, DB, concurrency, invariant and security gates pass unchanged.
+- [x] Anvil is loopback-only 31337 and current fixture instance/code hash is verified after clean reset.
+- [x] Envelope v1 frozen vectors remain exact; envelope v2 schema/hash vectors are deterministic and domain-separated.
+- [x] Constructor and independent decoder use separate implementations; all static mutation vectors fail closed.
+- [x] Simulation is fixture/block/nonce/balance/fee bound; unrelated fresh head does not cause a liveness loop; genuinely stale evidence cannot sign.
+- [x] Every unsigned type-2 field, including `accessList: []`, is envelope-bound and signer-exact.
+- [x] Native max fee is enforced before envelope and pre-sign and never touches ERC-20 budget accounting.
+- [x] Local signer accepts IDs only; no raw/message/typed signing surface; no secret/raw signed bytes in API/log/audit/fixture.
+- [x] Expected transaction hash + STARTED attempt are durable before send; response loss remains uncertain.
+- [x] Transaction, receipt, canonical block, fixture and exact `Transfer` evidence match envelope/operation/reservation.
+- [x] ADR-0014 authenticated reconciler evidence gates exactly-once economic resolution.
+- [x] Success finalizes once; verified status-0/pre-broadcast failure resolves safely; ambiguity/mismatch disputes and retains.
+- [x] All required deterministic fault/adversarial cases pass without sleep races.
+- [x] Complete correlated append-only audit timeline exists and contains no prohibited data.
+- [x] Protected current-head CI and Secret Scan pass and exact evidence IDs/counts are recorded in `docs/TEST_MATRIX.md`.
+- [x] External S2 review confirms no public/testnet/mainnet/real-fund/production-custody path and no Phase-3 overclaim.
 
 ---
 
@@ -765,7 +765,7 @@ Local evidence at this historical checkpoint included `npm run check` (21 reposi
 
 External review `5060378379` identified broadcast and reconciliation safety gaps at reviewed head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6`. The remediation keeps ADR-0015 and the Phase-1 budget authority unchanged: exact canonical signed bytes are hashed before send; valid wrong returned hashes are CONFLICT; durable send-capable attempts fence pre-broadcast release; legacy evidence is DB-bound to the exact attempt/hash/nonce/receipt identity; and P2-05C retries serialize per operation and resume idempotently after economic resolution or effect persistence. This is historical remediation context; the current P2-05D evidence is recorded above and protected current-head evidence remains required for external review. S2 remains **OPEN / NOT PASSED**.
 
-### P2-02 implementation/integration handoff
+### P2-02 implementation/integration handoff (historical)
 
 P2-02 integration used the reviewed commits `9a5fe377` (envelope v2) and `bc5ff828` (static transfer core) on stable P2-01 head `343de49`, producing local integration head `9d58f47`. It added no migrations, signer, broadcast or public-network behavior. Local combined evidence is recorded in `docs/TEST_MATRIX.md`; protected current-head CI and Secret Scan remain an external gate.
 
@@ -780,4 +780,4 @@ Review P2-01 specifically for:
 - secret scans and S0/S1 regression gates;
 - no P2-02 scope creep.
 
-P2-03 input is the strict `TransferCoreCandidate` from `constructTransferCore`, the independently decoded `DecodedTransfer` from `decodeTransferIndependent`, the canonical transfer intent, and trusted local context/provenance. P2-03 is implemented locally in `packages/transaction-pipeline` with additive runtime schemas in `packages/schemas`: it pins simulation to the current loopback fixture and canonical block, resolves pending nonce/gas/type-2 fees/access-list, enforces checked native max-cost and balance separation, hashes normalized evidence, verifies exact fields, and exposes bounded freshness. It has no persistent candidate authority and performs no authorization/signing/broadcast. Local focused evidence is 20 unit tests and 1 chain test; protected current-head evidence is not claimed. Gate S2 remains **NOT PASSED** until the complete packet chain and closeout evidence pass.
+P2-03 input is the strict `TransferCoreCandidate` from `constructTransferCore`, the independently decoded `DecodedTransfer` from `decodeTransferIndependent`, the canonical transfer intent, and trusted local context/provenance. P2-03 is implemented locally in `packages/transaction-pipeline` with additive runtime schemas in `packages/schemas`: it pins simulation to the current loopback fixture and canonical block, resolves pending nonce/gas/type-2 fees/access-list, enforces checked native max-cost and balance separation, hashes normalized evidence, verifies exact fields, and exposes bounded freshness. It has no persistent candidate authority and performs no authorization/signing/broadcast. This is a historical implementation handoff; final protected evidence and S2 acceptance are recorded in the current closeout record above.

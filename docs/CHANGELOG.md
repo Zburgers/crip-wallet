@@ -7,6 +7,8 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ### Phase 2
 
+- Final Phase-2 closeout: external S2 acceptance review `5126373971` accepted the governing local fake-ERC20 MVP boundary; PR #17 merged at canonical SHA `34e0b53af07abff20fc36a737c17d6b0107e57bc`. Phase 2 / WS-004 is COMPLETE / ACCEPTED, the scope remains local-only, and Phase 3 is not opened.
+
 - Reconciled final S2 evidence provenance in the docs-only P2-06D remediation: S2 requirement evidence is PASS while Gate S2 remains OPEN / NOT PASSED pending external acceptance; corrected final P2-05D/P2-06A accepted heads and recorded the protected P2-06D implementation/evidence head `6efdfd7c91b437da94b8b0e84e929f01b7aa4f46`. Fresh checks for the new docs-only head are recorded in PR #17.
 
 - Completed P2-06D / evidence package ready from canonical SHA `7f3be19b75b798739e002ff15ece9250cfecd04b`: added explicit protected CI steps for `npm run test:fault` and `npm run test:adversarial`, fixed an expected-rejection timing race in the real-store expiry test, and recorded fresh local evidence of check `21 + 344`, Forge `10/10`, chain `10/10`, E2E `1/1`, DB `126/126`, concurrency `18/18`, invariants `7/7`, fault `133/133`, adversarial `169/169`, and audit `0`. Phase 2 implementation is complete pending external S2 review; S2 remains OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW.
