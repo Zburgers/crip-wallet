@@ -257,7 +257,7 @@ verified transaction, receipt, and reconciled transaction hashes all equal
 All rows are bound to operation `op_p205d_e2e`; audit payloads contain hashes
 and identifiers only, with no raw signed bytes or private key.
 
-### P2-06A integration checkpoint (current)
+### P2-06A integration checkpoint (historical)
 
 Canonical branch: `phase-2/ws-004-local-erc20`; canonical PR: #5; P2-05:
 ACCEPTED. Auxiliary PR #8 and PR #12: merged/closed. P2-06A is integrated on
@@ -273,3 +273,21 @@ NOT PASSED.
 
 P2-06A is test-only infrastructure. P2-06B/C/D are pending and no S2 claim is
 made.
+
+### P2-06B/C integration checkpoint (current)
+
+| Scope | Result |
+| --- | --- |
+| Canonical starting point | `phase-2/ws-004-local-erc20` at `b27202edac48cd183ec1bac8856b905447d91f49` |
+| P2-06B | IMPLEMENTED / INTEGRATED / EXTERNALLY ACCEPTED — complete range `eb8037b` → `95d339a` → `a6a2ff1`; no product or ADR redesign |
+| P2-06C | IMPLEMENTED / INTEGRATED / EXTERNALLY ACCEPTED — accepted head `e0bb273d9000eaf6150a5e200cc6ab0e65cd1dd6` |
+| P2-06A | INTEGRATED / ACCEPTED on canonical base; loopback-only proxy and redaction preserved |
+| Combined fault gate | PASS — `npm run test:fault`: 9 files, 133/133 tests; P2-06A + P2-06B coverage |
+| Combined adversarial gate | PASS — `npm run test:adversarial`: 7 files, 169/169 tests; P2-06C plus inherited authority/reconciliation coverage |
+| Inherited gates | PASS — check 21 repository + 344 Vitest; Forge 10/10; chain 10/10; E2E 1/1; DB 126/126; concurrency 18/18; invariants 7/7 |
+| Dependency audit | PASS — `npm audit --audit-level=high`: 0 vulnerabilities |
+| Conflict resolution | None; B then C cherry-picked cleanly with four preserved commits |
+| Scope | P2-06D pending; local fake-money Anvil `eip155:31337` only; S2 OPEN / NOT PASSED |
+
+Protected CI and Secret Scan for the pushed integration head are required
+before external integration review; S2 remains **OPEN / NOT PASSED**.

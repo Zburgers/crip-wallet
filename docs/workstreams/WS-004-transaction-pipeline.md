@@ -2,7 +2,7 @@
 
 **Phase:** 2
 
-**Status:** OPEN / P2-05 ACCEPTED on canonical PR #5; P2-06A INTEGRATED ON THIS CHECKPOINT; P2-06B/C/D PENDING; ADR-0015/0016/0017 ACCEPTED; S2 NOT PASSED
+**Status:** OPEN / P2-05 ACCEPTED on canonical PR #5; P2-06A INTEGRATED/ACCEPTED; P2-06B/C INTEGRATED AND EXTERNALLY ACCEPTED on `integration/p2-06bc`; P2-06D PENDING; ADR-0015/0016/0017 ACCEPTED; S2 NOT PASSED
 
 **Dependency:** Gate S1 — PASS / ACCEPTED
 
@@ -70,7 +70,7 @@ The implementation-ready contract is in `docs/plans/PHASE-2.md`. It reuses the P
 
 ADR-0015 is **ACCEPTED**. It resolves the previous exact-signing blocker by requiring additive envelope v2 semantics, `accessList: []`, bounded canonical simulation freshness, local-Anvil IDs-only signer isolation without universal provider DB coupling, persist-before-send expected-hash evidence, and ADR-0014-authenticated reconciliation of untrusted chain evidence.
 
-P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 through P2-05D are integrated in the accepted dependency order; P2-05 is ACCEPTED on canonical PR #5. P2-06A is integrated on this checkpoint as test-only fault infrastructure; P2-06B/C/D remain pending.
+P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 through P2-05D are integrated in the accepted dependency order; P2-05 is ACCEPTED on canonical PR #5. P2-06A is integrated/accepted as test-only fault infrastructure. P2-06B/C are integrated and externally accepted on `integration/p2-06bc`; P2-06D remains pending.
 
 External review `5060378379` at integration head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6` required remediation before P2-05D. The remediation binds the exact canonical signed bytes before RPC, distinguishes CONFLICT from UNKNOWN, fences every pre-broadcast release after a durable send-capable attempt, binds legacy evidence to the verified attempt/hash/nonce/receipt identity, and makes post-resolution reconciliation crash-resumable. This is historical context; protected exact-final-head evidence remains mandatory before external re-review. P2-05D is now implemented and S2 is **NOT PASSED**.
 
@@ -86,7 +86,8 @@ The clean vertical-slice attempt at reviewed checkpoint `2f78b0f3c888ca6b8b06340
 
 ADR-0016 and ADR-0017 are **Accepted — 2026-08-31 by product owner**. PRE-A
 and PRE-B are integrated on the canonical Phase-2 branch. P2-06A is integrated
-on this checkpoint; P2-06B/C/D remain pending; S2 remains **NOT PASSED**.
+on this checkpoint; P2-06B/C are integrated and externally accepted on
+`integration/p2-06bc`; P2-06D remains pending; S2 remains **NOT PASSED**.
 
 The P2-05D clean vertical slice uses production lifecycle/evidence writers,
 `authorizeAutonomous`, the isolated same-child signer/broadcaster handoff,

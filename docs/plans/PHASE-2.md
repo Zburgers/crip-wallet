@@ -8,7 +8,7 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-05 is ACCEPTED on canonical branch `phase-2/ws-004-local-erc20` / PR #5; auxiliary PRs #8 and #12 are merged/closed. P2-06A is integrated on this checkpoint as test infrastructure; P2-06B/C/D are pending. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 remains **OPEN / NOT PASSED**.
+**Status:** P2-05 is ACCEPTED on canonical branch `phase-2/ws-004-local-erc20` / PR #5; auxiliary PRs #8 and #12 are merged/closed. P2-06A is integrated/accepted as test infrastructure; P2-06B/C are integrated and externally accepted on `integration/p2-06bc`; P2-06D is pending. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 remains **OPEN / NOT PASSED**.
 
 ---
 
@@ -578,6 +578,11 @@ From a seeded canonical intent, execute the complete autonomous-within-policy jo
 Never proxy non-loopback destinations. Deterministic barriers for: unavailable before send, explicit rejection, forward-then-drop response, wrong hash/transaction/receipt, delayed receipt, and crash hooks around durable attempt boundaries.
 
 #### P2-06B - Broadcast/crash matrix
+
+**Current checkpoint:** P2-06B is implemented and integrated on
+`integration/p2-06bc` from the complete accepted remediation range; external
+review is accepted. P2-06C is integrated and externally accepted on the same
+branch. P2-06D remains pending, and Gate S2 remains **OPEN / NOT PASSED**.
 
 Cover RPC unavailable, rejection before acceptance, request transmitted/response lost, known hash/no receipt, duplicate broadcast, receipt revert, stale nonce, crash before send, crash after send, recovery retry after uncertainty.
 
