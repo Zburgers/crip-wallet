@@ -2,7 +2,7 @@
 
 **Phase:** 2
 
-**Status:** OPEN / P2-05A/B/C REVIEWED; P2-05D IMPLEMENTED AND READY FOR EXTERNAL ACCEPTANCE REVIEW; P2-06A SEPARATE; ADR-0015/0016/0017 ACCEPTED; S2 NOT PASSED
+**Status:** OPEN / P2-05 ACCEPTED on canonical PR #5; P2-06A INTEGRATED ON THIS CHECKPOINT; P2-06B/C/D PENDING; ADR-0015/0016/0017 ACCEPTED; S2 NOT PASSED
 
 **Dependency:** Gate S1 — PASS / ACCEPTED
 
@@ -70,7 +70,7 @@ The implementation-ready contract is in `docs/plans/PHASE-2.md`. It reuses the P
 
 ADR-0015 is **ACCEPTED**. It resolves the previous exact-signing blocker by requiring additive envelope v2 semantics, `accessList: []`, bounded canonical simulation freshness, local-Anvil IDs-only signer isolation without universal provider DB coupling, persist-before-send expected-hash evidence, and ADR-0014-authenticated reconciliation of untrusted chain evidence.
 
-P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 through P2-04 are integrated in the accepted dependency order. P2-05A persists the expected hash and broadcast attempt before send; P2-05B independently verifies untrusted transaction/receipt/block/Transfer evidence; P2-05C authenticates the reconciler before the existing lease-fenced exactly-once ledger recovery path; and P2-05D is implemented at remediation code SHA `a45c32d46330230614c8a72b44c0941dd0cf1850` with a fresh clean E2E. P2-06A remains separate test infrastructure.
+P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 through P2-05D are integrated in the accepted dependency order; P2-05 is ACCEPTED on canonical PR #5. P2-06A is integrated on this checkpoint as test-only fault infrastructure; P2-06B/C/D remain pending.
 
 External review `5060378379` at integration head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6` required remediation before P2-05D. The remediation binds the exact canonical signed bytes before RPC, distinguishes CONFLICT from UNKNOWN, fences every pre-broadcast release after a durable send-capable attempt, binds legacy evidence to the verified attempt/hash/nonce/receipt identity, and makes post-resolution reconciliation crash-resumable. This is historical context; protected exact-final-head evidence remains mandatory before external re-review. P2-05D is now implemented and S2 is **NOT PASSED**.
 
@@ -85,9 +85,8 @@ attempt trigger makes the competing release or expiry fail closed.
 The clean vertical-slice attempt at reviewed checkpoint `2f78b0f3c888ca6b8b06340b8c4a308d1bb7053f` correctly stopped without protected-state seeding. Proposed ADR-0016 adds a canonical `AUTONOMOUS_POLICY` kind to the existing authorization root while preserving owner approval. Proposed ADR-0017 keeps exact serialized bytes in the restricted local execution child and composes the unchanged P2-05A broadcaster there, with deterministic rematerialization allowed only when signed evidence exists and no attempt exists. The implementation package is `docs/plans/2026-08-31-p2-05d-architecture-gap-closure.md`.
 
 ADR-0016 and ADR-0017 are **Accepted — 2026-08-31 by product owner**. PRE-A
-and PRE-B are integrated and security-reviewed on `integration/p2-05d` at
-remediation code SHA `a45c32d46330230614c8a72b44c0941dd0cf1850`. P2-06A remains separate; P2-06B/C/D remain
-unstarted; S2 remains **NOT PASSED**.
+and PRE-B are integrated on the canonical Phase-2 branch. P2-06A is integrated
+on this checkpoint; P2-06B/C/D remain pending; S2 remains **NOT PASSED**.
 
 The P2-05D clean vertical slice uses production lifecycle/evidence writers,
 `authorizeAutonomous`, the isolated same-child signer/broadcaster handoff,

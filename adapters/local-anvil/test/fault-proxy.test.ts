@@ -1,4 +1,8 @@
 import { createServer, type Server } from "node:http";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -92,6 +96,71 @@ describe("local Anvil fault proxy", () => {
     await expect(createFaultProxy({ upstreamUrl })).rejects.toThrow(
       /loopback-only|local Anvil/i,
     );
+  });
+
+  const runtimeRootFor = async (anvilUrl: string, anvilPort: number) => {
+    const root = await mkdtemp(join(tmpdir(), "crip-fault-runtime-"));
+    await mkdir(join(root, "tooling"));
+    await writeFile(
+      join(root, "tooling", "local-runtime.mjs"),
+      await readFile(join(process.cwd(), "tooling", "local-runtime.mjs")),
+    );
+    const hash = createHash("sha256")
+      .update(resolve(root))
+      .digest("hex")
+      .slice(0, 12);
+    await mkdir(join(root, ".local"));
+    await writeFile(
+      join(root, ".local", "runtime.env"),
+      [
+        "CRIP_RUNTIME_STATE=ready",
+        `CRIP_CHECKOUT_HASH=${hash}`,
+        `CRIP_COMPOSE_PROJECT=crip-wallet-${hash}`,
+        "CRIP_ENVIRONMENT=local",
+        "CRIP_CHAIN_ID=eip155:31337",
+        "CRIP_POSTGRES_HOST=127.0.0.1",
+        "CRIP_POSTGRES_PORT=5432",
+        "CRIP_POSTGRES_DATABASE=crip",
+        "CRIP_POSTGRES_USER=crip",
+        "CRIP_POSTGRES_PASSWORD=test-only",
+        "CRIP_ANVIL_HOST=127.0.0.1",
+        `CRIP_ANVIL_PORT=${anvilPort}`,
+        `CRIP_RPC_URL=${anvilUrl}`,
+        "",
+      ].join("\n"),
+    );
+    return root;
+  };
+
+  it("rejects a loopback upstream from a different current runtime", async () => {
+    const { proxy, upstream } = await proxyFor();
+    await proxy.close();
+    const root = await runtimeRootFor("http://127.0.0.1:8546", 8546);
+    try {
+      await expect(
+        createFaultProxy({ root, upstreamUrl: upstream.url }),
+      ).rejects.toThrow(/not this checkout's Anvil runtime/i);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts the loopback upstream selected by the current runtime", async () => {
+    const upstream = await startUpstream("0x7a69");
+    resources.push(upstream);
+    const root = await runtimeRootFor(
+      upstream.url,
+      Number(new URL(upstream.url).port),
+    );
+    try {
+      const proxy = await createFaultProxy({ root, upstreamUrl: upstream.url });
+      resources.push(proxy);
+      await expect(rpc(proxy.url, "eth_chainId")).resolves.toMatchObject({
+        status: 200,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("does not send unavailable-before-send requests upstream", async () => {
