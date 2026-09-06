@@ -48,6 +48,15 @@ const files =
     ? requestedFiles.flatMap((file) => (file === null ? [] : [file]))
     : available;
 
+if (suite === "fault") {
+  const durable = join(repoRoot, "tests", "db", "execution-evidence.test.ts");
+  if (
+    requested.length === 0 ||
+    requested.includes("execution-evidence.test.ts")
+  )
+    files.push(relative(repoRoot, durable));
+}
+
 if (
   files.length === 0 ||
   requestedFiles.some((file) => file === null) ||
