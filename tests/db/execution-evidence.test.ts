@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createServer, type Server } from "node:http";
 
 import { Pool, type PoolClient } from "pg";
 import { keccak256 } from "viem";
@@ -34,6 +35,7 @@ import {
 import {
   broadcastSignedTransaction,
   createBroadcastStore,
+  createFaultProxy,
   reconcileLocalChainEvidence,
   type ReconciliationInput,
 } from "@crip/local-anvil-adapter";
@@ -645,6 +647,55 @@ const waitForDatabaseBlock = async (applicationName: string): Promise<void> => {
   throw new Error(`database session did not block: ${applicationName}`);
 };
 
+const startFaultUpstream = async (): Promise<{
+  server: Server;
+  url: string;
+}> => {
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk: string) => (body += chunk));
+    request.on("end", () => {
+      const rpc = JSON.parse(body) as { id: number; method: string };
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: rpc.id,
+          result: rpc.method === "eth_chainId" ? "0x7a69" : broadcastHash,
+        }),
+      );
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("fault upstream did not bind");
+  return { server, url: `http://127.0.0.1:${address.port}` };
+};
+
+const senderThroughProxy = (proxy: { url: string }) => ({
+  sendRawTransaction: async (raw: string): Promise<string> => {
+    const response = await fetch(proxy.url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_sendRawTransaction",
+        params: [raw],
+      }),
+    });
+    const body = (await response.json()) as {
+      result?: string;
+      error?: { message?: string };
+    };
+    if (body.error) throw new Error(body.error.message ?? "RPC error");
+    if (!body.result) throw new Error("RPC response unavailable");
+    return body.result;
+  },
+});
+
 describe.sequential("WS-004 execution evidence persistence", () => {
   beforeAll(async () => applyMigrations(pool));
   beforeEach(async () => {
@@ -901,6 +952,154 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       ).rows[0]?.count,
     ).toBe(1);
   });
+
+  test("durably records STARTED before an unavailable sender and retains the reservation", async () => {
+    await broadcastStartFixture();
+    const upstream = await startFaultUpstream();
+    const proxy = await createFaultProxy({
+      upstreamUrl: upstream.url,
+      mode: "unavailable-before-send",
+    });
+    try {
+      const result = await broadcastSignedTransaction(
+        createBroadcastStore(pool),
+        senderThroughProxy(proxy),
+        {
+          request: {
+            operationId: "op_1",
+            authorizationId: "approval_1:authorization",
+            adapterRequestId: "p206b-unavailable",
+          },
+          signedTransactionId: "signed_1",
+          attemptId: "attempt_p206b_unavailable",
+          rawTransaction: broadcastRawTransaction,
+        },
+      );
+      expect(result.attempt.status).toBe("UNKNOWN");
+      expect(proxy.requestCount("eth_sendRawTransaction")).toBe(1);
+      expect(proxy.forwardCount("eth_sendRawTransaction")).toBe(0);
+      const state = await pool.query(
+        `SELECT o.current_state, r.status, b.available, b.reserved, b.finalized_spend,
+          (SELECT status FROM broadcast_attempts WHERE attempt_id = $1) attempt_status,
+          (SELECT count(*)::int FROM signed_transactions WHERE operation_id = o.operation_id) signed_rows,
+          (SELECT count(*)::int FROM broadcast_attempts WHERE operation_id = o.operation_id) attempt_rows,
+          (SELECT count(*)::int FROM audit_events WHERE operation_id = o.operation_id) audit_rows
+         FROM operations o JOIN budget_reservations r USING (operation_id)
+         JOIN budget_accounts b USING (budget_id) WHERE o.operation_id = 'op_1'`,
+        ["attempt_p206b_unavailable"],
+      );
+      expect(state.rows[0]).toMatchObject({
+        current_state: "SIGNED",
+        status: "AUTHORIZED",
+        available: "90",
+        reserved: "10",
+        finalized_spend: "0",
+        attempt_status: "UNKNOWN",
+        signed_rows: 1,
+        attempt_rows: 1,
+      });
+      expect(Number(state.rows[0]?.audit_rows)).toBeGreaterThan(0);
+    } finally {
+      await proxy.close();
+      await new Promise<void>((resolve, reject) =>
+        upstream.server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  }, 15_000);
+
+  test("durably fences forward-then-drop and reuses the same attempt after restart", async () => {
+    await broadcastStartFixture();
+    const upstream = await startFaultUpstream();
+    const proxy = await createFaultProxy({
+      upstreamUrl: upstream.url,
+      mode: "forward-then-drop",
+    });
+    const restartedPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: "p206b-restart",
+    });
+    try {
+      const input = {
+        request: {
+          operationId: "op_1",
+          authorizationId: "approval_1:authorization",
+          adapterRequestId: "p206b-forward-drop",
+        },
+        signedTransactionId: "signed_1",
+        attemptId: "attempt_p206b_forward_drop",
+        rawTransaction: broadcastRawTransaction,
+      };
+      const first = await broadcastSignedTransaction(
+        createBroadcastStore(pool),
+        senderThroughProxy(proxy),
+        input,
+      );
+      expect(first.attempt.status).toBe("UNKNOWN");
+      expect(proxy.requestCount("eth_sendRawTransaction")).toBe(1);
+      expect(proxy.forwardCount("eth_sendRawTransaction")).toBe(1);
+
+      proxy.setMode("passthrough");
+      const second = await broadcastSignedTransaction(
+        createBroadcastStore(restartedPool),
+        senderThroughProxy(proxy),
+        input,
+      );
+      expect(second.attempt.status).toBe("UNKNOWN");
+      expect(proxy.requestCount("eth_sendRawTransaction")).toBe(1);
+      expect(proxy.forwardCount("eth_sendRawTransaction")).toBe(1);
+
+      const state = await pool.query(
+        `SELECT o.current_state, r.status, b.available, b.reserved, b.finalized_spend,
+          count(DISTINCT s.signed_transaction_id)::int signed_rows,
+          count(DISTINCT a.attempt_id)::int attempt_rows,
+          max(a.expected_transaction_hash) expected_hash,
+          count(DISTINCT ee.effect_id)::int effect_rows,
+          count(DISTINCT ra.attempt_id)::int recovery_rows
+         FROM operations o
+         JOIN budget_reservations r USING (operation_id)
+         JOIN budget_accounts b USING (budget_id)
+         LEFT JOIN signed_transactions s ON s.operation_id = o.operation_id
+         LEFT JOIN broadcast_attempts a ON a.operation_id = o.operation_id
+         LEFT JOIN execution_economic_effects ee ON ee.operation_id = o.operation_id
+         LEFT JOIN recovery_attempts ra ON ra.operation_id = o.operation_id
+         WHERE o.operation_id = 'op_1'
+         GROUP BY o.current_state, r.status, b.available, b.reserved, b.finalized_spend`,
+      );
+      expect(state.rows[0]).toMatchObject({
+        current_state: "SIGNED",
+        status: "AUTHORIZED",
+        available: "90",
+        reserved: "10",
+        finalized_spend: "0",
+        signed_rows: 1,
+        attempt_rows: 1,
+        expected_hash: broadcastHash,
+        effect_rows: 0,
+        recovery_rows: 0,
+      });
+      const audits = await pool.query<{
+        operation_id: string;
+        event_type: string;
+      }>(
+        "SELECT operation_id, event_type FROM audit_events WHERE operation_id = 'op_1' ORDER BY sequence_no",
+      );
+      expect(audits.rows.length).toBeGreaterThan(0);
+      expect(audits.rows.every((row) => row.operation_id === "op_1")).toBe(
+        true,
+      );
+    } finally {
+      await restartedPool.end();
+      await proxy.close();
+      await new Promise<void>((resolve, reject) =>
+        upstream.server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  }, 15_000);
 
   test("accepts a valid legacy v1 envelope and valid strict v2 envelope", async () => {
     const legacy = v1Envelope("op_1", "res_1");
@@ -1287,6 +1486,9 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     });
     const state = await pool.query(
       `SELECT o.current_state, r.status, b.available, b.reserved, b.finalized_spend,
+        (SELECT count(*)::int FROM signed_transactions WHERE operation_id = o.operation_id) signed_rows,
+        (SELECT count(*)::int FROM broadcast_attempts WHERE operation_id = o.operation_id) attempt_rows,
+        (SELECT count(*)::int FROM recovery_attempts WHERE operation_id = o.operation_id) recovery_rows,
         (SELECT count(*)::int FROM execution_economic_effects WHERE operation_id = o.operation_id) effects
        FROM operations o JOIN budget_reservations r USING (operation_id)
        JOIN budget_accounts b USING (budget_id) WHERE o.operation_id = 'op_1'`,
@@ -1297,8 +1499,34 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       available: "100",
       reserved: "0",
       finalized_spend: "0",
+      signed_rows: 1,
+      attempt_rows: 1,
+      recovery_rows: 1,
       effects: 0,
     });
+    const fee = await pool.query<{
+      gas_used: string;
+      effective_gas_price: string;
+    }>(
+      `SELECT gas_used, effective_gas_price FROM chain_receipt_evidence
+       WHERE operation_id = 'op_1' AND receipt_status = 'REVERT'`,
+    );
+    expect(fee.rows[0]).toEqual({
+      gas_used: "45000",
+      effective_gas_price: "2",
+    });
+    const audits = await pool.query<{
+      event_type: string;
+      operation_id: string;
+    }>(
+      "SELECT event_type, operation_id FROM audit_events WHERE operation_id = 'op_1' ORDER BY sequence_no",
+    );
+    expect(
+      audits.rows.some(
+        (row) => row.event_type === "execution.recovery.resolved",
+      ),
+    ).toBe(true);
+    expect(audits.rows.every((row) => row.operation_id === "op_1")).toBe(true);
   });
 
   test.each([
