@@ -1518,8 +1518,9 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     const audits = await pool.query<{
       event_type: string;
       operation_id: string;
+      data: unknown;
     }>(
-      "SELECT event_type, operation_id FROM audit_events WHERE operation_id = 'op_1' ORDER BY sequence_no",
+      "SELECT event_type, operation_id, data FROM audit_events WHERE operation_id = 'op_1' ORDER BY sequence_no",
     );
     expect(
       audits.rows.some(
@@ -1527,6 +1528,18 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       ),
     ).toBe(true);
     expect(audits.rows.every((row) => row.operation_id === "op_1")).toBe(true);
+    const recoveryAudits = audits.rows.filter((row) =>
+      row.event_type.startsWith("execution.recovery."),
+    );
+    expect(recoveryAudits.length).toBeGreaterThan(0);
+    expect(
+      recoveryAudits.every((row) => JSON.stringify(row.data).includes("res_1")),
+    ).toBe(true);
+    expect(
+      recoveryAudits.some((row) =>
+        JSON.stringify(row.data).includes("attempt_1"),
+      ),
+    ).toBe(true);
   });
 
   test.each([
