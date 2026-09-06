@@ -59,7 +59,7 @@ Phase 2 / WS-004 is open for the local fake-ERC-20 vertical slice:
 
 ADR-0015 is accepted and now fixes the exact EIP-1559 envelope-v2, local reference-signer, persist-before-send broadcast, and authenticated reconciliation boundary. This removes the architecture-approval blocker for P2-02, but it does not constitute runtime or chain evidence.
 
-P2-01 local fixture evidence is complete, P2-05 is ACCEPTED, and the canonical branch is `phase-2/ws-004-local-erc20` with PR #5. P2-06A is integrated/accepted on canonical history; P2-06B and P2-06C are implemented, integrated on `integration/p2-06bc`, and externally accepted. P2-06D remains pending. S2 remains OPEN / NOT PASSED and is not claimed.
+P2-01 through P2-05D are accepted/integrated, P2-06A is integrated/accepted, and P2-06B/C are externally accepted and integrated on canonical history. P2-06D local evidence is complete on closeout branch `work/p2-06d-pre-s2-closeout`; protected exact-head checks remain pending. Phase 2 implementation is complete pending external S2 review. S2 remains OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW and is not claimed.
 
 ## Dependency state
 
@@ -74,8 +74,8 @@ P2-01 local fixture evidence is complete, P2-05 is ACCEPTED, and the canonical b
 - WS-002 canonical contracts — FROZEN LOCALLY.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
-- WS-004 Phase-2 transaction pipeline/local adapter — ADR-0015/0016/0017 accepted; P2-05 ACCEPTED on canonical PR #5; P2-06A integrated/accepted; P2-06B/C integrated and externally accepted on `integration/p2-06bc`; P2-06D pending; S2 remains open.
-- WS-005 Phase-3 integrated approval/control/recovery slice — NOT OPENED until WS-004 is stable.
+- WS-004 Phase-2 transaction pipeline/local adapter — P2-06D closeout evidence is prepared; Phase 2 implementation is complete pending external S2 review.
+- WS-005 Phase-3 integrated approval/control/recovery slice — NOT OPENED.
 - WS-006/007 — NOT OPENED.
 
 ## Safety boundary
@@ -87,7 +87,7 @@ Phase 2 remains strictly local and fake-money only: Anvil chain `31337` / `0x7a6
 - `docs/plans/PHASE-2.md` contains the researched architecture, APIs, lifecycle mapping, migration impact, packet-level TDD tasks, fault model, threat ownership and S2 reproduction gate; its current checkpoint records P2-06B/C integration.
 - ADR-0015 is **ACCEPTED**. Envelope v2 must use schema version `2.0` and a distinct v2 hash-preimage version; bind all unsigned type-2 fields including `accessList: []`; use the accepted bounded simulation-freshness rules; preserve the local-Anvil IDs-only signer as a reference-adapter mechanism rather than a universal DB-coupling requirement; persist expected transaction hash/broadcast attempt before send; and keep ADR-0014 authenticated reconciler evidence in front of exactly-once ledger reconciliation.
 - P2-01 is implemented against the existing checkout-bound Anvil runtime: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset/redeploy instance staleness proof. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`.
-- P2-02 through P2-05D and P2-06A are integrated on the canonical branch; P2-06B/C are integrated on `integration/p2-06bc` after external packet acceptance. The current local gate and exact protected evidence are recorded in `docs/TEST_MATRIX.md`; P2-06D remains pending.
-- S2 remains **OPEN / NOT PASSED**; no complete clean-room vertical-slice closeout is claimed.
+- P2-02 through P2-06C are integrated on the canonical branch after their packet reviews. The P2-06D clean-room evidence package and protected candidate evidence are recorded in `docs/TEST_MATRIX.md`.
+- S2 remains **OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW**; this packet does not self-accept S2.
 
-Last updated: 2026-09-06 for the P2-06B/C integration checkpoint.
+Last updated: 2026-09-06 for the P2-06D pre-S2 closeout candidate.

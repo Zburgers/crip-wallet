@@ -117,19 +117,20 @@ ADR-0015 is **ACCEPTED** and closes the architecture-level exact-signing gap:
 - ADR-0014 authenticated RECONCILER evidence remains the authority boundary
   before exactly-once financial reconciliation.
 
-These controls are architectural requirements only until their owning Phase-2
-packets provide executable and protected-current-head evidence. Gate S2 remains
-**NOT PASSED**.
+The owning Phase-2 packets now provide executable local evidence; protected
+current-head CI and Secret Scan are the final closeout evidence. Gate S2 remains
+**OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW**.
 
 P2-03 provides local executable evidence for the canonical-block, loopback-only,
 RPC-disagreement, fee-ceiling, token/native separation, exact-field mutation,
-and bounded-freshness controls. This is local evidence only; protected current-
-head CI, Secret Scan, signing, broadcast, and reconciliation remain outstanding.
+and bounded-freshness controls. P2-05D and P2-06 add the signer, broadcast,
+recovery, substitution and reconciliation evidence; public-network Byzantine
+independence and Phase-3 integrated controls remain out of scope.
 
-## P2-05D gap controls (implemented; external acceptance pending)
+## P2-05D/P2-06 controls (implemented; external S2 review pending)
 
 ADR-0016 addresses autonomous-authority forgery, approval fabrication, cross-kind races, and invalidation drift by keeping one canonical authorization root with mutually exclusive owner-approval and autonomous-policy evidence. Only a persisted immutable `ALLOW_AUTONOMOUS` decision may authorize the latter, and the signer applies the same common hard-control revalidation. P2-05D implementation and local/protected evidence are recorded in the current TEST_MATRIX checkpoint.
 
-ADR-0017 addresses raw-byte leakage and the signed-evidence/pre-send crash gap by composing signing and the accepted broadcaster inside the restricted local child. Serialized bytes remain volatile. Deterministic rematerialization is permitted only with durable signed evidence and no attempt, after full current revalidation and durable-hash equality. Any send-capable attempt prohibits re-signing and uses expected-hash recovery. P2-05D proves this clean path locally; fault/substitution matrices remain P2-06 scope.
+ADR-0017 addresses raw-byte leakage and the signed-evidence/pre-send crash gap by composing signing and the accepted broadcaster inside the restricted local child. Serialized bytes remain volatile. Deterministic rematerialization is permitted only with durable signed evidence and no attempt, after full current revalidation and durable-hash equality. Any send-capable attempt prohibits re-signing and uses expected-hash recovery. P2-05D proves the clean path locally; P2-06 proves fault, ambiguity and substitution handling locally.
 
-The proposals introduce a narrow dependency on deterministic behavior of the locked transaction serializer/signature stack and increase the restricted child's TCB by granting loopback send capability. Golden signed vectors, dependency-review gates, strict process output scans, loopback/fixture checks, and reuse of the accepted broadcaster are required mitigations. These controls are not evidence until implemented and reviewed; Gate S2 remains **NOT PASSED**.
+The implementation retains a narrow dependency on deterministic behavior of the locked transaction serializer/signature stack and a restricted child with loopback send capability. Golden signed vectors, dependency review, strict output scans, loopback/fixture checks and reuse of the accepted broadcaster are evidenced locally; independent external review remains required. Phase 3 is not opened.

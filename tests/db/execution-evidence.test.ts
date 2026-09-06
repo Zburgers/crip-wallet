@@ -914,11 +914,14 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       },
       "attempt_expiry_race",
     );
+    const rejectedStart = expect(start).rejects.toThrow(
+      /execution-valid.*reservation/i,
+    );
     await waitForDatabaseBlock("race-expiry-start");
 
     await expiryClient.query("COMMIT");
     expiryClient.release();
-    await expect(start).rejects.toThrow(/execution-valid.*reservation/i);
+    await rejectedStart;
     await startPool.end();
 
     const state = await pool.query(

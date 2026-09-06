@@ -70,6 +70,12 @@ jobs:
       - name: Run P2-05D clean vertical-slice E2E
         run: npm run test:e2e
 
+      - name: Run P2-06 fault matrix
+        run: npm run test:fault
+
+      - name: Run P2-06 adversarial matrix
+        run: npm run test:adversarial
+
       - name: Verify generated-state permissions and quiet signer logs
         run: |
           test "$(stat -c %a .local/runtime.env)" = 600

@@ -289,5 +289,72 @@ made.
 | Conflict resolution | None; B then C cherry-picked cleanly with four preserved commits |
 | Scope | P2-06D pending; local fake-money Anvil `eip155:31337` only; S2 OPEN / NOT PASSED |
 
-Protected CI and Secret Scan pass on the pushed integration head; external
-integration review is next. S2 remains **OPEN / NOT PASSED**.
+The inherited protected CI and Secret Scan passed the integrated B/C head;
+P2-06D now adds the fresh clean-room and protected exact-head closeout. S2
+remains **OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW**.
+
+### P2-06D clean-room closeout evidence package
+
+Closeout branch: `work/p2-06d-pre-s2-closeout`.
+Canonical starting SHA: `7f3be19b75b798739e002ff15ece9250cfecd04b`.
+Every accepted packet SHA below is reachable from that canonical head; no
+earlier accepted packet was dropped. The final pushed candidate SHA and
+protected run IDs are recorded in the final subsection after remote checks.
+
+| Packet | Accepted implementation/evidence SHA | Focused suite and current count | External review | Residual limitation |
+| --- | --- | --- | --- | --- |
+| P2-01 | `25e8147f7439af5722dafe092a33dd1351c15280` | Forge `10/10`; fixture chain `9/9` | Accepted/integrated | Disposable Anvil/mock token only |
+| P2-02 | `9d58f47e6a96ace77fe04059b8d8066fe6a939af` | envelope/transfer focused `87/87` | Accepted/integrated | Static transfer scope only |
+| P2-03 | `6a59b392c275fc6dd81f5c55fd5a0efa1f67a812` | simulation unit `15/15`; chain simulation `1/1` | Accepted/integrated | Local canonical simulation only |
+| P2-04 | `0e00f212711c07aae363c28245d2ee453f8d84c2` | signer/capability/key focused `38/38` | Accepted/integrated | Restricted local reference signer only |
+| P2-05A | `28258696b40da1ae392928d9603d63231c6c8347` | broadcast core `12/12` | Accepted/integrated | Local broadcast boundary only |
+| P2-05B | `800b8650a0b621dbb1e9c94864bcd7e147b70066` | chain evidence `20/20` | Accepted/integrated | One included local Anvil block |
+| P2-05C | `052d10f5ff798beb1b82819d14c23a5a7943cbb6` | DB execution evidence included in `126/126` | Accepted/integrated | Phase-3 integrated controls excluded |
+| P2-05D | `a45c32d46330230614c8a72b44c0941dd0cf1850` | clean production-writer E2E `1/1` | Accepted/integrated | Local autonomous-within-policy path only |
+| P2-06A | `1841e2ba9cdecc7d8852a7f1434c3c4d9849aa6f` | fault proxy `20/20` | Accepted/integrated | Loopback upstream allowlist only |
+| P2-06B | `a6a2ff1734b4019e5b001e6d283de38639e05def` | broadcast/crash matrix `10/10`; combined fault `133/133` | Externally accepted/integrated | Local fault substitution only |
+| P2-06C | `e0bb273d9000eaf6150a5e200cc6ab0e65cd1dd6` | substitution matrix `41/41`; combined adversarial `169/169` | Externally accepted/integrated | Local evidence; no Phase-3 claim |
+
+#### Fresh exact clean-room counts
+
+| Gate | Result |
+| --- | --- |
+| `npm ci` | PASS — 176 packages added; 186 audited |
+| `npm run check` | PASS — 21 repository tests + 344 Vitest; docs/repository checks pass |
+| `npm audit --audit-level=high` | PASS — 0 vulnerabilities |
+| `npm run contracts:test` | PASS — Forge 10/10 |
+| `npm run test:chain` | PASS — 10/10 |
+| `npm run test:e2e` | PASS — 1/1 |
+| `npm run test:db` | PASS — 126/126 |
+| `npm run test:concurrency` | PASS — 18/18 |
+| `npm run test:invariants` | PASS — 7/7; configured property run `512` |
+| `npm run test:fault` | PASS — 9 files, 133/133 |
+| `npm run test:adversarial` | PASS — 7 files, 169/169 |
+| runtime/fixture/cleanup | PASS — loopback Anvil `eip155:31337`, disposable PostgreSQL, `dev:down` cleanup |
+
+#### S2 proof map
+
+| Requirement | Suite/evidence | Exact result |
+| --- | --- | --- |
+| Clean intent → RECONCILED journey | `tests/chain/p2-05d-e2e.test.ts` plus DB/audit assertions | `1/1`; token delta `123456` atomic units; sender `1000000000000 → 999999876544`; recipient `0 → 123456`; native fee `96255384801753`; ledger `available=876544, reserved=0, finalized_spend=123456` |
+| Durable trace/audit | P2-05D E2E and `tests/db/execution-evidence.test.ts` | construction, decode, verify, simulation, final policy, reservation, authorization, signing, broadcast, verification, recovery and reconciliation correlated; no raw signed bytes/key |
+| Forward-then-drop / UNKNOWN retention | P2-06B crash matrix and combined fault gate | `10/10`; `133/133`; no release or re-sign |
+| Crash/restart, duplicate retry, verified revert, no duplicate spend | P2-06B/C plus DB/recovery gates | `126/126`, `18/18`, `169/169`; exactly-once effect assertions pass |
+| Transaction/envelope mutation fail closed | P2-06C substitution matrix, envelope/transfer and simulation suites | `41/41`, `87/87`, `15/15` |
+| Fixture/block/receipt/log substitution fail closed | chain evidence plus P2-06C | `20/20`, `41/41` |
+| Alternate signing fails closed | signer/core/key and adversarial suites | `38/38`, `169/169` |
+| Duplicate/concurrent reconciliation exactly once | DB execution evidence and adversarial suite | `126/126`, `169/169` |
+
+#### Security review at the closeout checkpoint
+
+- `npm ci` and the committed lockfile are consistent; audit is `0` high/critical vulnerabilities.
+- All workflow actions remain commit-pinned; this packet adds no action, image, dependency, migration, RPC, or wallet material.
+- Executable network paths remain loopback/Anvil-only; fault proxy tests reject public, non-loopback, credentialed, and wrong-runtime upstreams.
+- Signer state remains mode `0600`; generated state and quiet-signer checks are protected workflow steps. Raw signed bytes and private keys are not persisted, logged, or audited.
+- Migrations are forward-only; historical migrations are unchanged by this packet. No critical/high Phase-2 finding is open from the local audit or focused security matrices.
+- Local gitleaks was unavailable in this environment; remote Secret Scan on the exact final candidate is required and is not claimed until its run is recorded.
+
+Phase 2 implementation is complete pending external S2 review. P2-06D is
+complete only when the exact pushed candidate has protected CI and Secret Scan
+results recorded below. S2 is **OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW**;
+Phase 3 is not opened.
