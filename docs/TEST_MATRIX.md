@@ -289,5 +289,5 @@ made.
 | Conflict resolution | None; B then C cherry-picked cleanly with four preserved commits |
 | Scope | P2-06D pending; local fake-money Anvil `eip155:31337` only; S2 OPEN / NOT PASSED |
 
-Protected CI and Secret Scan for the pushed integration head are required
-before external integration review; S2 remains **OPEN / NOT PASSED**.
+Protected CI and Secret Scan pass on the pushed integration head; external
+integration review is next. S2 remains **OPEN / NOT PASSED**.
