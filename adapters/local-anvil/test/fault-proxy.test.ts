@@ -26,7 +26,7 @@ interface UpstreamHarness {
 
 const startUpstream = async (
   result: unknown,
-  onRequest?: (method: string) => void,
+  onRequest?: (method: string) => void | Promise<void>,
 ): Promise<UpstreamHarness> => {
   const calls: Array<{ method: string; body: string }> = [];
   const server = createServer((request, response) => {
@@ -35,10 +35,10 @@ const startUpstream = async (
     request.on("data", (chunk: string) => {
       body += chunk;
     });
-    request.on("end", () => {
+    request.on("end", async () => {
       const parsed = JSON.parse(body) as { id: number; method: string };
       calls.push({ method: parsed.method, body });
-      onRequest?.(parsed.method);
+      await onRequest?.(parsed.method);
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify({ jsonrpc: "2.0", id: parsed.id, result }));
     });
@@ -214,6 +214,52 @@ describe("local Anvil fault proxy", () => {
       rpc(proxy.url, "eth_sendRawTransaction", [RAW_TRANSACTION]),
     ).rejects.toThrow();
     expect(upstream.calls).toHaveLength(1);
+    expect(proxy.forwardCount("eth_sendRawTransaction")).toBe(1);
+  });
+
+  it("does not confirm forwarding until the upstream handler completes", async () => {
+    let upstreamStarted!: () => void;
+    const upstreamStartedPromise = new Promise<void>((resolve) => {
+      upstreamStarted = resolve;
+    });
+    let releaseUpstream!: () => void;
+    const upstreamRelease = new Promise<void>((resolve) => {
+      releaseUpstream = resolve;
+    });
+    const upstream = await startUpstream(TX_HASH, async () => {
+      upstreamStarted();
+      await upstreamRelease;
+    });
+    resources.push(upstream);
+    const proxy = await createFaultProxy({
+      upstreamUrl: upstream.url,
+      mode: "passthrough",
+    });
+    resources.push(proxy);
+
+    const forward = proxy.waitForForward("eth_sendRawTransaction");
+    let forwardResolved = false;
+    void forward.then(() => {
+      forwardResolved = true;
+    });
+    const responsePromise = rpc(proxy.url, "eth_sendRawTransaction", [
+      RAW_TRANSACTION,
+    ]);
+    await proxy.waitForRequest("eth_sendRawTransaction");
+    await upstreamStartedPromise;
+    expect(forwardResolved).toBe(false);
+    expect(proxy.forwardCount("eth_sendRawTransaction")).toBe(0);
+
+    releaseUpstream();
+    await expect((await responsePromise).json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: 1,
+      result: TX_HASH,
+    });
+    await expect(forward).resolves.toMatchObject({
+      method: "eth_sendRawTransaction",
+      forwarded: true,
+    });
     expect(proxy.forwardCount("eth_sendRawTransaction")).toBe(1);
   });
 

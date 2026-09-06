@@ -332,8 +332,6 @@ export const createFaultProxy = async (
     request: JsonRpcRequest,
     record: RequestRecord,
   ): Promise<JsonRpcResponse | undefined> => {
-    record.forwarded = true;
-    notifyWaiters(record);
     const controller = new AbortController();
     activeUpstreamRequests.add(controller);
     let response: Response;
@@ -357,6 +355,8 @@ export const createFaultProxy = async (
     }
     activeUpstreamRequests.delete(controller);
     if (!isRecord(parsed) || parsed.jsonrpc !== "2.0") return undefined;
+    record.forwarded = true;
+    notifyWaiters(record);
     return parsed as unknown as JsonRpcResponse;
   };
 
@@ -424,16 +424,16 @@ export const createFaultProxy = async (
     }
 
     const upstreamResponse = await forward(parsed, record);
+    if (upstreamResponse === undefined) {
+      closeClient(response);
+      return;
+    }
     if (rule.mode === "forward-then-drop") {
       closeClient(response);
       return;
     }
     if (rule.mode === "crash-after-forward") {
       crash(response);
-      return;
-    }
-    if (upstreamResponse === undefined) {
-      closeClient(response);
       return;
     }
     if (

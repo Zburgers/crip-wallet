@@ -266,7 +266,7 @@ NOT PASSED.
 
 | Check | Result |
 | --- | --- |
-| `npm run test:fault` | PASS — 19 focused fault-proxy tests; full fault gate 88 tests across 7 adapter files |
+| `npm run test:fault` | PASS — 20 focused fault-proxy tests; full fault gate 89 tests across 7 adapter files |
 | Fault modes | PASS — passthrough, unavailable-before-send, explicit rejection, forward-then-drop, wrong hash, mutated transaction, mutated receipt, withhold/release, crash-before-send, crash-after-forward |
 | Boundary/redaction | PASS — non-loopback/public/credentialed HTTPS upstreams rejected; current-runtime mismatch rejected; matching loopback runtime accepted; raw send bytes redacted |
 | Protected CI / Secret Scan | Pending external review of pushed integration SHA |
