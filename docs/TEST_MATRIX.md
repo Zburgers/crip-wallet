@@ -57,11 +57,13 @@ Secret Scan: `33189082181` — PASS.
 | S1-04 | Revocation and pause | PASS | four-scope fence races + WP-10 pre-envelope revoke/pause coverage |
 | S1-05 | No floating-point money | PASS | canonical atomic-unit schemas + ledger/property proof |
 | S1-06 | Protected current-head verification | PASS | CI `31919254466` on `85545348...` |
-| S2-01 | Clean-Anvil full transaction journeys | PLANNED | Phase 2 complete vertical slice; Phase 3 adds integrated control/recovery proof |
-| S2-02 | Complete trace/audit E2E | PLANNED | Phase 5 |
-| S2-03 | Execution-boundary recovery | PLANNED | Phase 2 ambiguity primitives + Phase 3 integrated control proof |
+| S2-01 | Clean-Anvil full transaction journeys | PASS | P2-05D clean local Anvil fake-ERC20 journey and final protected candidate |
+| S2-02 | Complete trace/audit E2E | PASS | P2-05D durable correlated trace/audit from construction through reconciliation |
+| S2-03 | Execution-boundary recovery | PASS | P2-06B/C UNKNOWN retention, response loss, restart, duplicate safety, revert, substitution and exactly-once reconciliation |
 
-**Gate S1: PASS / ACCEPTED. Phase 2 / WS-004 is OPEN. Gate S2 remains NOT PASSED.**
+**Gate S1: PASS / ACCEPTED. S2 requirement evidence: PASS. External S2 acceptance: PENDING. Gate S2 remains OPEN / NOT PASSED until the independent external review records acceptance.**
+
+**Phase 2 implementation is COMPLETE / READY FOR EXTERNAL S2 ACCEPTANCE REVIEW. Phase 3 is NOT OPENED.**
 
 ADR-0015 is accepted architectural authority, not test evidence. It removes the previous P2-02 architecture blocker but no Phase-2 threat/product row becomes PASS until the named implementation test exists and protected current-head evidence is recorded.
 
@@ -185,7 +187,8 @@ The inherited Vitest exit-135 event was not reproduced after integration. The tw
 
 ### P2-05D final integration checkpoint
 
-Remediation code SHA: `a45c32d46330230614c8a72b44c0941dd0cf1850`.
+Earlier remediation checkpoint (not the final accepted head):
+`a45c32d46330230614c8a72b44c0941dd0cf1850`.
 The full final branch SHA is the documentation handoff commit reported with
 the protected checks. All chain evidence below is local-only Anvil
 `eip155:31337`; S2 remains **OPEN / NOT PASSED**.
@@ -203,8 +206,8 @@ the protected checks. All chain evidence below is local-only Anvil
 | P2-05D E2E | PASS — `tests/chain/p2-05d-e2e.test.ts` 1/1; no protected-state lifecycle/evidence seeding |
 | Database / concurrency / invariants / chain | PASS — 122/122, 18/18, 7/7, 10/10 |
 | Forge / complete check / audit | PASS — 10/10, 21 repository + 314 Vitest, 0 high vulnerabilities |
-| Protected remediation evidence | PASS — CI `33441013501` and Secret Scan `33441013543` on code SHA `a45c32d46330230614c8a72b44c0941dd0cf1850`; final documentation-head checks are reported separately |
-| Scope | P2-06A remains separate and unmerged; P2-06B/C/D not started; no S2 claim |
+| Protected remediation evidence | PASS — historical checkpoint CI `33441013501` and Secret Scan `33441013543`; final P2-05D acceptance is recorded in the current durable-audit packet below |
+| Scope | Historical checkpoint only; final P2-05D acceptance and the later P2-06 packets are recorded below; no S2 acceptance claim |
 
 Clean E2E identity and economic proof: fixture instance
 `33c6581c-6af0-489a-a1e9-0e171e022281`; operation `op_p205d_e2e`; reservation
@@ -287,11 +290,12 @@ made.
 | Inherited gates | PASS — check 21 repository + 344 Vitest; Forge 10/10; chain 10/10; E2E 1/1; DB 126/126; concurrency 18/18; invariants 7/7 |
 | Dependency audit | PASS — `npm audit --audit-level=high`: 0 vulnerabilities |
 | Conflict resolution | None; B then C cherry-picked cleanly with four preserved commits |
-| Scope | P2-06D pending; local fake-money Anvil `eip155:31337` only; S2 OPEN / NOT PASSED |
+| Scope | P2-06D complete / evidence ready; local fake-money Anvil `eip155:31337` only; S2 requirement evidence PASS, external acceptance PENDING, Gate S2 OPEN / NOT PASSED |
 
 The inherited protected CI and Secret Scan passed the integrated B/C head;
-P2-06D now adds the fresh clean-room and protected exact-head closeout. S2
-remains **OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW**.
+P2-06D adds the fresh clean-room and protected exact-head closeout. S2
+requirement evidence is PASS, external S2 acceptance is PENDING, and Gate S2
+remains **OPEN / NOT PASSED / READY FOR EXTERNAL ACCEPTANCE**.
 
 ### P2-06D clean-room closeout evidence package
 
@@ -310,10 +314,26 @@ protected run IDs are reported in the final handoff for this evidence PR.
 | P2-05A | `28258696b40da1ae392928d9603d63231c6c8347` | broadcast core `12/12` | Accepted/integrated | Local broadcast boundary only |
 | P2-05B | `800b8650a0b621dbb1e9c94864bcd7e147b70066` | chain evidence `20/20` | Accepted/integrated | One included local Anvil block |
 | P2-05C | `052d10f5ff798beb1b82819d14c23a5a7943cbb6` | DB execution evidence included in `126/126` | Accepted/integrated | Phase-3 integrated controls excluded |
-| P2-05D | `a45c32d46330230614c8a72b44c0941dd0cf1850` | clean production-writer E2E `1/1` | Accepted/integrated | Local autonomous-within-policy path only |
-| P2-06A | `1841e2ba9cdecc7d8852a7f1434c3c4d9849aa6f` | fault proxy `20/20` | Accepted/integrated | Loopback upstream allowlist only |
+| P2-05D | implementation `c8f730916c67bcec361d3cc376c0d0602e54bb7e`; final accepted head `13359a513d9b9b2569b763a294755ed23f7a00a8` (PR #12) | clean production-writer E2E `1/1`; DB `126/126` | Externally accepted; CI `34015801865`; Secret Scan `34015801786` | Local autonomous-within-policy path only |
+| P2-06A | final accepted head `8590e9c747afd4a30e6fef6b5487f3422268497d` (PR #13); historical integration commit `1841e2ba9cdecc7d8852a7f1434c3c4d9849aa6f` | fault proxy `20/20` | Externally accepted; review `5124743140`; CI `34021596350`; Secret Scan `34021596342` | Loopback upstream allowlist only |
 | P2-06B | `a6a2ff1734b4019e5b001e6d283de38639e05def` | broadcast/crash matrix `10/10`; combined fault `133/133` | Externally accepted/integrated | Local fault substitution only |
 | P2-06C | `e0bb273d9000eaf6150a5e200cc6ab0e65cd1dd6` | substitution matrix `41/41`; combined adversarial `169/169` | Externally accepted/integrated | Local evidence; no Phase-3 claim |
+
+#### Protected P2-06D implementation/evidence provenance
+
+The protected P2-06D implementation/evidence head is
+`6efdfd7c91b437da94b8b0e84e929f01b7aa4f46`.
+
+- Protected CI: `34042660826` — PASS.
+- Protected Secret Scan: `34042660842` — PASS.
+- CI explicitly passed check, high-severity dependency audit, contracts,
+  fixture, chain, DB, concurrency, invariants, P2-05D E2E, P2-06 fault,
+  P2-06 adversarial, generated-state/quiet-signer checks and cleanup.
+- P2-06 fault: `133/133`; P2-06 adversarial: `169/169`.
+
+This documentation-only remediation creates a new head. Fresh checks for that
+new head are recorded in PR #17; they are not attributed to the protected
+implementation/evidence head above.
 
 #### Fresh exact clean-room counts
 
@@ -354,6 +374,7 @@ protected run IDs are reported in the final handoff for this evidence PR.
 - Migrations are forward-only; historical migrations are unchanged by this packet. No critical/high Phase-2 finding is open from the local audit or focused security matrices.
 - Local gitleaks was unavailable in this environment; protected remote Secret Scan passed on the exact final candidate, with its run ID reported in the final handoff.
 
-P2-06D is complete / evidence package ready. Phase 2 implementation is complete
-pending external S2 review. S2 is **OPEN / NOT PASSED / READY FOR EXTERNAL
-REVIEW**; Phase 3 is not opened.
+P2-06D is complete / evidence package ready. S2 requirement evidence is PASS;
+external S2 acceptance is PENDING. Phase 2 implementation is COMPLETE / READY
+FOR EXTERNAL S2 ACCEPTANCE REVIEW. Gate S2 is **OPEN / NOT PASSED / READY FOR
+EXTERNAL ACCEPTANCE**; Phase 3 is NOT OPENED.

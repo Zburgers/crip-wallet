@@ -8,7 +8,7 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-05 is ACCEPTED on canonical branch `phase-2/ws-004-local-erc20` / PR #5; auxiliary PRs #8 and #12 are merged/closed. P2-06A is integrated/accepted as test infrastructure; P2-06B/C are integrated and externally accepted; P2-06D is complete / evidence package ready. Phase 2 implementation is complete pending external S2 review. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 remains **OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW**.
+**Status:** P2-05 is ACCEPTED on canonical branch `phase-2/ws-004-local-erc20` / PR #5; auxiliary PRs #8 and #12 are merged/closed. P2-06A is integrated/accepted as test infrastructure; P2-06B/C are integrated and externally accepted; P2-06D is COMPLETE / EVIDENCE READY. S2 requirement evidence is PASS; external S2 acceptance is PENDING. Phase 2 implementation is COMPLETE / READY FOR EXTERNAL S2 ACCEPTANCE REVIEW. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 remains **OPEN / NOT PASSED / READY FOR EXTERNAL ACCEPTANCE**.
 
 ---
 
@@ -580,8 +580,9 @@ Never proxy non-loopback destinations. Deterministic barriers for: unavailable b
 #### P2-06B - Broadcast/crash matrix
 
 **Current checkpoint:** P2-06B/C are implemented, integrated and externally
-accepted. P2-06D is complete / evidence package ready, and Gate S2 remains
-**OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW**.
+accepted. P2-06D is COMPLETE / EVIDENCE READY; S2 requirement evidence is PASS,
+external S2 acceptance is PENDING, and Gate S2 remains **OPEN / NOT PASSED /
+READY FOR EXTERNAL ACCEPTANCE**.
 
 Cover RPC unavailable, rejection before acceptance, request transmitted/response lost, known hash/no receipt, duplicate broadcast, receipt revert, stale nonce, crash before send, crash after send, recovery retry after uncertainty.
 
@@ -741,7 +742,8 @@ At reviewed checkpoint `2f78b0f3c888ca6b8b06340b8c4a308d1bb7053f`, P2-05A/B/C re
 
 ### P2-05D implementation checkpoint (historical)
 
-The clean vertical slice was implemented at remediation code SHA
+The clean vertical slice was implemented at an earlier remediation checkpoint
+(not the final accepted P2-05D head), code SHA
 `a45c32d46330230614c8a72b44c0941dd0cf1850` on `integration/p2-05d`.
 It uses production preparation writers for lifecycle, simulation, policy and
 envelope persistence, production `authorizeAutonomous`, the restricted

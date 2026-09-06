@@ -7,6 +7,8 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ### Phase 2
 
+- Reconciled final S2 evidence provenance in the docs-only P2-06D remediation: S2 requirement evidence is PASS while Gate S2 remains OPEN / NOT PASSED pending external acceptance; corrected final P2-05D/P2-06A accepted heads and recorded the protected P2-06D implementation/evidence head `6efdfd7c91b437da94b8b0e84e929f01b7aa4f46`. Fresh checks for the new docs-only head are recorded in PR #17.
+
 - Completed P2-06D / evidence package ready from canonical SHA `7f3be19b75b798739e002ff15ece9250cfecd04b`: added explicit protected CI steps for `npm run test:fault` and `npm run test:adversarial`, fixed an expected-rejection timing race in the real-store expiry test, and recorded fresh local evidence of check `21 + 344`, Forge `10/10`, chain `10/10`, E2E `1/1`, DB `126/126`, concurrency `18/18`, invariants `7/7`, fault `133/133`, adversarial `169/169`, and audit `0`. Phase 2 implementation is complete pending external S2 review; S2 remains OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW.
 
 - Integrated externally accepted P2-06B and P2-06C on `integration/p2-06bc` from canonical base `b27202edac48cd183ec1bac8856b905447d91f49`; preserved the complete P2-06B remediation range, added the substitution/reconciliation matrix, and kept P2-06D pending. Combined local evidence is fault 133/133, adversarial 169/169, DB 126/126, concurrency 18/18, invariants 7/7, chain 10/10, E2E 1/1, Forge 10/10, check 21 repository + 344 Vitest, and audit 0 high vulnerabilities. S2 remains OPEN / NOT PASSED.

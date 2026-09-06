@@ -118,8 +118,9 @@ ADR-0015 is **ACCEPTED** and closes the architecture-level exact-signing gap:
   before exactly-once financial reconciliation.
 
 The owning Phase-2 packets now provide executable local evidence; protected
-current-head CI and Secret Scan are the final closeout evidence. Gate S2 remains
-**OPEN / NOT PASSED / READY FOR EXTERNAL REVIEW**.
+current-head CI and Secret Scan are the final closeout evidence. S2 requirement
+evidence is PASS; external S2 acceptance is PENDING. Gate S2 remains **OPEN /
+NOT PASSED / READY FOR EXTERNAL ACCEPTANCE**; Phase 3 is NOT OPENED.
 
 P2-03 provides local executable evidence for the canonical-block, loopback-only,
 RPC-disagreement, fee-ceiling, token/native separation, exact-field mutation,
