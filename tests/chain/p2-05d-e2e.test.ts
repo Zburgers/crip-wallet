@@ -9,9 +9,11 @@ import { afterAll, beforeAll, beforeEach, test } from "vitest";
 import {
   hashSimulationEvidence,
   advanceOperationLifecycle,
+  hashTransferCoreCandidate,
   persistExecutionEnvelope,
   persistPolicyDecision,
   persistSimulation,
+  persistTransferPipelineAudit,
   constructTransferCore,
   createLocalAnvilReadRpc,
   decodeTransferIndependent,
@@ -394,6 +396,12 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     expected: "POLICY_PRECHECKED",
     next: "CONSTRUCTED",
   });
+  await persistTransferPipelineAudit(pool, {
+    operationId,
+    eventType: "transaction.constructed",
+    candidate: core,
+    audit: audit("constructed"),
+  });
   await assertOperationState("CONSTRUCTED");
   const decoded = decodeTransferIndependent(core.calldata);
   assert.equal(decoded.ok, true);
@@ -401,6 +409,13 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
   await advance({
     expected: "CONSTRUCTED",
     next: "DECODED",
+  });
+  await persistTransferPipelineAudit(pool, {
+    operationId,
+    eventType: "transaction.decoded",
+    candidate: core,
+    decoded,
+    audit: audit("decoded"),
   });
   await assertOperationState("DECODED");
   const verifiedCore = verifyTransferCore(intent, core, decoded, {
@@ -415,6 +430,12 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
   await advance({
     expected: "DECODED",
     next: "VERIFIED",
+  });
+  await persistTransferPipelineAudit(pool, {
+    operationId,
+    eventType: "transaction.verified",
+    candidate: verifiedCore.verified,
+    audit: audit("verified"),
   });
   await assertOperationState("VERIFIED");
   const simulationResult = await simulateAndResolveTransfer(
@@ -448,6 +469,7 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     executable: simulationResult.executable,
     simulation: simulationResult.simulation,
     fixtureInstanceId: fixture.fixtureInstanceId,
+    audit: audit("simulated"),
   });
   await assertOperationState("SIMULATED");
   lifecycleStates.push("SIMULATED");
@@ -465,6 +487,7 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     decisionId,
     operationId,
     decision,
+    audit: audit("policy-evaluated"),
   });
   await assertOperationState("POLICY_FINALIZED");
   lifecycleStates.push("POLICY_FINALIZED");
@@ -788,13 +811,20 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
   );
   assert.equal(persisted.rows[0]?.count, "1");
   const auditEvidence = await pool.query<{
+    sequence_no: string;
+    event_id: string;
     event_type: string;
     state: string | null;
     previous_state: string | null;
-    reservation_id: string;
+    reservation_id: string | null;
     operation_id: string;
+    policy_id: string;
+    policy_version: number;
+    data: Record<string, unknown>;
   }>(
-    `SELECT event_type, data ->> 'state' AS state,
+    `SELECT sequence_no, event_id, event_type, data,
+            policy_id, policy_version,
+            data ->> 'state' AS state,
             data ->> 'previousState' AS previous_state,
             reservation_id, operation_id
      FROM audit_events
@@ -807,11 +837,16 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     auditEvidence.rows.every(
       (row) =>
         row.operation_id === operationId &&
-        row.reservation_id === reservationId,
+        (row.reservation_id === null || row.reservation_id === reservationId),
     ),
     true,
   );
   for (const eventType of [
+    "transaction.constructed",
+    "transaction.decoded",
+    "transaction.verified",
+    "transaction.simulated",
+    "policy.evaluated",
     "budget.reservation.created",
     "budget.reservation.authorized",
     "signing.started",
@@ -828,6 +863,89 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
       `missing correlated audit event ${eventType}`,
     );
   }
+  const byType = new Map(
+    auditEvidence.rows.map((row) => [row.event_type, row]),
+  );
+  const constructed = byType.get("transaction.constructed")!;
+  const decodedAudit = byType.get("transaction.decoded")!;
+  const verifiedAudit = byType.get("transaction.verified")!;
+  const simulatedAudit = byType.get("transaction.simulated")!;
+  const policyAudit = byType.get("policy.evaluated")!;
+  assert.equal(constructed.event_id, audit("constructed").eventId);
+  assert.equal(decodedAudit.event_id, audit("decoded").eventId);
+  assert.equal(verifiedAudit.event_id, audit("verified").eventId);
+  assert.equal(simulatedAudit.event_id, audit("simulated").eventId);
+  assert.equal(policyAudit.event_id, audit("policy-evaluated").eventId);
+  assert.equal(constructed.data.candidateHash, hashTransferCoreCandidate(core));
+  assert.equal(constructed.data.target, core.target);
+  assert.equal(constructed.data.chainId, fixture.chainId);
+  assert.equal(constructed.data.fixtureInstanceId, fixture.fixtureInstanceId);
+  assert.equal(
+    decodedAudit.data.candidateHash,
+    hashTransferCoreCandidate(core),
+  );
+  assert.equal(decodedAudit.data.decodedFunction, "erc20.transfer");
+  assert.equal(
+    verifiedAudit.data.candidateHash,
+    hashTransferCoreCandidate(core),
+  );
+  assert.equal(simulatedAudit.data.simulationId, `simulation:${operationId}`);
+  assert.equal(
+    simulatedAudit.data.simulationEvidenceHash,
+    simulationResult.simulation.evidenceHash,
+  );
+  assert.equal(
+    simulatedAudit.data.candidateHash,
+    simulationResult.simulation.candidateHash,
+  );
+  assert.equal(
+    simulatedAudit.data.fixtureInstanceId,
+    fixture.fixtureInstanceId,
+  );
+  assert.equal(
+    simulatedAudit.data.simulationBlockNumber,
+    simulationResult.simulation.blockNumber,
+  );
+  assert.equal(
+    simulatedAudit.data.simulationBlockHash,
+    simulationResult.simulation.blockHash,
+  );
+  assert.equal(policyAudit.data.policyDecisionId, decisionId);
+  assert.equal(policyAudit.data.policyDecisionHash, decision.decisionHash);
+  assert.equal(policyAudit.data.result, "ALLOW_AUTONOMOUS");
+  assert.equal(policyAudit.policy_id, policyId);
+  assert.equal(policyAudit.policy_version, 1);
+  const durableOrder = [
+    "transaction.constructed",
+    "transaction.decoded",
+    "transaction.verified",
+    "transaction.simulated",
+    "policy.evaluated",
+    "budget.reservation.created",
+    "budget.reservation.authorized",
+    "signing.started",
+    "transaction.signed",
+    "budget.reservation.broadcast",
+    "budget.reservation.evidence.verified",
+    "execution.recovery.claimed",
+    "budget.reservation.finalized",
+    "execution.recovery.resolved",
+  ];
+  const durableSequences = durableOrder.map((eventType) =>
+    Number(byType.get(eventType)?.sequence_no),
+  );
+  assert.equal(durableSequences.every(Number.isSafeInteger), true);
+  assert.equal(
+    durableSequences.every(
+      (sequence, index) =>
+        index === 0 || sequence > durableSequences[index - 1]!,
+    ),
+    true,
+    `invalid durable audit order: ${durableSequences.join(",")}`,
+  );
+  const auditJson = stringifySafe(auditEvidence.rows);
+  assert.equal(auditJson.includes(signerCredential.privateKey), false);
+  assert.doesNotMatch(auditJson, /0x02[0-9a-f]{128,}/i);
   const auditedStates = new Set(
     auditEvidence.rows.flatMap((row) =>
       row.state === null ? [] : [row.state],
@@ -888,7 +1006,10 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     signed_hash: string;
     attempt_id: string;
     transaction_hash: string;
+    broadcast_hash: string;
     receipt_hash: string;
+    envelope_policy_hash: string;
+    authorization_policy_hash: string;
     block_hash: string;
     recovery_attempt_id: string;
     effect_id: string;
@@ -898,8 +1019,11 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
             pd.decision_id, pd.decision_hash,
             ae.authorization_id, ae.authorization_kind,
             s.simulation_id, s.evidence_hash AS simulation_hash,
+            e.payload ->> 'policyDecisionHash' AS envelope_policy_hash,
+            ae.policy_decision_hash AS authorization_policy_hash,
             st.expected_transaction_hash AS signed_hash,
-            ba.attempt_id, tx.transaction_hash,
+            ba.attempt_id, ba.expected_transaction_hash AS broadcast_hash,
+            tx.transaction_hash,
             cr.transaction_hash AS receipt_hash,
             tx.block_hash, ra.attempt_id AS recovery_attempt_id,
             ee.effect_id
@@ -940,6 +1064,8 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
   assert.equal(identityRow.envelope_hash, envelope.envelopeHash);
   assert.equal(identityRow.decision_id, decisionId);
   assert.equal(identityRow.decision_hash, decision.decisionHash);
+  assert.equal(identityRow.envelope_policy_hash, decision.decisionHash);
+  assert.equal(identityRow.authorization_policy_hash, decision.decisionHash);
   assert.equal(identityRow.authorization_id, authorizationId);
   assert.equal(identityRow.authorization_kind, "AUTONOMOUS_POLICY");
   assert.equal(identityRow.simulation_id, `simulation:${operationId}`);
@@ -948,6 +1074,7 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     simulationResult.simulation.evidenceHash,
   );
   assert.equal(identityRow.signed_hash, execution.expectedTransactionHash);
+  assert.equal(identityRow.broadcast_hash, execution.expectedTransactionHash);
   assert.equal(identityRow.attempt_id, execution.broadcastAttemptId);
   assert.equal(identityRow.transaction_hash, execution.expectedTransactionHash);
   assert.equal(identityRow.receipt_hash, execution.expectedTransactionHash);

@@ -15,9 +15,13 @@ import {
 import {
   hashExecutableCandidate,
   hashSimulationEvidence,
+  hashTransferCoreCandidate,
   type ExecutableTransferCandidate,
   type SuccessfulFreshSimulation,
 } from "./simulation.js";
+import { decodeTransferIndependent } from "./decode-transfer.js";
+import type { DecodedTransfer, TransferCoreCandidate } from "./candidate.js";
+import { keccak256 } from "viem";
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const HASH = /^0x[0-9a-f]{64}$/;
@@ -35,6 +39,217 @@ const assertId = (value: string, name: string): void => {
 
 const assertHash = (value: string, name: string): void => {
   if (!HASH.test(value)) throw new PreparationError(`${name} is not canonical`);
+};
+
+type PipelineAuditEventType =
+  | "transaction.constructed"
+  | "transaction.decoded"
+  | "transaction.verified"
+  | "transaction.simulated"
+  | "policy.evaluated";
+
+type OperationAuditBinding = {
+  ownerId: string;
+  agentId: string;
+  walletId: string;
+  intentId: string;
+  operationId: string;
+  policyId: string;
+  policyVersion: number;
+  reservationId: string | null;
+};
+
+const operationAuditBinding = async (
+  client: PoolClient,
+  operationId: string,
+): Promise<OperationAuditBinding & { currentState: string }> => {
+  const result = await client.query<{
+    current_state: string;
+    owner_id: string;
+    agent_id: string;
+    wallet_id: string;
+    intent_id: string;
+    policy_id: string;
+    policy_version: number;
+  }>(
+    `SELECT o.current_state, ag.owner_id, o.agent_id, o.wallet_id,
+            o.intent_id, o.policy_id, o.policy_version
+     FROM operations o
+     JOIN agents ag ON ag.agent_id = o.agent_id
+     WHERE o.operation_id = $1
+     FOR UPDATE`,
+    [operationId],
+  );
+  const row = result.rows[0];
+  if (!row)
+    throw new PreparationError(
+      `operation correlation is missing: ${operationId}`,
+    );
+  const reservation = await client.query<{ reservation_id: string }>(
+    "SELECT reservation_id FROM budget_reservations WHERE operation_id = $1",
+    [operationId],
+  );
+  return {
+    ownerId: row.owner_id,
+    agentId: row.agent_id,
+    walletId: row.wallet_id,
+    intentId: row.intent_id,
+    operationId,
+    policyId: row.policy_id,
+    policyVersion: Number(row.policy_version),
+    reservationId: reservation.rows[0]?.reservation_id ?? null,
+    currentState: row.current_state,
+  };
+};
+
+const assertPipelineAuditCorrelation = (
+  audit: AuditContext,
+  binding: OperationAuditBinding,
+): void => {
+  for (const [key, value] of Object.entries(audit.assertedCorrelation ?? {})) {
+    if (
+      value !== undefined &&
+      value !== binding[key as keyof OperationAuditBinding]
+    )
+      throw new PreparationError(
+        `audit correlation assertion mismatch: ${key}`,
+      );
+  }
+};
+
+const appendPipelineAudit = async (
+  client: PoolClient,
+  input: {
+    operationId: string;
+    expectedState: string;
+    eventType: PipelineAuditEventType;
+    audit: AuditContext;
+    data: Record<string, unknown>;
+  },
+): Promise<void> => {
+  const binding = await operationAuditBinding(client, input.operationId);
+  if (binding.currentState !== input.expectedState)
+    throw new PreparationError(
+      `audit event requires ${input.expectedState} operation: ${input.operationId}`,
+    );
+  assertPipelineAuditCorrelation(input.audit, binding);
+  await appendAuditEvent(client, {
+    eventId: input.audit.eventId,
+    eventType: input.eventType,
+    actorType: input.audit.actorType,
+    actorId: input.audit.actorId,
+    traceId: input.audit.traceId,
+    reservationId: binding.reservationId,
+    ownerId: binding.ownerId,
+    agentId: binding.agentId,
+    walletId: binding.walletId,
+    intentId: binding.intentId,
+    operationId: binding.operationId,
+    policyId: binding.policyId,
+    policyVersion: binding.policyVersion,
+    data: {
+      ...input.data,
+      ...(binding.reservationId === null
+        ? {}
+        : { reservationId: binding.reservationId }),
+    },
+  });
+};
+
+const assertCandidateBinding = async (
+  client: PoolClient,
+  operationId: string,
+  candidate: TransferCoreCandidate,
+): Promise<void> => {
+  const binding = await operationAuditBinding(client, operationId);
+  if (
+    candidate.provenance.operationId !== operationId ||
+    candidate.provenance.intentId !== binding.intentId ||
+    candidate.provenance.agentId !== binding.agentId ||
+    candidate.provenance.walletId !== binding.walletId ||
+    candidate.provenance.policyId !== binding.policyId ||
+    candidate.provenance.policyVersion !== binding.policyVersion
+  )
+    throw new PreparationError("transaction candidate is not operation-bound");
+  const fixture = await client.query(
+    `SELECT fixture_instance_id FROM local_chain_fixtures
+     WHERE fixture_instance_id = $1 AND is_current = true`,
+    [candidate.fixtureInstanceId],
+  );
+  if (fixture.rowCount !== 1)
+    throw new PreparationError("transaction candidate fixture is not current");
+};
+
+export type TransferPipelineAuditInput =
+  | {
+      operationId: string;
+      eventType: "transaction.constructed" | "transaction.verified";
+      candidate: TransferCoreCandidate;
+      audit: AuditContext;
+    }
+  | {
+      operationId: string;
+      eventType: "transaction.decoded";
+      candidate: TransferCoreCandidate;
+      decoded: DecodedTransfer;
+      audit: AuditContext;
+    };
+
+export const persistTransferPipelineAudit = async (
+  pool: Pool,
+  input: TransferPipelineAuditInput,
+): Promise<void> => {
+  assertId(input.operationId, "operationId");
+  await withTransaction(pool, async (client) => {
+    await assertCandidateBinding(client, input.operationId, input.candidate);
+    const candidateHash = hashTransferCoreCandidate(input.candidate);
+    const base = { candidateHash };
+    if (input.eventType === "transaction.constructed") {
+      await appendPipelineAudit(client, {
+        operationId: input.operationId,
+        expectedState: "CONSTRUCTED",
+        eventType: input.eventType,
+        audit: input.audit,
+        data: {
+          ...base,
+          target: input.candidate.target,
+          chainId: input.candidate.chainId,
+          fixtureInstanceId: input.candidate.fixtureInstanceId,
+        },
+      });
+      return;
+    }
+    if (input.eventType === "transaction.decoded") {
+      const decoded = decodeTransferIndependent(input.candidate.calldata);
+      if (
+        !decoded.ok ||
+        decoded.recipient !== input.decoded.recipient ||
+        decoded.amountAtomic !== input.decoded.amountAtomic
+      )
+        throw new PreparationError(
+          "decoded audit evidence does not match calldata",
+        );
+      await appendPipelineAudit(client, {
+        operationId: input.operationId,
+        expectedState: "DECODED",
+        eventType: input.eventType,
+        audit: input.audit,
+        data: {
+          ...base,
+          calldataHash: keccak256(input.candidate.calldata),
+          decodedFunction: "erc20.transfer",
+        },
+      });
+      return;
+    }
+    await appendPipelineAudit(client, {
+      operationId: input.operationId,
+      expectedState: "VERIFIED",
+      eventType: input.eventType,
+      audit: input.audit,
+      data: base,
+    });
+  });
 };
 
 const withTransaction = async <T>(
@@ -220,8 +435,19 @@ export const persistPolicyDecision = async (
       input.operationId,
       "SIMULATED",
       "POLICY_FINALIZED",
-      input.audit,
     );
+    if (input.audit)
+      await appendPipelineAudit(client, {
+        operationId: input.operationId,
+        expectedState: "POLICY_FINALIZED",
+        eventType: "policy.evaluated",
+        audit: input.audit,
+        data: {
+          policyDecisionId: input.decisionId,
+          policyDecisionHash: decision.decisionHash,
+          result: decision.decision,
+        },
+      });
   });
 };
 
@@ -356,13 +582,22 @@ export const persistSimulation = async (
       throw new PreparationError(
         "simulation id is bound to different evidence",
       );
-    await transition(
-      client,
-      input.operationId,
-      "VERIFIED",
-      "SIMULATED",
-      input.audit,
-    );
+    await transition(client, input.operationId, "VERIFIED", "SIMULATED");
+    if (input.audit)
+      await appendPipelineAudit(client, {
+        operationId: input.operationId,
+        expectedState: "SIMULATED",
+        eventType: "transaction.simulated",
+        audit: input.audit,
+        data: {
+          simulationId: input.simulationId,
+          simulationEvidenceHash: simulation.evidenceHash,
+          fixtureInstanceId: simulation.fixtureInstanceId,
+          simulationBlockNumber: simulation.blockNumber,
+          simulationBlockHash: simulation.blockHash,
+          candidateHash: simulation.candidateHash,
+        },
+      });
   });
 };
 

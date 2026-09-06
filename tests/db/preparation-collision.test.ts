@@ -13,7 +13,9 @@ import {
   hashExecutableCandidate,
   hashSimulationEvidence,
   persistExecutionEnvelope,
+  persistPolicyDecision,
   persistSimulation,
+  persistTransferPipelineAudit,
   type ExecutableTransferCandidate,
   type SuccessfulFreshSimulation,
 } from "@crip/transaction-pipeline";
@@ -217,6 +219,88 @@ describe.sequential("P2-05D preparation identity collisions", () => {
         "SELECT current_state FROM operations WHERE operation_id = 'op_b'",
       ),
     ).resolves.toMatchObject({ rows: [{ current_state: "VERIFIED" }] });
+  });
+
+  test("does not let another operation satisfy preparation audit correlation", async () => {
+    await expect(
+      persistTransferPipelineAudit(pool, {
+        operationId: "op_b",
+        eventType: "transaction.verified",
+        candidate: executable,
+        audit: {
+          eventId: "evt:op_b:verified",
+          actorType: "system",
+          actorId: "collision-test",
+          traceId: "b".repeat(32),
+        },
+      }),
+    ).rejects.toThrow(/not operation-bound/);
+    await expect(
+      pool.query(
+        "SELECT count(*)::text AS count FROM audit_events WHERE event_type = 'transaction.verified'",
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: "0" }] });
+  });
+
+  test("rejects mutated simulation and final policy hashes before audit append", async () => {
+    await persistSimulation(pool, {
+      simulationId: "sim_audit",
+      operationId: "op_a",
+      executable,
+      simulation,
+      fixtureInstanceId,
+      audit: {
+        eventId: "evt:op_a:simulated",
+        actorType: "system",
+        actorId: "collision-test",
+        traceId: "c".repeat(32),
+      },
+    });
+    await expect(
+      persistSimulation(pool, {
+        simulationId: "sim_mutated",
+        operationId: "op_a",
+        executable,
+        simulation: { ...simulation, evidenceHash: `0x${"b".repeat(64)}` },
+        fixtureInstanceId,
+      }),
+    ).rejects.toThrow(/simulation evidence/);
+    const decision = {
+      schemaVersion: "1.0" as const,
+      decision: "ALLOW_AUTONOMOUS" as const,
+      policyId: "policy_1",
+      policyVersion: 1,
+      evaluatedAt: "2020-01-01T00:00:00Z",
+      rules: [{ rule: "input.contract", result: "pass" as const }],
+      requiredEnforcement: { budget: "CONTROL_PLANE" as const },
+      decisionHash: hash,
+    };
+    await persistPolicyDecision(pool, {
+      decisionId: "decision_audit",
+      operationId: "op_a",
+      decision,
+      audit: {
+        eventId: "evt:op_a:policy",
+        actorType: "system",
+        actorId: "collision-test",
+        traceId: "d".repeat(32),
+      },
+    });
+    await pool.query(
+      "UPDATE operations SET current_state = 'SIMULATED' WHERE operation_id = 'op_a'",
+    );
+    await expect(
+      persistPolicyDecision(pool, {
+        decisionId: "decision_audit",
+        operationId: "op_a",
+        decision: { ...decision, decisionHash: `0x${"c".repeat(64)}` },
+      }),
+    ).rejects.toThrow(/different evidence/);
+    await expect(
+      pool.query(
+        "SELECT count(*)::text AS count FROM audit_events WHERE event_type = 'policy.evaluated'",
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: "1" }] });
   });
 
   test("does not advance a second operation on an envelope id collision", async () => {

@@ -28,6 +28,8 @@ export {
   persistExecutionEnvelope,
   persistPolicyDecision,
   persistSimulation,
+  persistTransferPipelineAudit,
+  type TransferPipelineAuditInput,
   PreparationError,
 } from "./preparation.js";
 export {
@@ -45,6 +47,7 @@ export {
   checkSimulationFreshness,
   createLocalAnvilReadRpc,
   hashExecutableCandidate,
+  hashTransferCoreCandidate,
   hashSimulationEvidence,
   simulateAndResolveTransfer,
   SimulationResolutionError,
