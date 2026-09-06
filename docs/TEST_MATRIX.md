@@ -226,3 +226,37 @@ was `9999999696272999696273` and became `9999999600017614894520`; gas used
 `96255384801753`. Ledger ended `allocated=1000000`, `available=876544`,
 `reserved=0`, `finalized_spend=123456`. Raw signed bytes and the signer key
 were absent from the persisted/output leakage scan.
+
+### P2-05D durable-audit closeout (current)
+
+Implementation commit: `c8f7309` (`fix: persist p2-05d preparation audit evidence`).
+Local result: P2-05D E2E `1/1`; DB `124/124` (including operation, simulation,
+and final-policy audit collision tests); `npm run check` `21 repository + 314
+Vitest`; Forge `10/10`; chain `10/10`; concurrency `18/18`; invariants `7/7`;
+`npm audit --audit-level=high` `0` vulnerabilities.
+
+The successful E2E durable semantic sequence is:
+
+`transaction.constructed` → `transaction.decoded` → `transaction.verified` →
+`transaction.simulated` → `policy.evaluated` →
+`budget.reservation.created` → `budget.reservation.authorized` →
+`signing.started` → `transaction.signed` → `budget.reservation.broadcast` →
+`budget.reservation.evidence.verified` → `execution.recovery.claimed` →
+`budget.reservation.finalized` → `execution.recovery.resolved`.
+
+The exact successful run persisted simulation
+`simulation:op_p205d_e2e` / evidence hash
+`0x9364237ed77d9af99fc72eb4d194ec50751c7055109784261cc276c02bda2686`, final
+policy decision `decision_p205d_e2e` / hash
+`0x7175115f9aa31ce1fd30089ccc4918376389d8485a06013fe388579fe8ec833b`,
+envelope hash
+`0x4de1586ba510db8cb7d2c35f1f61361492a16c02fc3c3becd67d5280b2b846d0`, and
+authorization `auth_p205d_e2e` with the same policy hash. Signed, broadcast,
+verified transaction, receipt, and reconciled transaction hashes all equal
+`0x6e49129c1ec079bca131564a7f79d7c99f11ada25ad80baabce148ea62569c55`.
+All rows are bound to operation `op_p205d_e2e`; audit payloads contain hashes
+and identifiers only, with no raw signed bytes or private key.
+
+P2-05D is COMPLETE and READY FOR EXTERNAL ACCEPTANCE REVIEW. Protected CI and
+Secret Scan are required on the final pushed SHA. P2-06A remains separate;
+P2-06B/C/D are not started; S2 remains OPEN / NOT PASSED.
