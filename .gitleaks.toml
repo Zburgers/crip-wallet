@@ -2,3 +2,7 @@ title = "Crip Wallet secret scanning"
 
 [extend]
 useDefault = true
+
+[allowlist]
+description = "Deterministic non-secret P2-05D test identifiers"
+regexes = ['''p205d-e2e-(?:idempotency|reservation|authorization)''']

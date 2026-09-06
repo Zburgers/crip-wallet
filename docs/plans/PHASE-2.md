@@ -8,7 +8,7 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-01 is implemented locally and is the active review packet. ADR-0015 is accepted. P2-02 is architecture-unblocked but sequenced after P2-01 review/stability. Gate S2 is **OPEN / NOT PASSED**.
+**Status:** P2-02 through P2-04 are integrated on `integration/p2-05`; P2-05A/B/C are reviewed and integrated; P2-05D is implemented on `integration/p2-05d` and READY FOR EXTERNAL ACCEPTANCE REVIEW. P2-06A remains separate test infrastructure; P2-06B/C/D have not started. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 remains **OPEN / NOT PASSED**.
 
 ---
 
@@ -258,7 +258,7 @@ P2-04 owns the migration, after P2-02/P2-03 contracts are stable.
 - Create `transaction_simulations` keyed by a simulation ID with operation ID, transfer-core candidate hash, fixture instance ID, chain/block identity, sender nonce, token/native balances, gas/fee fields, normalized outcome and evidence hash. Simulation precedes envelope creation, so do **not** key the row by an envelope revision that does not yet exist.
 - Do not create a persistent `transaction_candidates` table without a separately demonstrated recovery requirement.
 - Create `signed_transactions` bound one-to-one to operation/reservation/envelope/authorization/current fixture with expected transaction hash, signer component identity and signed-at time; never raw bytes/private material.
-- Create `broadcast_attempts` keyed by attempt ID and expected hash with STARTED/ACCEPTED/REJECTED/UNKNOWN classification under guarded transitions.
+- Create `broadcast_attempts` keyed by attempt ID and expected hash with STARTED/ACCEPTED/REJECTED/UNKNOWN/CONFLICT classification under guarded transitions. A durable send-capable attempt fences Phase-1 release paths; a valid contradictory returned hash is CONFLICT, while response loss remains UNKNOWN.
 - Create normalized `chain_transaction_evidence` and `chain_receipt_evidence` bound to operation/reservation/envelope/expected hash/current fixture/canonical block.
 - Add uniqueness and FK/constraint guards preventing a transaction hash/evidence row from crossing operation/reservation/envelope identity and preventing more than one economic reconciliation effect.
 - Require current canonical authorization before SIGNING/SIGNED and matching authenticated execution evidence for downstream financial transitions.
@@ -716,11 +716,11 @@ Residual MVP risk: a fully compromised local host/signer can defeat local fake-v
 
 ### Blocking architecture questions
 
-None. ADR-0015 is accepted. P2-02 is gated by **P2-01 review/stability**, not by an unresolved architecture decision.
+At the pre-implementation checkpoint, P2-05D exposed two non-regression architecture gaps: `ALLOW_AUTONOMOUS` had no canonical non-approval authorization writer, and signer-local serialized bytes had no production composition into the accepted broadcaster. Product-owner decisions accepted ADR-0016 and ADR-0017; the implementation-ready package in `docs/plans/2026-08-31-p2-05d-architecture-gap-closure.md` is retained as historical context. ADR-0015 remains accepted and is not rewritten.
 
 ### Packet-owned non-blocking decisions
 
-- P2-02 selects/locks the exact `viem` version after current upstream/package inspection and dependency audit.
+- P2-02 selected and locked `viem` `2.56.0`; `npm audit --audit-level=high` reports 0 vulnerabilities on the local integration head. Protected current-head evidence is not claimed.
 - P2-03 selects and documents the smallest deterministic gas-limit margin and maximum simulation block age through explicit tests; both remain bounded by the accepted fee/freshness rules.
 - P2-04 may choose child-process stdio or a mode-0600 Unix socket for the local signer after platform/reliability tests. Either way the local API remains IDs-only and non-network/public; the universal provider adapter contract remains provider-neutral.
 
@@ -728,9 +728,37 @@ None. ADR-0015 is accepted. P2-02 is gated by **P2-01 review/stability**, not by
 
 ## 14. Current handoff
 
-### P2-01 implementation/review
+### P2-05D architecture gap proposal (historical)
 
-Use Shipyard executing-plans, TDD, infrastructure validation, Solidity security and verification skills. Implement/review only P2-01A then P2-01B. Do not add `viem`, envelope v2 code, migration 0022, transaction-pipeline logic or product signer behavior in P2-01.
+At reviewed checkpoint `2f78b0f3c888ca6b8b06340b8c4a308d1bb7053f`, P2-05A/B/C remained reviewed and accepted. This proposal was resolved by the product-owner decisions and implementation recorded below; it is retained as historical context.
+
+### P2-05D implementation checkpoint
+
+The clean vertical slice is implemented at remediation code SHA
+`a45c32d46330230614c8a72b44c0941dd0cf1850` on `integration/p2-05d`.
+It uses production preparation writers for lifecycle, simulation, policy and
+envelope persistence, production `authorizeAutonomous`, the restricted
+same-child signer/broadcaster composition, independent chain-evidence
+verification, and ADR-0014 authenticated reconciliation. The fresh E2E passes
+1/1 with no direct protected-state seeding. Exact local identities, economics,
+leakage results and test counts are recorded in `docs/TEST_MATRIX.md`.
+Protected CI `33365440241` and Secret Scan `33365440250` pass on
+`f5d433b97c19d028bcde99741976cb4debb77d03`; the final documentation handoff
+SHA is reported separately. S2 is not claimed.
+
+### P2-05A/B/C integration checkpoint (historical)
+
+The recovery integration branch is `integration/p2-05`. Its pre-documentation code head is `c0c4949590fbd7992f06537dc3cb93dd841a7936`, descended from P2-04C `0e00f212711c07aae363c28245d2ee453f8d84c2`. It integrates P2-05A persist-before-send broadcast, P2-05B independent untrusted chain-evidence verification, and the preserved P2-05C authenticated reconciliation path. Protected CI `33299665297` and Secret Scan `33299665282` both passed on that exact code head.
+
+Local evidence at this historical checkpoint included `npm run check` (21 repository + 287 Vitest), audit with 0 high vulnerabilities, Forge 10/10, DB 82/82, concurrency 18/18, invariants 7/7, chain 10/10, envelope 68/68, transaction-pipeline 61/61, signer/adapter 36/36, broadcast 7/7, and reconciliation 10/10. The separate P2-06A compatibility branch passed its fault gate 59/59. The current P2-05D implementation evidence is recorded in the checkpoint above; P2-06B/C/D have not started; S2 remains **OPEN / NOT PASSED**.
+
+### P2-05 external-review remediation (historical)
+
+External review `5060378379` identified broadcast and reconciliation safety gaps at reviewed head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6`. The remediation keeps ADR-0015 and the Phase-1 budget authority unchanged: exact canonical signed bytes are hashed before send; valid wrong returned hashes are CONFLICT; durable send-capable attempts fence pre-broadcast release; legacy evidence is DB-bound to the exact attempt/hash/nonce/receipt identity; and P2-05C retries serialize per operation and resume idempotently after economic resolution or effect persistence. This is historical remediation context; the current P2-05D evidence is recorded above and protected current-head evidence remains required for external review. S2 remains **OPEN / NOT PASSED**.
+
+### P2-02 implementation/integration handoff
+
+P2-02 integration used the reviewed commits `9a5fe377` (envelope v2) and `bc5ff828` (static transfer core) on stable P2-01 head `343de49`, producing local integration head `9d58f47`. It added no migrations, signer, broadcast or public-network behavior. Local combined evidence is recorded in `docs/TEST_MATRIX.md`; protected current-head CI and Secret Scan remain an external gate.
 
 Review P2-01 specifically for:
 
@@ -743,4 +771,4 @@ Review P2-01 specifically for:
 - secret scans and S0/S1 regression gates;
 - no P2-02 scope creep.
 
-After P2-01 is reviewed, corrected if necessary, and protected CI/Secret Scan are green, P2-02 may begin immediately under accepted ADR-0015. Gate S2 remains **NOT PASSED** until the complete packet chain and closeout evidence pass.
+P2-03 input is the strict `TransferCoreCandidate` from `constructTransferCore`, the independently decoded `DecodedTransfer` from `decodeTransferIndependent`, the canonical transfer intent, and trusted local context/provenance. P2-03 is implemented locally in `packages/transaction-pipeline` with additive runtime schemas in `packages/schemas`: it pins simulation to the current loopback fixture and canonical block, resolves pending nonce/gas/type-2 fees/access-list, enforces checked native max-cost and balance separation, hashes normalized evidence, verifies exact fields, and exposes bounded freshness. It has no persistent candidate authority and performs no authorization/signing/broadcast. Local focused evidence is 20 unit tests and 1 chain test; protected current-head evidence is not claimed. Gate S2 remains **NOT PASSED** until the complete packet chain and closeout evidence pass.

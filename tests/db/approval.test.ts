@@ -596,6 +596,57 @@ describe.sequential("WP-03/WP-08 approval authorization proof", () => {
     );
   });
 
+  test("owner authorization remains bound to the approval fence snapshot", async () => {
+    const fixture = await prepareApprovalFixture("op_owner_fence_snapshot");
+    await requestApproval(fixture);
+    await approve(fixture);
+
+    await pool.query(
+      `UPDATE control_fences
+       SET fence_version = fence_version + 1
+       WHERE scope_type = 'SYSTEM' AND scope_id = 'system'`,
+    );
+
+    await expect(
+      pool.query(
+        `INSERT INTO authorization_evidence
+          (authorization_id, authorization_kind, approval_id, operation_id,
+           reservation_id, envelope_id, envelope_revision, envelope_hash,
+           policy_decision_id, policy_decision_hash, policy_id, policy_version,
+           approver_id, issued_at, expires_at, authorized_at, consumed_at,
+           consumer_id, consumption_nonce, system_fence_version, system_state,
+           owner_fence_version, owner_state, agent_fence_version, agent_state,
+           policy_fence_version, policy_state)
+         SELECT 'forged_owner_fence', 'OWNER_APPROVAL', a.approval_id,
+                a.operation_id, a.reservation_id, a.envelope_id,
+                a.envelope_revision, a.envelope_hash, a.policy_decision_id,
+                a.policy_decision_hash, a.policy_id, a.policy_version,
+                a.approver_id, a.issued_at, a.expires_at,
+                '2099-01-01T10:02:00Z', '2099-01-01T10:02:00Z',
+                'forged-consumer', 'forged-owner-fence',
+                system.fence_version, system.state,
+                owner.fence_version, owner.state,
+                agent.fence_version, agent.state,
+                policy.fence_version, policy.state
+         FROM approval_requests a
+         JOIN operations o ON o.operation_id = a.operation_id
+         JOIN agents ag ON ag.agent_id = o.agent_id
+         JOIN control_fences system
+           ON system.scope_type = 'SYSTEM' AND system.scope_id = 'system'
+         JOIN control_fences owner
+           ON owner.scope_type = 'OWNER' AND owner.scope_id = ag.owner_id
+         JOIN control_fences agent
+           ON agent.scope_type = 'AGENT' AND agent.scope_id = o.agent_id
+         JOIN control_fences policy
+           ON policy.scope_type = 'POLICY' AND policy.scope_id = o.policy_id
+         WHERE a.approval_id = $1`,
+        [`approval_${fixture.operationId}`],
+      ),
+    ).rejects.toThrow(
+      /approval fence evidence binding mismatch|fence snapshot/i,
+    );
+  });
+
   test("replay after consumption fails closed and authenticated evidence is consumed once", async () => {
     const fixture = await prepareApprovalFixture();
     await requestApproval(fixture);

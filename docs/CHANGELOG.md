@@ -7,6 +7,9 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ### Phase 2
 
+- Completed P2-05D remediation on `integration/p2-05d` code SHA `a45c32d46330230614c8a72b44c0941dd0cf1850`: integrated PRE-A canonical autonomous authorization with PRE-B signer-local execution, preserved owner-approval fence snapshots, bound preparation ID collisions, ordered final policy evaluation after exact executable verification, and added an explicit protected E2E step. Local evidence is 1/1 E2E, 122/122 DB, 18/18 concurrency, 7/7 invariants, 10/10 chain, 10/10 Forge, 21 repository + 314 Vitest, and 0 high audit vulnerabilities. Protected CI `33441013501` and Secret Scan `33441013543` pass on that exact code SHA; S2 remains OPEN / NOT PASSED pending external acceptance review.
+- Corrected the ERC-20 Transfer event topic for new P2-05 evidence in forward migration 0024 without editing migrations 0001–0023; existing rows with the legacy incorrect topic remain unverifiable and fail closed.
+
 - Opened Phase 2 / WS-004 from current `main` for the local fake-ERC-20 vertical slice: construct, independently verify, simulate, authorize, locally sign, broadcast, confirm and reconcile.
 - Added `docs/plans/PHASE-2.md` and `docs/workstreams/WS-004-transaction-pipeline.md` with explicit local-only boundaries, packet order, S2 evidence requirements and chain-level ambiguity/fault coverage.
 - Preserved the prohibition on public RPC, testnet/mainnet, real funds, production custody and production identity.
@@ -15,6 +18,8 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 - P2-02 is no longer blocked on product-owner architecture approval. It remains sequenced after P2-01 review/stabilization and must implement the accepted ADR rather than redesigning the execution boundary.
 - Reconciled `docs/SECURITY.md` with current gate authority: S0 PASS, S1 PASS / ACCEPTED, S2 OPEN / NOT PASSED. Historical WP-03/WP-04 blocked language is now explicitly framed as checkpoint history rather than current status.
 - Implemented P2-01: a digest-pinned minimal MockERC20, secure checkout-bound deployment, genesis/fixture/code fingerprints, cryptographically random per-deployment fixture instances, clean-reset stale-instance enforcement, and fail-closed chain tests. Protected evidence is 10/10 Forge tests and 9/9 fixture tests on implementation head `25e8147f` (CI `33189082028`, Secret Scan `33189082181`); this does not claim S2 completion.
+- Integrated P2-02 locally on stable head `343de49` as `9d58f47`, combining additive envelope v2/hash dispatch with the `viem` `2.56.0` static transfer constructor, independent strict decoder and fail-closed verifier. Local integration evidence includes 87 focused P2-02 tests, 21 repository + 205 package checks, 10/10 Forge tests, 71/71 DB tests, 18/18 concurrency tests, 7/7 invariant tests and 0 high-severity audit findings. Protected current-head CI and Secret Scan are not claimed; P2-03 is the next packet.
+- Implemented P2-03 locally from coordinator SHA `733b32f`: strict executable/evidence schemas, canonical block-pinned loopback simulation, explicit pending nonce and EIP-1559 resolution, 10% integer gas margin, native-fee ceiling/balance enforcement, normalized evidence hashing, exact-field verification, and bounded freshness where an unrelated newer head remains valid. Focused evidence is 20 unit tests plus 1 chain test; protected current-head CI and Secret Scan are not claimed.
 
 ### Dependencies
 

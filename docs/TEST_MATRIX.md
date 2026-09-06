@@ -77,14 +77,14 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | PR-006 | chain/asset/recipient/action restrictions | PLANNED | Phase 2 |
 | PR-007 | atomic reservation before authorization | PASS | WS-003 |
 | PR-008 | retry/idempotency cannot duplicate spend | PASS for ledger / PLANNED for chain | Phase 2/3 execution proof remains |
-| PR-009 | intent constructs transaction | PLANNED | P2-02 |
-| PR-010 | independent decode/verification | PLANNED | P2-02 |
-| PR-011 | state-changing operations simulated | PLANNED | P2-03 |
+| PR-009 | intent constructs transaction | PASS locally / PLANNED protected | P2-02 integration: `packages/transaction-pipeline/test/transfer-core.test.ts` |
+| PR-010 | independent decode/verification | PASS locally / PLANNED protected | P2-02 integration: independent decoder and static verifier mutation tests |
+| PR-011 | state-changing operations simulated | PASS locally / PLANNED protected | P2-03 unit + loopback chain simulation (20 focused unit tests, 1 chain test) |
 | PR-012 | immutable envelope after reservation | PASS locally / PLANNED exact-EVM v2 | WS-002 approval binding; P2-02 exact signed-field proof |
 | PR-013 | approval envelope-bound and one-time | PASS locally | WP-07/08; E2E Phase 3 |
 | PR-014 | owner/signer key outside agent process | PASS for owner-auth local key boundary / PLANNED for transaction signer | P2-04 |
 | PR-015 | revocation/pause before signing | PASS for S1 control plane / PLANNED at signer boundary | Phase 3 |
-| PR-016 | native fee ceiling | PLANNED | P2-03/P2-04 |
+| PR-016 | native fee ceiling | PASS locally / PLANNED protected | P2-03 integer max-cost, native-balance and fee-escalation tests |
 | PR-017 | MCP/CLI/dashboard share core | PLANNED | Phase 4 |
 | PR-018 | no raw signing surface in interfaces | PLANNED | P2-04 local adapter + Phase 4 public interfaces |
 | PR-019 | lifecycle telemetry correlation | PLANNED | Phase 5 |
@@ -106,17 +106,17 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-004 | duplicate broadcast/evidence | PASS locally | recovery evidence idempotency; real local broadcast proof P2-06 |
 | TM-005 | approval replay | PASS locally | WP-07/08 |
 | TM-006 | chain substitution/public RPC | PASS for P2-01 fixture boundary / PLANNED E2E | loopback/31337 guards; P2-03/P2-04 |
-| TM-007 | recipient/amount/asset substitution | PLANNED | P2-02 |
-| TM-008 | calldata/extra-call substitution | PLANNED | P2-02 |
-| TM-009 | fee bypass/spike | PLANNED | P2-03/P2-04 |
+| TM-007 | recipient/amount/asset substitution | PASS locally / PLANNED protected | P2-02 static verifier mutation tests |
+| TM-008 | calldata/extra-call substitution | PASS locally / PLANNED protected | P2-02 strict 68-byte decoder and calldata mutation tests |
+| TM-009 | fee bypass/spike | PASS locally / PLANNED protected | P2-03 priority/max-fee, ceiling and freshness escalation tests |
 | TM-010 | stale/downgraded policy | PASS locally / PLANNED pre-sign | fence + binding; Phase 3 |
 | TM-011 | expired approval | PASS locally | WP-08 |
 | TM-012 | revocation/pause race | PASS locally / PLANNED pre-sign | WP-04/10 then Phase 3 |
 | TM-013 | permit/unlimited/signature abuse | PLANNED | P2-02/P2-04/Phase 4 |
-| TM-014 | delegatecall/multicall/proxy | PLANNED | P2-02 |
+| TM-014 | delegatecall/multicall/proxy | PASS locally / PLANNED protected | P2-02 unknown-selector and exact-length decoder tests |
 | TM-015 | token metadata manipulation | PASS for P2-01 fixture / PLANNED E2E | deployment metadata and runtime code-hash checks; P2-02 |
-| TM-016 | RPC disagreement | PLANNED | P2-03/P2-05 |
-| TM-017 | re-simulation divergence | PLANNED | P2-03/Phase 3 |
+| TM-016 | RPC disagreement | PASS locally / PLANNED protected | P2-03 chain/fixture/block/fee disagreement fail-closed tests |
+| TM-017 | re-simulation divergence | PASS locally / PLANNED protected | P2-03 executable mutation and bounded freshness tests |
 | TM-018 | signed-unbroadcast ambiguity | PASS only as local disputed-state primitive / PLANNED real local signer | P2-04/P2-06 then Phase 3 |
 | TM-019 | broadcast persistence timeout | PASS local recovery primitive / PLANNED adapter integration | P2-05/P2-06 then Phase 3 |
 | TM-020 | revert/reorg/receipt confusion | PLANNED | P2-05/P2-06 |
@@ -130,14 +130,133 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-028 | enforcement overclaim | PLANNED | P2-04 adapter conformance |
 | TM-029 | migration/data loss | PASS for forward/checksum/corrective path / PLANNED backup drill | later hardening |
 | TM-030 | dependency/supply chain | PASS for lock/audit/action pins / monitored | ongoing; `viem` lock/audit at P2-02 |
-| TM-031 | constructor self-verification | PLANNED | P2-02 `viem` encoder + independent strict parser + mutation vectors |
-| TM-032 | unbound signer transaction fields | PLANNED | ADR-0015 ACCEPTED; P2-02 v2 schema/DB/hash proof + P2-04 exact signer proof |
-| TM-033 | response-loss false failure/release | PLANNED | P2-05/P2-06 persist-before-send expected-hash/attempt fault proof |
-| TM-034 | receipt/cross-operation substitution | PLANNED | P2-05 transaction/receipt/log matching + ADR-0014 authenticated reconciler proof |
-| TM-035 | local-chain reset confusion | PASS for P2-01 fixture / PLANNED boundary checks | genesis/fixture/deployment/code fingerprints; P2-03/P2-05/P2-06 |
+| TM-031 | constructor self-verification | PASS locally / PLANNED protected | P2-02 `viem` encoder + independent strict parser + 128 calldata mutation runs |
+| TM-032 | unbound signer transaction fields | PASS locally / PLANNED signer proof | P2-02 v2 schema/hash binds exact fields; P2-04 must prove signer exactness |
+| TM-033 | response-loss false failure/release | PASS focused local / PLANNED protected fault compatibility | exact-byte broadcast 12/12; DB release/recovery fence and crash-resume orchestration |
+| TM-034 | receipt/cross-operation substitution | PASS focused local / PLANNED protected | P2-05C entry-point suite covers tx/receipt/log, operation/reservation/fixture, auth and legacy-evidence mismatches |
+| TM-035 | local-chain reset confusion | PASS for P2-01 fixture / PASS locally P2-03 / PLANNED protected | genesis/fixture/deployment/code fingerprints plus P2-03 fixture-bound simulation evidence |
 
 ## Phase-2 implementation matrix
 
-The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, including inherited S0/S1 gates, is maintained in `docs/plans/PHASE-2.md`. ADR-0015 is accepted and P2-02 is no longer blocked on product-owner architecture approval. No Phase-2 row is PASS until the named test exists and protected current-head evidence is recorded here.
+The packet-level `requirement -> test -> suite -> packet -> evidence` matrix, including inherited S0/S1 gates, is maintained in `docs/plans/PHASE-2.md`. ADR-0015 is accepted and P2-02 is no longer blocked on product-owner architecture approval.
 | P2-01A | pinned fake ERC-20 toolchain and contract | PASS | `npm run contracts:test` — 10/10 |
 | P2-01B | checkout-bound fixture, unique instance identity and local-chain boundary | PASS | Protected CI `33189082028` on `25e8147f`; Forge 10/10; chain 9/9 including reset → redeploy stale-instance proof |
+| P2-02A | additive envelope v2 and hash dispatch | PASS locally / PLANNED protected | `npx vitest run packages/schemas/test/envelope-v2.test.ts`; 60 tests; v1 regression suite 47 tests; exact v2 hash vector |
+| P2-02BCD | static transfer construction, independent decoder and verifier | PASS locally / PLANNED protected | `npx vitest run packages/transaction-pipeline/test/transfer-core.test.ts`; 27 tests including 128 calldata mutation runs |
+| P2-02 integration | combined P2-02 local review gate | PASS locally / PLANNED protected | `npm ci`; `npm run check`; audit 0 vulnerabilities; Forge 10/10; DB 71/71; concurrency 18/18; invariants 7/7; focused P2-02 87 tests |
+| P2-03 | canonical simulation, exact executable resolution, fee enforcement and freshness | PASS locally / PLANNED protected | 20 focused unit tests; 1 focused loopback chain test; 21 repository + 225 package tests; Forge 10/10; DB 71/71; concurrency 18/18; invariants 7/7; audit 0 vulnerabilities. Default all-chain invocation also hit the inherited 5-second P2-01 fixture reset-test timeout; no skip or protected claim. |
+
+### P2-05A/B/C integration checkpoint
+
+| Packet | Status | Evidence at exact code head `c0c4949590fbd7992f06537dc3cb93dd841a7936` |
+| --- | --- | --- |
+| P2-02/P2-03/P2-04 | PASS locally and integrated | `npm run check`: 21 repository + 287 Vitest; envelope 68/68; transaction-pipeline 61/61; signer/adapter 36/36 |
+| P2-05A | PASS locally and integrated | Broadcast suite 7/7; expected hash and STARTED attempt durable before send; uncertainty retained |
+| P2-05B | PASS locally and integrated | Chain-evidence suite included in pipeline gate; transaction/receipt/block/Transfer and fixture binding are independently checked |
+| P2-05C | PASS locally and integrated | Reconciliation/recovery suite 10/10; DB gate 82/82; verified revert releases zero token spend while native fees remain separate |
+| Combined local gates | PASS | Forge 10/10; concurrency 18/18; invariants 7/7; chain 10/10; audit 0 high vulnerabilities |
+| Protected remote | PASS | CI run `33299665297`; Secret Scan run `33299665282`; both tested exact head above |
+| P2-05D | PENDING | Clean vertical-slice E2E is not part of this recovery checkpoint |
+| P2-06A | SEPARATE | Historical compatibility branch fault gate 59/59; not merged into the product integration branch |
+
+### P2-05D architecture gap proposal (historical)
+
+| Scope | Status | Required evidence before status may advance |
+| --- | --- | --- |
+| ADR-0016 canonical autonomous authorization | PROPOSED / NOT IMPLEMENTED | Migration-upgrade, owner-regression, autonomous writer, direct-forgery, invalidation, and deterministic concurrency suites |
+| ADR-0017 signer-local execution handoff | PROPOSED / NOT IMPLEMENTED | Same-child sign/broadcast, exact hash, crash barriers, rematerialization, no-resign state fences, and output/DB/audit/key leakage suites |
+| PRE-A/PRE-B integration | BLOCKED ON PRODUCT-OWNER DECISION | Combined authorization/signer/broadcast security review and all inherited gates |
+| P2-05D | PENDING at this historical checkpoint | Fresh clean vertical slice through production transition writers; no protected-state seeding |
+| Gate S2 | OPEN / NOT PASSED | Full Phase-2 closeout and protected exact-SHA evidence |
+
+The inherited Vitest exit-135 event was not reproduced after integration. The two reported envelope-v2 failures were not reproduced on the clean packet history; the weakened user-edited test state is preserved separately on `preserve/phase2-dirty-state` and is not part of this checkpoint. Gate S2 remains **OPEN / NOT PASSED**.
+
+### P2-05 external-review remediation checkpoint
+
+| Scope | Current evidence |
+| --- | --- |
+| Broadcast | `adapters/local-anvil/test/broadcast-core.test.ts` — 12/12 focused local: canonical signed-byte hash binding, mutation/unrelated/malformed rejection before sender, matching acceptance, CONFLICT, UNKNOWN and conservative stale-nonce classification |
+| Reconciliation orchestration and broadcast-fence races | `tests/db/execution-evidence.test.ts` — 32/32 focused local, including 4/4 deterministic real-store PostgreSQL cases for STARTED-first, RELEASED-first, EXPIRED-first and repeated STARTED idempotency; the suite retains exact reconciliation success/revert, mismatch/cross-binding/auth, duplicate/concurrent retry and post-resolution/post-effect crash recovery coverage |
+| Migration | `0023_p205_broadcast_safety.sql` is additive and forward-only; prior migrations are unchanged. It adds CONFLICT, exact legacy-evidence binding, signed-lifecycle canonical authorization, and the send-attempt release fence |
+| Full local gates | PASS — `npm ci`; `npm run check` 21 repository + 292 Vitest; audit 0 vulnerabilities; Forge 10/10; DB 104/104; concurrency 18/18; invariants 7/7; chain 10/10 |
+| P2-06A compatibility | PASS on a disposable, unmerged compatibility branch — `npm run test:fault` 64/64, including deterministic forward-then-drop coverage |
+| Protected CI / Secret Scan | PENDING exact final head |
+| Scope boundary | P2-05D not implemented at this historical checkpoint; P2-06B/C not started; S2 not accepted |
+
+### P2-05D final integration checkpoint
+
+Remediation code SHA: `a45c32d46330230614c8a72b44c0941dd0cf1850`.
+The full final branch SHA is the documentation handoff commit reported with
+the protected checks. All chain evidence below is local-only Anvil
+`eip155:31337`; S2 remains **OPEN / NOT PASSED**.
+
+| Scope | Result |
+| --- | --- |
+| PRE-A/PRE-B integration | PASS — PRE-A `c1f6ab9167c9960e8ef1f822f7351a3ad04a70b6`; PRE-B commits `d251726` and `84e85007864c1cbf7326288e4651048cebf493f3`; signer consumes `OWNER_APPROVAL` and `AUTONOMOUS_POLICY` through one exact path |
+| Autonomous authorization | PASS — `tests/db/autonomous-authorization.test.ts` 15/15; production `authorizeAutonomous` only accepts persisted `ALLOW_AUTONOMOUS` and current common controls |
+| Owner approval regression | PASS — `tests/db/approval.test.ts` 26/26 (25 historical + owner fence-snapshot regression); genuine approval evidence remains required |
+| Migration | PASS — fresh 0023 → 0024 database gate; `npm run test:db` 122/122; migrations 0001–0023 unchanged |
+| Signer / keys / execution handoff | PASS — signer-core 26/26, signer-keys 2/2, execution-core 18/18, frozen vector 1/1 |
+| Broadcaster | PASS — `broadcast-core.test.ts` 12/12; exact hash binding, STARTED-before-send, UNKNOWN/CONFLICT handling |
+| Chain evidence | PASS — `chain-evidence.test.ts` 20/20; transaction/receipt/block/standard Transfer matching |
+| Reconciliation | PASS — included in DB 122/122 and the clean E2E; authenticated lease-fenced exactly-once effect |
+| P2-05D E2E | PASS — `tests/chain/p2-05d-e2e.test.ts` 1/1; no protected-state lifecycle/evidence seeding |
+| Database / concurrency / invariants / chain | PASS — 122/122, 18/18, 7/7, 10/10 |
+| Forge / complete check / audit | PASS — 10/10, 21 repository + 314 Vitest, 0 high vulnerabilities |
+| Protected remediation evidence | PASS — CI `33441013501` and Secret Scan `33441013543` on code SHA `a45c32d46330230614c8a72b44c0941dd0cf1850`; final documentation-head checks are reported separately |
+| Scope | P2-06A remains separate and unmerged; P2-06B/C/D not started; no S2 claim |
+
+Clean E2E identity and economic proof: fixture instance
+`33c6581c-6af0-489a-a1e9-0e171e022281`; operation `op_p205d_e2e`; reservation
+`res_p205d_e2e`; envelope `env_p205d_e2e_1` /
+`0xf4155e8dfe39d494c5c1bba0c745494baceb3a9ec44fac711b421579dfdecc9f`;
+decision `decision_p205d_e2e` = `ALLOW_AUTONOMOUS` /
+`0x25e2f8f9e04eac2f97c20067d13aa79a9c892c9e8ec0b5199a50c8640729be76`;
+authorization `auth_p205d_e2e` = `AUTONOMOUS_POLICY`; simulation
+`simulation:op_p205d_e2e` /
+`0xfc8103e4da0c49245dd307e74cf6ebf90dfbc26aa38b4933c877799c9d8bc09a`;
+signed transaction `signed:op_p205d_e2e:1`; expected hash
+`0x6e49129c1ec079bca131564a7f79d7c99f11ada25ad80baabce148ea62569c55`;
+attempt `attempt:op_p205d_e2e:1` = `ACCEPTED`; receipt block `2`;
+recovery outcome `CONFIRMED`; effect `effect:attempt:op_p205d_e2e:1`.
+Token moved `123456` atomic units exactly (sender
+`1000000000000 -> 999999876544`, recipient `0 -> 123456`). Native balance
+was `9999999696272999696273` and became `9999999600017614894520`; gas used
+`51267` at effective gas price `1877531059`, for verified native fee
+`96255384801753`. Ledger ended `allocated=1000000`, `available=876544`,
+`reserved=0`, `finalized_spend=123456`. Raw signed bytes and the signer key
+were absent from the persisted/output leakage scan.
+
+### P2-05D durable-audit closeout (current)
+
+Implementation commit: `c8f7309` (`fix: persist p2-05d preparation audit evidence`).
+Local result: P2-05D E2E `1/1`; DB `124/124` (including operation, simulation,
+and final-policy audit collision tests); `npm run check` `21 repository + 314
+Vitest`; Forge `10/10`; chain `10/10`; concurrency `18/18`; invariants `7/7`;
+`npm audit --audit-level=high` `0` vulnerabilities.
+
+The successful E2E durable semantic sequence is:
+
+`transaction.constructed` → `transaction.decoded` → `transaction.verified` →
+`transaction.simulated` → `policy.evaluated` →
+`budget.reservation.created` → `budget.reservation.authorized` →
+`signing.started` → `transaction.signed` → `budget.reservation.broadcast` →
+`budget.reservation.evidence.verified` → `execution.recovery.claimed` →
+`budget.reservation.finalized` → `execution.recovery.resolved`.
+
+The exact successful run persisted simulation
+`simulation:op_p205d_e2e` / evidence hash
+`0x9364237ed77d9af99fc72eb4d194ec50751c7055109784261cc276c02bda2686`, final
+policy decision `decision_p205d_e2e` / hash
+`0x7175115f9aa31ce1fd30089ccc4918376389d8485a06013fe388579fe8ec833b`,
+envelope hash
+`0x4de1586ba510db8cb7d2c35f1f61361492a16c02fc3c3becd67d5280b2b846d0`, and
+authorization `auth_p205d_e2e` with the same policy hash. Signed, broadcast,
+verified transaction, receipt, and reconciled transaction hashes all equal
+`0x6e49129c1ec079bca131564a7f79d7c99f11ada25ad80baabce148ea62569c55`.
+All rows are bound to operation `op_p205d_e2e`; audit payloads contain hashes
+and identifiers only, with no raw signed bytes or private key.
+
+P2-05D is COMPLETE and READY FOR EXTERNAL ACCEPTANCE REVIEW. Protected CI and
+Secret Scan are required on the final pushed SHA. P2-06A remains separate;
+P2-06B/C/D are not started; S2 remains OPEN / NOT PASSED.

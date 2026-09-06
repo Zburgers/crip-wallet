@@ -16,6 +16,7 @@ import {
 export * from "./control.js";
 export { ApprovalError };
 export {
+  authorizeAutonomous,
   consumeApproval,
   createApprovalRequest,
   rejectApproval,
@@ -25,7 +26,9 @@ export {
 export type {
   ApprovalErrorCode,
   ApprovalStatus,
+  AuthorizationKind,
   AuthorizationEvidence,
+  AuthorizeAutonomousInput,
   ConsumeApprovalRequest,
   CreateApprovalRequest,
   RejectApprovalRequest,

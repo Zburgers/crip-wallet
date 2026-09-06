@@ -8,7 +8,7 @@ Update rule: after phase planning, gate review, material scope change, or produc
 | --- | --- | --- | --- | --- |
 | 0 | Governance, reproducible local environment and repository safety | Verified baseline | Governing S0 controls | **PASS** |
 | 1 | Canonical contracts, atomic ledger and S1 authorization/control proof without signing | S0 | Unit + DB + concurrency + property + approval/revocation proof, protected current-head verification | **PASS / S1 ACCEPTED** |
-| 2 | Construct/verify/simulate/sign/reconcile fake ERC-20 on Anvil | S1 | Chain vertical slice and reconciliation evidence | **OPEN - P2-01 COMPLETE LOCALLY; ADR-0015 ACCEPTED; P2-02 UNBLOCKED AFTER REVIEW** |
+| 2 | Construct/verify/simulate/sign/reconcile fake ERC-20 on Anvil | S1 | Chain vertical slice and reconciliation evidence | **OPEN - P2-03 COMPLETE LOCALLY; P2-04 NEXT; ADR-0015 ACCEPTED** |
 | 3 | Integrated approval/revocation/pause/recovery across execution boundary | Stable Phase-2 adapter/pipeline | Replay/race/recovery E2E | BLOCKED |
 | 4 | MCP, CLI, dashboard and Agent Skill | Stable core API | Interface parity and browser evidence | BLOCKED |
 | 5 | Telemetry, adversarial hardening and MVP review | Integrated local product | S2, full matrix, no critical/high findings, owner sign-off | BLOCKED |

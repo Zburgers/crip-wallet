@@ -8,7 +8,7 @@ Update rule: at every meaningful integration point; keep this as the current res
 - Repository: `Zburgers/crip-wallet`
 - Default branch baseline: `main` at `f733a41ed16c44ad631f0a5a4b52e8096ab70eed`
 - Phase 0/1 merge: PR #1 merged as `4dd91b481ccac51247e2c7e1220b5e74f968c0d5`
-- Phase-2 implementation branch: `phase-2/ws-004-local-erc20`
+- Phase-2 implementation branch: `integration/p2-05`
 - Governing product authority: `docs/PRODUCT_SPEC.md`
 - Phase-1 protected evidence head: `85545348d369c7860742872acb4da100a5842152`
 - Phase-1 protected CI: run `31919254466` — PASS
@@ -58,7 +58,7 @@ Phase 2 / WS-004 is open for the local fake-ERC-20 vertical slice:
 
 ADR-0015 is accepted and now fixes the exact EIP-1559 envelope-v2, local reference-signer, persist-before-send broadcast, and authenticated reconciliation boundary. This removes the architecture-approval blocker for P2-02, but it does not constitute runtime or chain evidence.
 
-P2-01 local fixture evidence is complete: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset → redeploy with a new cryptographically random `fixtureInstanceId` and stale rejection of the prior instance. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`. No complete S2 journey is claimed. Transaction construction, independent decoding, simulation/fee enforcement, local signing/broadcast/confirmation/reconciliation and chain-level fault/ambiguity tests remain to be implemented and proven. P2-01 remains the active reviewed packet; P2-02 must wait for review acceptance.
+P2-01 local fixture evidence is complete: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9. P2-02 through P2-05C are reviewed and integrated. P2-05D durable-audit closeout is complete on `integration/p2-05d` at implementation SHA `c8f7309`: fresh local E2E 1/1, DB 124/124, concurrency 18/18, invariants 7/7, chain 10/10, Forge 10/10, complete check 21 repository + 314 Vitest, audit 0 high vulnerabilities. Protected CI and Secret Scan for the final pushed SHA are pending. P2-06A remains a separate unmerged test-infrastructure branch; P2-06B/C/D have not started. S2 remains OPEN / NOT PASSED and is not claimed.
 
 ## Dependency state
 
@@ -73,7 +73,7 @@ P2-01 local fixture evidence is complete: pinned MockERC20 Forge tests pass 10/1
 - WS-002 canonical contracts — FROZEN LOCALLY.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
-- WS-004 Phase-2 transaction pipeline/local adapter — ADR-0015 accepted; P2-01 complete locally and awaiting review.
+- WS-004 Phase-2 transaction pipeline/local adapter — ADR-0015/0016/0017 accepted; P2-02 through P2-05C reviewed and P2-05D durable-audit closeout complete on `integration/p2-05d`; P2-06 remains separate; S2 remains open.
 - WS-005 Phase-3 integrated approval/control/recovery slice — NOT OPENED until WS-004 is stable.
 - WS-006/007 — NOT OPENED.
 
@@ -83,10 +83,10 @@ Phase 2 remains strictly local and fake-money only: Anvil chain `31337` / `0x7a6
 
 ## Phase-2 planning handoff
 
-- `docs/plans/PHASE-2.md` contains the researched architecture, APIs, lifecycle mapping, migration impact, packet-level TDD tasks, fault model, threat ownership and S2 reproduction gate.
+- `docs/plans/PHASE-2.md` contains the researched architecture, APIs, lifecycle mapping, migration impact, packet-level TDD tasks, fault model, threat ownership and S2 reproduction gate; its P2-05D implementation checkpoint records the current local proof.
 - ADR-0015 is **ACCEPTED**. Envelope v2 must use schema version `2.0` and a distinct v2 hash-preimage version; bind all unsigned type-2 fields including `accessList: []`; use the accepted bounded simulation-freshness rules; preserve the local-Anvil IDs-only signer as a reference-adapter mechanism rather than a universal DB-coupling requirement; persist expected transaction hash/broadcast attempt before send; and keep ADR-0014 authenticated reconciler evidence in front of exactly-once ledger reconciliation.
-- P2-01 is implemented against the existing checkout-bound Anvil runtime: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset/redeploy instance staleness proof. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`. It remains the current review packet.
-- P2-02 is no longer blocked on ADR approval, but must wait until P2-01 review is complete and the fixture/toolchain boundary is stable.
-- S2 remains **OPEN / NOT PASSED**; no complete local vertical-slice evidence is claimed yet.
+- P2-01 is implemented against the existing checkout-bound Anvil runtime: pinned MockERC20 Forge tests pass 10/10 and the fixture chain gate passes 9/9, including reset/redeploy instance staleness proof. Protected CI `33189082028` and Secret Scan `33189082181` pass on implementation head `25e8147f`.
+- P2-03 and P2-04 are integrated into `integration/p2-05`; P2-05A/B/C are reviewed and P2-05D durable-audit closeout is implemented at SHA `c8f7309`. The current local gate is green: `npm run check` (21 repository + 314 Vitest), audit 0, Forge 10/10, DB 124/124, concurrency 18/18, invariants 7/7, chain 10/10, focused autonomous authorization 15, owner approval 26, signer-core 26, signer-keys 2, execution handoff 18, frozen vector 1, broadcaster 12, chain evidence 20, and E2E 1/1. The E2E durably records constructed, decoded, verified, simulated, final policy evaluated, reservation, authorization, signing, broadcast, verification, recovery, and resolution evidence. Protected CI and Secret Scan for the final pushed SHA remain pending; P2-06A is not merged; S2 remains open.
+- S2 remains **OPEN / NOT PASSED**; no complete clean-room vertical-slice closeout is claimed.
 
-Last updated: 2026-08-21 for ADR-0015 acceptance and the P2-01 implementation/review checkpoint.
+Last updated: 2026-09-06 for the P2-05D durable-audit closeout checkpoint.
