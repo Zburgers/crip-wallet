@@ -8,8 +8,8 @@ Update rule: after phase planning, gate review, material scope change, or produc
 | --- | --- | --- | --- | --- |
 | 0 | Governance, reproducible local environment and repository safety | Verified baseline | Governing S0 controls | **PASS** |
 | 1 | Canonical contracts, atomic ledger and S1 authorization/control proof without signing | S0 | Unit + DB + concurrency + property + approval/revocation proof, protected current-head verification | **PASS / S1 ACCEPTED** |
-| 2 | Construct/verify/simulate/sign/reconcile fake ERC-20 on Anvil | S1 | Chain vertical slice and reconciliation evidence | **OPEN - P2-06B/C INTEGRATED AND EXTERNALLY ACCEPTED; P2-06D PENDING; S2 NOT PASSED** |
-| 3 | Integrated approval/revocation/pause/recovery across execution boundary | Stable Phase-2 adapter/pipeline | Replay/race/recovery E2E | BLOCKED |
+| 2 | Construct/verify/simulate/sign/reconcile fake ERC-20 on Anvil | S1 | Chain vertical slice and reconciliation evidence | **IMPLEMENTATION COMPLETE / EVIDENCE READY; S2 REQUIREMENT EVIDENCE PASS; EXTERNAL S2 ACCEPTANCE PENDING; GATE S2 OPEN / NOT PASSED / READY FOR EXTERNAL ACCEPTANCE** |
+| 3 | Integrated approval/revocation/pause/recovery across execution boundary | Stable Phase-2 adapter/pipeline | Replay/race/recovery E2E | **NOT OPENED** |
 | 4 | MCP, CLI, dashboard and Agent Skill | Stable core API | Interface parity and browser evidence | BLOCKED |
 | 5 | Telemetry, adversarial hardening and MVP review | Integrated local product | S2, full matrix, no critical/high findings, owner sign-off | BLOCKED |
 | 6+ | Testnet/provider adapters | Explicit post-MVP approval | S3 and external review | OUT OF MVP |

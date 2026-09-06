@@ -2,7 +2,7 @@
 
 **Phase:** 2
 
-**Status:** OPEN / P2-05 ACCEPTED on canonical PR #5; P2-06A INTEGRATED/ACCEPTED; P2-06B/C INTEGRATED AND EXTERNALLY ACCEPTED on `integration/p2-06bc`; P2-06D PENDING; ADR-0015/0016/0017 ACCEPTED; S2 NOT PASSED
+**Status:** P2-05 ACCEPTED on canonical PR #5; P2-06A INTEGRATED/ACCEPTED; P2-06B/C INTEGRATED AND EXTERNALLY ACCEPTED; P2-06D COMPLETE / EVIDENCE READY; ADR-0015/0016/0017 ACCEPTED; S2 requirement evidence PASS; external S2 acceptance PENDING; Gate S2 OPEN / NOT PASSED / READY FOR EXTERNAL ACCEPTANCE
 
 **Dependency:** Gate S1 — PASS / ACCEPTED
 
@@ -70,9 +70,9 @@ The implementation-ready contract is in `docs/plans/PHASE-2.md`. It reuses the P
 
 ADR-0015 is **ACCEPTED**. It resolves the previous exact-signing blocker by requiring additive envelope v2 semantics, `accessList: []`, bounded canonical simulation freshness, local-Anvil IDs-only signer isolation without universal provider DB coupling, persist-before-send expected-hash evidence, and ADR-0014-authenticated reconciliation of untrusted chain evidence.
 
-P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 through P2-05D are integrated in the accepted dependency order; P2-05 is ACCEPTED on canonical PR #5. P2-06A is integrated/accepted as test-only fault infrastructure. P2-06B/C are integrated and externally accepted on `integration/p2-06bc`; P2-06D remains pending.
+P2-01 is complete locally with pinned contract tests and a checkout-bound fixture/chain gate. P2-02 through P2-05D are integrated in the accepted dependency order; P2-05 is ACCEPTED on canonical PR #5. P2-06A is integrated/accepted as test-only fault infrastructure. P2-06B/C are integrated and externally accepted; P2-06D is complete / evidence package ready.
 
-External review `5060378379` at integration head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6` required remediation before P2-05D. The remediation binds the exact canonical signed bytes before RPC, distinguishes CONFLICT from UNKNOWN, fences every pre-broadcast release after a durable send-capable attempt, binds legacy evidence to the verified attempt/hash/nonce/receipt identity, and makes post-resolution reconciliation crash-resumable. This is historical context; protected exact-final-head evidence remains mandatory before external re-review. P2-05D is now implemented and S2 is **NOT PASSED**.
+External review `5060378379` at integration head `9dd981b1f3eee0289e441d0ce22a52f89d868dd6` required remediation before P2-05D. The remediation binds the exact canonical signed bytes before RPC, distinguishes CONFLICT from UNKNOWN, fences every pre-broadcast release after a durable send-capable attempt, binds legacy evidence to the verified attempt/hash/nonce/receipt identity, and makes post-resolution reconciliation crash-resumable. This is historical context; final P2-05D acceptance and the protected P2-06D implementation/evidence head are recorded in `docs/TEST_MATRIX.md`. P2-05D is implemented, S2 requirement evidence is PASS, and external S2 acceptance remains pending.
 
 The final broadcast-fence race remediation serializes `STARTED` creation with
 release, expiry, and recovery on the same `budget_reservations` row lock. If
@@ -86,8 +86,11 @@ The clean vertical-slice attempt at reviewed checkpoint `2f78b0f3c888ca6b8b06340
 
 ADR-0016 and ADR-0017 are **Accepted — 2026-08-31 by product owner**. PRE-A
 and PRE-B are integrated on the canonical Phase-2 branch. P2-06A is integrated
-on this checkpoint; P2-06B/C are integrated and externally accepted on
-`integration/p2-06bc`; P2-06D remains pending; S2 remains **NOT PASSED**.
+and P2-06B/C are integrated and externally accepted. P2-06D closeout evidence
+is complete on the protected implementation/evidence head; fresh checks for the
+docs-only remediation head are recorded in PR #17. S2 requirement evidence is
+PASS, external S2 acceptance is PENDING, and Gate S2 remains **OPEN / NOT PASSED
+/ READY FOR EXTERNAL ACCEPTANCE**.
 
 The P2-05D clean vertical slice uses production lifecycle/evidence writers,
 `authorizeAutonomous`, the isolated same-child signer/broadcaster handoff,
@@ -99,4 +102,7 @@ economic assertions and gate counts are recorded in `docs/TEST_MATRIX.md`.
 
 WS-004 is complete only when protected current-head evidence proves the entire local fake-ERC-20 journey and the required failure/ambiguity cases in `docs/plans/PHASE-2.md`.
 
-Until then Gate S2 remains **NOT PASSED**.
+Phase 2 implementation is COMPLETE / READY FOR EXTERNAL S2 ACCEPTANCE REVIEW.
+S2 requirement evidence is PASS; external S2 acceptance is PENDING. Gate S2
+remains **OPEN / NOT PASSED / READY FOR EXTERNAL ACCEPTANCE**; Phase 3 is NOT
+OPENED.
