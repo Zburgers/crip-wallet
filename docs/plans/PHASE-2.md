@@ -8,13 +8,14 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-02 through P2-04 are integrated on `integration/p2-05`; P2-05A/B/C are reviewed and integrated; P2-05D is implemented on `integration/p2-05d` and READY FOR EXTERNAL ACCEPTANCE REVIEW. P2-06A remains separate test infrastructure; P2-06B/C/D have not started. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 remains **OPEN / NOT PASSED**.
+**Status:** P2-05 is ACCEPTED on canonical branch `phase-2/ws-004-local-erc20` / PR #5; auxiliary PRs #8 and #12 are merged/closed. P2-06A is integrated on this checkpoint as test infrastructure; P2-06B/C/D are pending. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 remains **OPEN / NOT PASSED**.
 
 ---
 
 ## 1. Baseline and inherited authority
 
 - Branch: `phase-2/ws-004-local-erc20`.
+- Canonical PR: #5; auxiliary PRs #8 and #12 are merged/closed; P2-05 is ACCEPTED.
 - Accepted `main` baseline / Phase-2 branch point: `f733a41ed16c44ad631f0a5a4b52e8096ab70eed`.
 - Planning commit: `51a0ba471d9dbc829821b474782183206902cff8`.
 - PR: #5, open draft.
@@ -732,9 +733,9 @@ At the pre-implementation checkpoint, P2-05D exposed two non-regression architec
 
 At reviewed checkpoint `2f78b0f3c888ca6b8b06340b8c4a308d1bb7053f`, P2-05A/B/C remained reviewed and accepted. This proposal was resolved by the product-owner decisions and implementation recorded below; it is retained as historical context.
 
-### P2-05D implementation checkpoint
+### P2-05D implementation checkpoint (historical)
 
-The clean vertical slice is implemented at remediation code SHA
+The clean vertical slice was implemented at remediation code SHA
 `a45c32d46330230614c8a72b44c0941dd0cf1850` on `integration/p2-05d`.
 It uses production preparation writers for lifecycle, simulation, policy and
 envelope persistence, production `authorizeAutonomous`, the restricted
@@ -742,7 +743,7 @@ same-child signer/broadcaster composition, independent chain-evidence
 verification, and ADR-0014 authenticated reconciliation. The fresh E2E passes
 1/1 with no direct protected-state seeding. Exact local identities, economics,
 leakage results and test counts are recorded in `docs/TEST_MATRIX.md`.
-Protected CI `33365440241` and Secret Scan `33365440250` pass on
+Historical protected CI `33365440241` and Secret Scan `33365440250` passed on
 `f5d433b97c19d028bcde99741976cb4debb77d03`; the final documentation handoff
 SHA is reported separately. S2 is not claimed.
 

@@ -257,6 +257,19 @@ verified transaction, receipt, and reconciled transaction hashes all equal
 All rows are bound to operation `op_p205d_e2e`; audit payloads contain hashes
 and identifiers only, with no raw signed bytes or private key.
 
-P2-05D is COMPLETE and READY FOR EXTERNAL ACCEPTANCE REVIEW. Protected CI and
-Secret Scan are required on the final pushed SHA. P2-06A remains separate;
-P2-06B/C/D are not started; S2 remains OPEN / NOT PASSED.
+### P2-06A integration checkpoint (current)
+
+Canonical branch: `phase-2/ws-004-local-erc20`; canonical PR: #5; P2-05:
+ACCEPTED. Auxiliary PR #8 and PR #12: merged/closed. P2-06A is integrated on
+this checkpoint only. P2-06B, P2-06C and P2-06D are pending. S2 remains OPEN /
+NOT PASSED.
+
+| Check | Result |
+| --- | --- |
+| `npm run test:fault` | PASS — 20 focused fault-proxy tests; full fault gate 89 tests across 7 adapter files |
+| Fault modes | PASS — passthrough, unavailable-before-send, explicit rejection, forward-then-drop, wrong hash, mutated transaction, mutated receipt, withhold/release, crash-before-send, crash-after-forward |
+| Boundary/redaction | PASS — non-loopback/public/credentialed HTTPS upstreams rejected; current-runtime mismatch rejected; matching loopback runtime accepted; raw send bytes redacted |
+| Protected CI / Secret Scan | Pending external review of pushed integration SHA |
+
+P2-06A is test-only infrastructure. P2-06B/C/D are pending and no S2 claim is
+made.
