@@ -63,9 +63,9 @@ P2-01 through P2-06D are implemented, externally reviewed and integrated on cano
 
 ## Dependency state
 
-- `typescript-eslint` is `8.67.0` and `@types/node` is `26.2.0`; their Dependabot PRs passed protected CI and Secret Scan before merge.
-- TypeScript remains pinned at `6.0.3`.
-- Dependabot PR #2 for TypeScript 7.0.2 is intentionally ignored for the TypeScript 7 major line because `typescript-eslint@8.67.0` requires TypeScript `<6.1.0`; its CI fails closed at `npm ci` with `ERESOLVE`.
+- The current PR #5 merge result carries the dependency updates already accepted on `main`: `@types/node` `26.2.0`, `@types/pg` `8.23.1`, `eslint` `10.9.1`, `typescript-eslint` `8.68.0`, and `@noble/hashes` `2.4.0`; the full protected Phase-2 merge-ref CI passes with those versions.
+- TypeScript remains pinned at `6.0.3`; Vitest remains `4.1.10` for the accepted Phase-2 boundary.
+- TypeScript 7 and Vitest 5 remain outside this Phase-2 acceptance and require separate dependency/compatibility review before adoption.
 - R-020 remains monitored through Dependabot and dependency-audit CI.
 
 ## Phase ownership
