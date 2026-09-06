@@ -166,7 +166,7 @@ const HEX_BYTES_PATTERN = /^0x(?:[0-9a-f]{2})*$/;
 const TOPIC_PATTERN = HASH_PATTERN;
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const TRANSFER_EVENT_SIGNATURE =
-  "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a9df523b3ef" as const;
+  "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" as const;
 const LOCAL_CHAIN_NUMBER = 31337n;
 
 const isRecord = (value: unknown): value is RecordValue =>

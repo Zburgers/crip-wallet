@@ -24,6 +24,15 @@ export { constructTransferCore } from "./construct-transfer.js";
 export { decodeTransferIndependent } from "./decode-transfer.js";
 export { verifyTransferCore } from "./verify-transfer.js";
 export {
+  advanceOperationLifecycle,
+  persistExecutionEnvelope,
+  persistPolicyDecision,
+  persistSimulation,
+  persistTransferPipelineAudit,
+  type TransferPipelineAuditInput,
+  PreparationError,
+} from "./preparation.js";
+export {
   verifyUntrustedChainEvidence,
   type ChainEvidenceExpectation,
   type ChainEvidenceHash,
@@ -38,6 +47,7 @@ export {
   checkSimulationFreshness,
   createLocalAnvilReadRpc,
   hashExecutableCandidate,
+  hashTransferCoreCandidate,
   hashSimulationEvidence,
   simulateAndResolveTransfer,
   SimulationResolutionError,

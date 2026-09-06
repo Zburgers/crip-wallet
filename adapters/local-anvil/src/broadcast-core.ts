@@ -100,7 +100,7 @@ const assertSafeInput = (input: BroadcastInput): void => {
     throw new Error("invalid raw transaction encoding");
 };
 
-const deriveCanonicalSignedTransactionHash = (
+export const canonicalSignedTransactionHash = (
   rawTransaction: string,
 ): string => {
   try {
@@ -133,7 +133,7 @@ export const broadcastSignedTransaction = async (
     throw new Error("signed evidence operation binding mismatch");
   if (signed.authorizationId !== input.request.authorizationId)
     throw new Error("signed evidence authorization binding mismatch");
-  const derivedTransactionHash = deriveCanonicalSignedTransactionHash(
+  const derivedTransactionHash = canonicalSignedTransactionHash(
     input.rawTransaction,
   );
   if (derivedTransactionHash !== signed.expectedTransactionHash)

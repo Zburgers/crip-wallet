@@ -282,6 +282,11 @@ export const hashExecutableCandidate = (
   executable: ExecutableTransferCandidate,
 ): Hash => hashJson(executable);
 
+/** Hash the static transfer identity before dynamic execution fields exist. */
+export const hashTransferCoreCandidate = (
+  candidate: TransferCoreCandidate,
+): Hash => hashJson(candidate);
+
 const validateFixture = (fixture: LocalFixtureIdentity): void => {
   if (!fixture || typeof fixture !== "object")
     throw new SimulationResolutionError("INVALID_FIXTURE");

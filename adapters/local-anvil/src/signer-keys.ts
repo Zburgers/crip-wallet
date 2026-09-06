@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createLocalAnvilReadRpc } from "@crip/transaction-pipeline";
 import type { LocalReadRpc } from "@crip/transaction-pipeline";
 import { signComponentAction } from "@crip/trust-boundary";
-import { keccak256, toBytes } from "viem";
+import { createWalletClient, http, keccak256, toBytes } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import type {
@@ -125,6 +125,16 @@ export const createLocalSignerDeps = (input: LocalSignerDeps) => {
   if (account.address.toLowerCase() !== disposable.address.toLowerCase()) {
     throw new Error("disposable signer key does not match configured address");
   }
+  const walletClient = createWalletClient({
+    account,
+    chain: {
+      id: 31337,
+      name: "Crip Wallet Local Anvil",
+      nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+      rpcUrls: { default: { http: [input.rpcUrl] } },
+    },
+    transport: http(input.rpcUrl),
+  });
   return {
     credential: {
       credentialId: credential.credentialId,
@@ -140,7 +150,7 @@ export const createLocalSignerDeps = (input: LocalSignerDeps) => {
       }),
     signTransaction: async (
       fields: ExactTransactionFields,
-    ): Promise<{ transactionHash: Hash }> => {
+    ): Promise<{ transactionHash: Hash; rawTransaction: string }> => {
       if (fields.nonce > BigInt(Number.MAX_SAFE_INTEGER)) {
         throw new Error("local signer nonce exceeds viem safe range");
       }
@@ -158,8 +168,13 @@ export const createLocalSignerDeps = (input: LocalSignerDeps) => {
       } as Parameters<typeof account.signTransaction>[0]);
       return {
         transactionHash: keccak256(toBytes(serialized)) as Hash,
+        rawTransaction: serialized,
       };
     },
+    sendRawTransaction: (rawTransaction: string) =>
+      walletClient.sendRawTransaction({
+        serializedTransaction: rawTransaction as `0x${string}`,
+      }),
     authorizeResult: (payload: Record<string, unknown>) =>
       signComponentAction(credential, "sign-authorized-transfer", payload),
   };

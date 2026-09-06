@@ -48,6 +48,10 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "execution.recovery.resolved",
   "execution.recovery.conflict",
   "adapter.error",
+  "transaction.constructed",
+  "transaction.decoded",
+  "transaction.verified",
+  "transaction.simulated",
 ] as const);
 
 export const auditDataSchema = z.strictObject({
@@ -124,6 +128,24 @@ export const auditDataSchema = z.strictObject({
     .string()
     .regex(/^sha256:[0-9a-f]{64}$/)
     .optional(),
+  candidateHash: evmHashSchema.optional(),
+  calldataHash: evmHashSchema.optional(),
+  target: evmAddressSchema.optional(),
+  fixtureInstanceId: canonicalIdentifierSchema.optional(),
+  decodedFunction: z.literal("erc20.transfer").optional(),
+  simulationId: canonicalIdentifierSchema.optional(),
+  simulationEvidenceHash: evmHashSchema.optional(),
+  simulationBlockNumber: atomicUnitSchema.optional(),
+  simulationBlockHash: evmHashSchema.optional(),
+  result: z
+    .enum([
+      "ALLOW_READ",
+      "ALLOW_AUTONOMOUS",
+      "REQUIRE_APPROVAL",
+      "DENY",
+      "INDETERMINATE",
+    ])
+    .optional(),
 });
 
 /** Correlated, typed, append-only audit event payload. */
@@ -199,6 +221,39 @@ export const auditEventSchema = z
         path: ["operationId"],
         message: "non-control events require operation correlation",
       });
+    }
+
+    const requiredData: Record<string, readonly string[]> = {
+      "transaction.constructed": [
+        "candidateHash",
+        "target",
+        "chainId",
+        "fixtureInstanceId",
+      ],
+      "transaction.decoded": [
+        "candidateHash",
+        "calldataHash",
+        "decodedFunction",
+      ],
+      "transaction.verified": ["candidateHash"],
+      "transaction.simulated": [
+        "simulationId",
+        "simulationEvidenceHash",
+        "fixtureInstanceId",
+        "simulationBlockNumber",
+        "simulationBlockHash",
+        "candidateHash",
+      ],
+      "policy.evaluated": ["policyDecisionId", "policyDecisionHash", "result"],
+    };
+    for (const field of requiredData[event.eventType] ?? []) {
+      if ((event.data as Record<string, unknown>)[field] === undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["data", field],
+          message: `${event.eventType} requires ${field}`,
+        });
+      }
     }
   });
 

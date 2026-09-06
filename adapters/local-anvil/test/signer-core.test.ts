@@ -285,6 +285,17 @@ const buildContext = (): SigningContext => ({
     policyDocument: { maximumNetworkFeeAtomic: "2000000" },
   },
   authorization: {
+    authorizationKind: "OWNER_APPROVAL",
+    approvalId: "approval_local_signer",
+    ownerAuthenticationId: "owner-auth-local-signer",
+    approvalStatus: "CONSUMED",
+    approvalApproverId: "owner_approver",
+    approvalConsumedAt: farFuture,
+    policyDecisionId: "decision_local_signer",
+    policyDecisionHash,
+    policyDecisionStatus: "REQUIRE_APPROVAL",
+    decisionPolicyId: "policy_local_01",
+    decisionPolicyVersion: 1,
     reservationId,
     envelopeId,
     envelopeRevision: 1,
@@ -414,6 +425,49 @@ const happyContext = (): { context: SigningContext; payload: object } => {
 };
 
 describe("restricted local signer core", () => {
+  it("does not reuse durable signed evidence without current canonical authorization", async () => {
+    const { context } = happyContext();
+    context.authorization = null;
+    const store = new FakeStore(context);
+    store.durable = {
+      transactionHash: `0x${"ee".repeat(32)}`,
+      signedAt: farFuture,
+    };
+
+    const outcome = await signAuthorizedTransferCore(
+      buildDeps(store, new FakeRpc()),
+      ids,
+    );
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      code: "AUTHORIZATION_NOT_FOUND",
+    });
+  });
+
+  it("rejects autonomous signer context unless persisted autonomous policy evidence is present", async () => {
+    const { context } = happyContext();
+    const authorization = context.authorization as NonNullable<
+      SigningContext["authorization"]
+    > & {
+      authorizationKind: "AUTONOMOUS_POLICY";
+      policyDecisionStatus: string;
+    };
+    authorization.authorizationKind = "AUTONOMOUS_POLICY";
+    authorization.policyDecisionStatus = "REQUIRE_APPROVAL";
+    const store = new FakeStore(context);
+
+    const outcome = await signAuthorizedTransferCore(
+      buildDeps(store, new FakeRpc()),
+      ids,
+    );
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      code: "AUTHORIZATION_INVALID",
+    });
+  });
+
   it("signs the exact envelope-v2 type-2 fields and returns verified evidence", async () => {
     const { context } = happyContext();
     const store = new FakeStore(context);

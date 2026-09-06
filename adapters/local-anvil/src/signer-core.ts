@@ -139,6 +139,17 @@ export interface SigningContext {
     policyDocument: unknown;
   };
   authorization: {
+    authorizationKind: "OWNER_APPROVAL" | "AUTONOMOUS_POLICY";
+    approvalId: string | null;
+    ownerAuthenticationId: string | null;
+    approvalStatus: string | null;
+    approvalApproverId: string | null;
+    approvalConsumedAt: string | null;
+    policyDecisionId: string;
+    policyDecisionHash: string;
+    policyDecisionStatus: string;
+    decisionPolicyId: string;
+    decisionPolicyVersion: number;
     reservationId: string;
     envelopeId: string;
     envelopeRevision: number;
@@ -221,7 +232,20 @@ export interface SignerStore {
   ): Promise<void>;
 }
 
-export type SignerPhase = "signing-started" | "evidence-persisted";
+export type SignerPhase =
+  "signing-started" | "evidence-persisted" | "broadcast-started";
+
+export interface SignerCoreOptions {
+  /** Permit exact, hash-gated rematerialization of proven pre-send evidence. */
+  rematerializeExistingEvidence?: boolean;
+  /** Internal same-child handoff; never serialize this material to a parent. */
+  onSignedMaterial?(material: {
+    signedTransactionId: string;
+    expectedTransactionHash: Hash;
+    rawTransaction?: string;
+    fromDurableEvidence: boolean;
+  }): void;
+}
 
 export interface SignerDeps {
   store: SignerStore;
@@ -238,6 +262,8 @@ export interface SignerDeps {
    */
   signTransaction(fields: ExactTransactionFields): Promise<{
     transactionHash: Hash;
+    /** Private child-local bytes; never part of SignerOutcome or parent IPC. */
+    rawTransaction?: string;
   }>;
   /** Signs only the result reference; the component key remains signer-local. */
   authorizeResult(payload: Record<string, unknown>): ComponentAuthorization;
@@ -276,7 +302,10 @@ const constraintsFrom = (
   policyDocument: unknown,
 ): ActiveFeeAndExecutionConstraints | null => {
   const intent = intentPayload as { maximumNetworkFee?: unknown } | null;
-  const policy = policyDocument as { maximumNetworkFeeAtomic?: unknown } | null;
+  const policy = policyDocument as {
+    maximumNetworkFeeAtomic?: unknown;
+    networkFees?: { maximumPerTransactionAtomic?: unknown };
+  } | null;
   if (
     !intent ||
     typeof intent !== "object" ||
@@ -293,10 +322,13 @@ const constraintsFrom = (
     !isAtomic(fee.atomic)
   )
     return null;
-  if (!isAtomic(policy.maximumNetworkFeeAtomic)) return null;
+  const policyMaximumNetworkFeeAtomic =
+    policy.maximumNetworkFeeAtomic ??
+    policy.networkFees?.maximumPerTransactionAtomic;
+  if (!isAtomic(policyMaximumNetworkFeeAtomic)) return null;
   return {
     intentMaximumNetworkFeeAtomic: fee.atomic,
-    policyMaximumNetworkFeeAtomic: policy.maximumNetworkFeeAtomic,
+    policyMaximumNetworkFeeAtomic,
   };
 };
 
@@ -421,6 +453,7 @@ const asTraceId = (traceId: string): string =>
 export const signAuthorizedTransferCore = async (
   deps: SignerDeps,
   requestInput: unknown,
+  options: SignerCoreOptions = {},
 ): Promise<SignerOutcome> => {
   const parsedRequest = authorizedTransferRequestSchema.safeParse(requestInput);
   if (!parsedRequest.success) return refuse("INVALID_REQUEST");
@@ -462,18 +495,31 @@ export const signAuthorizedTransferCore = async (
     return auditRefusal(refuse("SIGNER_CREDENTIAL_INVALID"));
 
   const existing = await deps.store.findDurableSignedEvidence(ids);
-  if (existing)
-    return {
-      ok: true,
-      transactionHash: existing.transactionHash,
-      fromDurableEvidence: true,
-      authorization: deps.authorizeResult(
-        resultPayload(ids, existing.transactionHash),
-      ),
-    };
 
   const { authorization } = context;
   if (!authorization) return auditRefusal(refuse("AUTHORIZATION_NOT_FOUND"));
+
+  const authorizationEvidenceOk =
+    (authorization.authorizationKind === "OWNER_APPROVAL" &&
+      authorization.policyDecisionStatus === "REQUIRE_APPROVAL" &&
+      authorization.approvalId !== null &&
+      authorization.ownerAuthenticationId !== null &&
+      authorization.approvalStatus === "CONSUMED" &&
+      authorization.approvalApproverId !== null &&
+      authorization.approvalConsumedAt !== null) ||
+    (authorization.authorizationKind === "AUTONOMOUS_POLICY" &&
+      authorization.policyDecisionStatus === "ALLOW_AUTONOMOUS" &&
+      authorization.approvalId === null &&
+      authorization.ownerAuthenticationId === null &&
+      authorization.approvalStatus === null &&
+      authorization.approvalApproverId === null &&
+      authorization.approvalConsumedAt === null);
+  if (
+    !authorizationEvidenceOk ||
+    authorization.decisionPolicyId !== context.operation.policyId ||
+    authorization.decisionPolicyVersion !== context.operation.policyVersion
+  )
+    return auditRefusal(refuse("AUTHORIZATION_INVALID"));
 
   if (!context.envelope) return auditRefusal(refuse("ENVELOPE_NOT_FOUND"));
   const payload = context.envelope.payload as Record<string, unknown> | null;
@@ -488,6 +534,8 @@ export const signAuthorizedTransferCore = async (
   const envelope = parsedEnvelope.data;
   if (context.envelope.envelopeHash !== hashExecutionEnvelope(envelope))
     return auditRefusal(refuse("ENVELOPE_INVALID"));
+  if (authorization.policyDecisionHash !== envelope.policyDecisionHash)
+    return auditRefusal(refuse("AUTHORIZATION_INVALID"));
   if (
     authorization.envelopeId !== envelope.envelopeId ||
     authorization.envelopeRevision !== envelope.revision ||
@@ -527,7 +575,10 @@ export const signAuthorizedTransferCore = async (
       Date.parse(context.reservation.expiresAt) <= now.getTime())
   )
     return auditRefusal(refuse("RESERVATION_INVALID"));
-  if (!["AUTHORIZED", "SIGNING"].includes(context.operation.state))
+  if (
+    !["AUTHORIZED", "SIGNING"].includes(context.operation.state) &&
+    !(existing && context.operation.state === "SIGNED")
+  )
     return auditRefusal(refuse("OPERATION_NOT_AUTHORIZED"));
 
   const fenceByScope = new Map(
@@ -573,7 +624,12 @@ export const signAuthorizedTransferCore = async (
     envelope.expectedAssetDeltas[0]?.to ===
       envelope.decodedArguments.recipient &&
     envelope.expectedAssetDeltas[0]?.amountAtomic ===
-      envelope.decodedArguments.amountAtomic;
+      envelope.decodedArguments.amountAtomic &&
+    ((authorization.authorizationKind === "OWNER_APPROVAL" &&
+      envelope.approvalRequirement === "owner") ||
+      (authorization.authorizationKind === "AUTONOMOUS_POLICY" &&
+        envelope.approvalRequirement === "none" &&
+        envelope.riskDecision === "ALLOW"));
   if (!envelopeShapeOk) return auditRefusal(refuse("ENVELOPE_INVALID"));
 
   const constraints = constraintsFrom(
@@ -646,14 +702,26 @@ export const signAuthorizedTransferCore = async (
   if (!freshness.ok)
     return auditRefusal(refuse("SIMULATION_STALE", freshness.code));
 
-  try {
-    await deps.store.beginSigning(ids, audit);
-  } catch {
-    return auditRefusal(refuse("OPERATION_NOT_AUTHORIZED"));
-  }
-  deps.onPhase?.("signing-started");
+  if (existing && !options.rematerializeExistingEvidence)
+    return {
+      ok: true,
+      transactionHash: existing.transactionHash,
+      fromDurableEvidence: true,
+      authorization: deps.authorizeResult(
+        resultPayload(ids, existing.transactionHash),
+      ),
+    };
 
-  let signature: { transactionHash: Hash };
+  if (!existing) {
+    try {
+      await deps.store.beginSigning(ids, audit);
+    } catch {
+      return auditRefusal(refuse("OPERATION_NOT_AUTHORIZED"));
+    }
+    deps.onPhase?.("signing-started");
+  }
+
+  let signature: { transactionHash: Hash; rawTransaction?: string };
   try {
     signature = await deps.signTransaction({
       chainId: 31337,
@@ -673,6 +741,28 @@ export const signAuthorizedTransferCore = async (
   if (!HASH_PATTERN.test(signature.transactionHash))
     return auditRefusal(refuse("INTERNAL"));
 
+  const signedTransactionId = `signed:${ids.operationId}:${envelope.revision}`;
+  if (existing) {
+    if (signature.transactionHash !== existing.transactionHash)
+      return auditRefusal(refuse("INTERNAL"));
+    options.onSignedMaterial?.({
+      signedTransactionId,
+      expectedTransactionHash: existing.transactionHash,
+      ...(signature.rawTransaction === undefined
+        ? {}
+        : { rawTransaction: signature.rawTransaction }),
+      fromDurableEvidence: true,
+    });
+    return {
+      ok: true,
+      transactionHash: existing.transactionHash,
+      fromDurableEvidence: true,
+      authorization: deps.authorizeResult(
+        resultPayload(ids, existing.transactionHash),
+      ),
+    };
+  }
+
   const signedAt = deps
     .now()
     .toISOString()
@@ -680,7 +770,7 @@ export const signAuthorizedTransferCore = async (
   try {
     await deps.store.persistSignedEvidence(
       {
-        signedTransactionId: `signed:${ids.operationId}:${envelope.revision}`,
+        signedTransactionId,
         ids,
         reservationId: envelope.budgetReservationId,
         envelopeId: envelope.envelopeId,
@@ -709,6 +799,14 @@ export const signAuthorizedTransferCore = async (
     return auditRefusal(refuse("PERSISTENCE_FAILED"));
   }
   deps.onPhase?.("evidence-persisted");
+  options.onSignedMaterial?.({
+    signedTransactionId,
+    expectedTransactionHash: signature.transactionHash,
+    ...(signature.rawTransaction === undefined
+      ? {}
+      : { rawTransaction: signature.rawTransaction }),
+    fromDurableEvidence: false,
+  });
 
   return {
     ok: true,
