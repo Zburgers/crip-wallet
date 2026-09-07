@@ -23,7 +23,7 @@
     "@crip/transaction-pipeline": "0.0.0",
     "@crip/trust-boundary": "0.0.0",
     "pg": "8.23.0",
-    "viem": "2.56.0",
+    "viem": "2.56.3",
     "zod": "4.4.3"
   }
 }
