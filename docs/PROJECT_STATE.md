@@ -19,6 +19,7 @@ Update rule: at every meaningful integration point; keep this as the current res
 - Phase-2 post-merge `main` CI: run `34058182763` — PASS
 - Phase-2 post-merge `main` Secret Scan: run `34058183008` — PASS
 - Phase-3 planning branch: `phase-3/ws-005-integrated-controls`
+- ADR-0018: **ACCEPTED — 2026-09-17 by product owner**; implementation remains not started
 
 ## Gate status
 
@@ -74,10 +75,11 @@ The actual post-merge `main` candidate passed CI `34058182763` and Secret Scan `
 
 Phase 3 / WS-005 is formally opened for architecture and execution planning.
 `docs/plans/PHASE-3.md` maps the integrated authority-to-economic-finality
-boundary and packets P3-01 through P3-06. Proposed ADR-0018 defines the planned
+boundary and packets P3-01 through P3-06. Accepted ADR-0018 defines the planned
 signing and send-commit linearization points, signed-unbroadcast quarantine,
 post-send recovery authority, canonical lock order, and minimum migration
-backstops. It must be accepted before P3-01 implementation begins.
+backstops. P3-01 implementation begins only from the protected post-planning
+main.
 
 P3-00 found a real integration gap rather than an accepted implementation:
 current control invalidation does not cover signed/no-attempt work, the current

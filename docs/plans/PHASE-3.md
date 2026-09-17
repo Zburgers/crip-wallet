@@ -6,8 +6,8 @@ Planning branch: `phase-3/ws-005-integrated-controls`
 
 Planning base: `main` at `769db481472aab60a07efdd4b2390058321402e4`
 
-Governing architecture proposal: ADR-0018, **PROPOSED / DRAFT**. P3-01
-implementation must not begin until that ADR is accepted.
+Governing architecture decision: ADR-0018, **ACCEPTED — 2026-09-17**.
+P3-01 implementation may begin from the protected post-planning main.
 
 ## Objective
 
@@ -48,7 +48,7 @@ Read in this order before implementation:
 1. `docs/PRODUCT_SPEC.md`
 2. `docs/ARCHITECTURE.md`, `docs/THREAT_MODEL.md`, `docs/SECURITY.md`
 3. ADR-0003, ADR-0005, ADR-0008, ADR-0011, ADR-0014, ADR-0015,
-   ADR-0016, ADR-0017, and proposed ADR-0018
+   ADR-0016, ADR-0017, and accepted ADR-0018
 4. `docs/plans/MVP_MASTER_PLAN.md`, `docs/plans/PHASE-1.md`, and
    `docs/plans/PHASE-2.md`
 5. `docs/workstreams/WS-004-transaction-pipeline.md` and
@@ -459,7 +459,7 @@ and scripts must be updated in the same packet.
 
 Scope:
 
-- Accept ADR-0018 before code changes.
+- ADR-0018 must be accepted before code changes.
 - Add migration `0026` uniqueness and canonical-guard foundation.
 - Normalize canonical lock order.
 - Replace split signing transitions with the bounded atomic sign/evidence

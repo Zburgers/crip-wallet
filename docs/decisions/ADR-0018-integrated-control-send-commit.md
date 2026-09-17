@@ -1,6 +1,6 @@
 # ADR-0018 - Integrated Control and Send-Commit Boundary
 
-**Status:** Proposed / DRAFT
+**Status:** Accepted — 2026-09-17 by product owner
 
 **Date:** 2026-09-17
 

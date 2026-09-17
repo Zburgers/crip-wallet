@@ -72,7 +72,7 @@ outcomes remain disputed until authenticated reconciliation.
 
 ## Phase-3 planned integration boundary
 
-Phase 3 is opened for planning but is not implemented. Proposed ADR-0018 closes
+Phase 3 is opened for planning but is not implemented. Accepted ADR-0018 closes
 the gap between the accepted S1 fences and accepted S2 execution path with two
 planned linearization points:
 
@@ -110,7 +110,7 @@ review, schema tests, compatibility notes, and an ADR when security-relevant.
 
 ## Decision map
 
-ADRs 0001–0017 define the accepted current architecture. ADR-0018 is proposed
-for Phase 3 and is not implementation authority until accepted.
+ADRs 0001–0018 define the accepted current architecture. ADR-0018 is the
+accepted Phase-3 implementation authority.
 `docs/decisions/README.md` is the index; accepted records are superseded rather
 than edited.

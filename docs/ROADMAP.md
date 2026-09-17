@@ -21,6 +21,6 @@ Phase 2 is restricted to the accepted local fake-money boundary. S2 acceptance d
 The accepted Phase-2 boundary remains governed by `docs/plans/PHASE-2.md` and
 ADR-0015. The implementation-ready Phase-3 packet plan is
 `docs/plans/PHASE-3.md`, with concise orchestration instructions in
-`docs/plans/PHASE-3-EXECUTION-HANDOFF.md`. Proposed ADR-0018 must be accepted
+`docs/plans/PHASE-3-EXECUTION-HANDOFF.md`. Accepted ADR-0018 governs the
 before P3-01 implementation. Opening the plan does not claim implementation,
 acceptance, S3 readiness, or any wider network/custody boundary.

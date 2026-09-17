@@ -48,6 +48,6 @@ The planned invariants are:
 - DB-time recovery lease fencing, no new authority on retry, and one economic
   effect under crash/restart/takeover.
 
-Proposed ADR-0018 records the new architecture decision and must be accepted
+Accepted ADR-0018 records the new architecture decision and governs
 before P3-01 implementation. Phase 3 remains local Anvil/fake-money only and is
 not implemented or accepted by this planning work.

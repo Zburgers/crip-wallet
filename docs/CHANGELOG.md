@@ -7,10 +7,14 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ### Phase 3 planning
 
+- Accepted ADR-0018 on 2026-09-17 by product owner. Its fence-first signing,
+  send-commit, signed-unbroadcast quarantine, and immutable-attempt recovery
+  decisions now govern P3-01 through P3-06; implementation remains unstarted.
+
 - Formally opened Phase 3 / WS-005 as **OPENED / PLANNED / NOT IMPLEMENTED**
   on `phase-3/ws-005-integrated-controls`.
 - Added the implementation-ready P3-00 race model and P3-01–P3-06 execution
-  plan, concise orchestrator handoff, and proposed ADR-0018 for atomic
+  plan, concise orchestrator handoff, and ADR-0018 for atomic
   fence-first signing, signed-unbroadcast quarantine, the `STARTED` send-commit
   boundary, and immutable-attempt recovery.
 - Added planned risks/tests for the signed-to-send control race, post-send

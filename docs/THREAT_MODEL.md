@@ -145,7 +145,7 @@ The implementation retains a narrow dependency on deterministic behavior of the 
 
 Phase 3 / WS-005 is OPENED / PLANNED and not implemented. P3-00 identified the
 signed/no-attempt control race, signer/control lock inversion, and post-send
-current-fence recovery conflict. Proposed ADR-0018 and
+current-fence recovery conflict. Accepted ADR-0018 and
 `docs/plans/PHASE-3.md` define the planned controls for T-036 through T-039.
 Those threats remain open until P3-01 through P3-06 pass on a protected exact
 SHA. Planning evidence must not be reported as mitigation or acceptance.

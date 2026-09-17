@@ -72,7 +72,7 @@ Planning branch: `phase-3/ws-005-integrated-controls`.
 
 P3-00 mapped the current signer/control lock inversion, signed/no-attempt
 control gap, pre-`STARTED` authority gap, post-`STARTED` recovery conflict, and
-app-clock lease-resolution gap. Proposed ADR-0018 and
+app-clock lease-resolution gap. Accepted ADR-0018 and
 `docs/plans/PHASE-3.md` define the planned treatment. All Phase-3 rows remain
 `PLANNED`; documentation and a green planning PR are not implementation proof.
 
@@ -157,7 +157,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 
 | Packet | Status | Required evidence before PASS |
 | --- | --- | --- |
-| P3-01 pre-sign authority transaction and binding | PLANNED / BLOCKED ON ADR-0018 ACCEPTANCE | migration-upgrade/uniqueness; owner + autonomous common gate; both lock winners; drift rejection; signer rollback; one signed row |
+| P3-01 pre-sign authority transaction and binding | PLANNED / READY | migration-upgrade/uniqueness; owner + autonomous common gate; both lock winners; drift rejection; signer rollback; one signed row |
 | P3-02 signed-unbroadcast lifecycle/control | PLANNED | signed/no-attempt quarantine, retained reservation, zero attempt/RPC, authenticated no-send recovery prerequisites, idempotent control audits |
 | P3-03 send commit + UNKNOWN/recovery integration | PLANNED | control-before/after `STARTED`; crash/response-loss; one attempt; later fence change cannot block exact reconciliation |
 | P3-04 control/recovery concurrency fencing | PLANNED | DB-time lease expiry/takeover; signed-no-attempt exact release; concurrent retry/control/recovery; one economic effect |
