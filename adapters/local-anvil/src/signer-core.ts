@@ -194,10 +194,17 @@ export interface PersistSignedEvidenceInput {
   envelopeHash: string;
   simulationId: string;
   fixtureInstanceId: string;
-  expectedTransactionHash: Hash;
+  /** Filled by the atomic store from the in-memory signer result. */
+  expectedTransactionHash?: Hash;
   signedAt: string;
   /** Trusted-component credential that produced the signature. */
   signerCredentialId: string;
+}
+
+export interface SignedTransactionMaterial {
+  transactionHash: Hash;
+  /** Private child-local bytes; never persisted or returned in a public outcome. */
+  rawTransaction?: string;
 }
 
 export interface SigningAuditTrail {
@@ -216,14 +223,12 @@ export interface SignerStore {
   findDurableSignedEvidence(
     ids: SignAuthorizedTransferIds,
   ): Promise<DurableSignedEvidence | null>;
-  beginSigning(
-    ids: SignAuthorizedTransferIds,
-    audit: SigningAuditTrail,
-  ): Promise<void>;
-  persistSignedEvidence(
+  signAndPersistEvidence(
     input: PersistSignedEvidenceInput,
+    sign: () => Promise<SignedTransactionMaterial>,
     audit: SigningAuditTrail,
-  ): Promise<void>;
+    onSigningStarted?: () => void,
+  ): Promise<SignedTransactionMaterial>;
   /** Best-effort refusal trail; failures here never mask the refusal. */
   recordSigningRefusal(
     operationId: string,
@@ -712,18 +717,7 @@ export const signAuthorizedTransferCore = async (
       ),
     };
 
-  if (!existing) {
-    try {
-      await deps.store.beginSigning(ids, audit);
-    } catch {
-      return auditRefusal(refuse("OPERATION_NOT_AUTHORIZED"));
-    }
-    deps.onPhase?.("signing-started");
-  }
-
-  let signature: { transactionHash: Hash; rawTransaction?: string };
-  try {
-    signature = await deps.signTransaction({
+  const signFields: ExactTransactionFields = {
       chainId: 31337,
       from: asAddress(envelope.from),
       to: asAddress(envelope.to),
@@ -734,23 +728,27 @@ export const signAuthorizedTransferCore = async (
       maxPriorityFeePerGas: BigInt(envelope.maxPriorityFeePerGas),
       accessList: [],
       data: envelope.calldata,
-    });
-  } catch {
-    return auditRefusal(refuse("INTERNAL"));
-  }
-  if (!HASH_PATTERN.test(signature.transactionHash))
-    return auditRefusal(refuse("INTERNAL"));
+    };
 
   const signedTransactionId = `signed:${ids.operationId}:${envelope.revision}`;
   if (existing) {
-    if (signature.transactionHash !== existing.transactionHash)
+    let rematerialized: SignedTransactionMaterial;
+    try {
+      rematerialized = await deps.signTransaction(signFields);
+    } catch {
+      return auditRefusal(refuse("INTERNAL"));
+    }
+    if (
+      !HASH_PATTERN.test(rematerialized.transactionHash) ||
+      rematerialized.transactionHash !== existing.transactionHash
+    )
       return auditRefusal(refuse("INTERNAL"));
     options.onSignedMaterial?.({
       signedTransactionId,
       expectedTransactionHash: existing.transactionHash,
-      ...(signature.rawTransaction === undefined
+      ...(rematerialized.rawTransaction === undefined
         ? {}
-        : { rawTransaction: signature.rawTransaction }),
+        : { rawTransaction: rematerialized.rawTransaction }),
       fromDurableEvidence: true,
     });
     return {
@@ -767,8 +765,11 @@ export const signAuthorizedTransferCore = async (
     .now()
     .toISOString()
     .replace(/\.\d{3}Z$/, "Z");
+  let signerFailed = false;
+  let attemptedHash: Hash | undefined;
+  let signature: SignedTransactionMaterial;
   try {
-    await deps.store.persistSignedEvidence(
+    signature = await deps.store.signAndPersistEvidence(
       {
         signedTransactionId,
         ids,
@@ -778,16 +779,29 @@ export const signAuthorizedTransferCore = async (
         envelopeHash: envelope.envelopeHash,
         simulationId: candidate.simulationId,
         fixtureInstanceId,
-        expectedTransactionHash: signature.transactionHash,
         signedAt,
         signerCredentialId: deps.credential.credentialId,
       },
+      async () => {
+        let result: SignedTransactionMaterial;
+        try {
+          result = await deps.signTransaction(signFields);
+        } catch (error) {
+          signerFailed = true;
+          throw error;
+        }
+        if (!HASH_PATTERN.test(result.transactionHash))
+          throw new Error("signer returned an invalid transaction hash");
+        attemptedHash = result.transactionHash;
+        return result;
+      },
       audit,
+      () => deps.onPhase?.("signing-started"),
     );
-  } catch {
+  } catch (error) {
     // A concurrent signer may have persisted the same evidence first.
     const raced = await deps.store.findDurableSignedEvidence(ids);
-    if (raced && raced.transactionHash === signature.transactionHash)
+    if (raced && attemptedHash !== undefined && raced.transactionHash === attemptedHash)
       return {
         ok: true,
         transactionHash: raced.transactionHash,
@@ -796,7 +810,20 @@ export const signAuthorizedTransferCore = async (
           resultPayload(ids, raced.transactionHash),
         ),
       };
-    return auditRefusal(refuse("PERSISTENCE_FAILED"));
+    const authorityFailure =
+      error instanceof Error &&
+      /canonical signing authority|canonical control fence|operation left AUTHORIZED|operation is missing|authorization evidence is missing/.test(
+        error.message,
+      );
+    return auditRefusal(
+      refuse(
+        signerFailed
+          ? "INTERNAL"
+          : authorityFailure
+            ? "OPERATION_NOT_AUTHORIZED"
+            : "PERSISTENCE_FAILED",
+      ),
+    );
   }
   deps.onPhase?.("evidence-persisted");
   options.onSignedMaterial?.({

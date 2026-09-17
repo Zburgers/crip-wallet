@@ -323,24 +323,28 @@ class MemorySignerStore implements SignerStore {
   async findDurableSignedEvidence() {
     return this.durable;
   }
-  async beginSigning() {
-    this.phases.push("signing-started");
-  }
-  async persistSignedEvidence(input: {
-    signedTransactionId: string;
-    expectedTransactionHash: `0x${string}`;
-    reservationId: string;
-    envelopeId: string;
-    envelopeRevision: number;
-    envelopeHash: string;
-    ids: SignAuthorizedTransferIds;
-    simulationId: string;
-    fixtureInstanceId: string;
-    signerCredentialId: string;
-    signedAt: string;
-  }) {
+  async signAndPersistEvidence(
+    input: {
+      signedTransactionId: string;
+      expectedTransactionHash?: `0x${string}`;
+      reservationId: string;
+      envelopeId: string;
+      envelopeRevision: number;
+      envelopeHash: string;
+      ids: SignAuthorizedTransferIds;
+      simulationId: string;
+      fixtureInstanceId: string;
+      signerCredentialId: string;
+      signedAt: string;
+    },
+    sign: () => Promise<{ transactionHash: `0x${string}`; rawTransaction?: string }>,
+    _audit: unknown,
+    onSigningStarted?: () => void,
+  ) {
+    onSigningStarted?.();
+    const material = await sign();
     this.durable = {
-      transactionHash: input.expectedTransactionHash,
+      transactionHash: material.transactionHash,
       signedAt: input.signedAt,
     };
     this.signed = {
@@ -352,10 +356,10 @@ class MemorySignerStore implements SignerStore {
       envelopeHash: input.envelopeHash,
       authorizationId: input.ids.authorizationId,
       fixtureInstanceId: input.fixtureInstanceId,
-      expectedTransactionHash: input.expectedTransactionHash,
+      expectedTransactionHash: material.transactionHash,
     };
-    this.phases.push("evidence-persisted");
     this.signingContext.operation.state = "SIGNED";
+    return material;
   }
   async recordSigningRefusal() {}
 }

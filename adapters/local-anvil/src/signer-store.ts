@@ -6,6 +6,7 @@ import type { Pool, PoolClient } from "pg";
 import type {
   SignAuthorizedTransferIds,
   SignerStore,
+  SignedTransactionMaterial,
   SigningContext,
   SimulationRecord,
 } from "./signer-core.js";
@@ -119,6 +120,8 @@ interface SigningAuthorityRow {
   policy_fence_version: string;
   policy_state: string;
 }
+
+const SIGNED_HASH_PATTERN = /^0x[0-9a-f]{64}$/;
 
 const numeric = (value: string | number | null): number | null =>
   value === null ? null : Number(value);
@@ -369,6 +372,83 @@ const assertCurrentSigningAuthority = async (
     envelopeHash: string;
   },
 ): Promise<SigningAuthorityRow> => {
+  const identity = await client.query<{
+    agent_id: string;
+    policy_id: string;
+    owner_id: string;
+  }>(
+    `SELECT o.agent_id, o.policy_id, w.owner_id
+     FROM operations o
+     JOIN wallets w ON w.wallet_id = o.wallet_id
+     WHERE o.operation_id = $1`,
+    [ids.operationId],
+  );
+  const identityRow = identity.rows[0];
+  if (!identityRow) throw new Error("operation is missing");
+
+  await client.query(
+    `SELECT 1 FROM control_fences
+     WHERE scope_type = 'SYSTEM' AND scope_id = 'system' FOR UPDATE`,
+  );
+  await client.query(
+    `SELECT 1 FROM control_fences
+     WHERE scope_type = 'OWNER' AND scope_id = $1 FOR UPDATE`,
+    [identityRow.owner_id],
+  );
+  await client.query(
+    `SELECT 1 FROM control_fences
+     WHERE scope_type = 'AGENT' AND scope_id = $1 FOR UPDATE`,
+    [identityRow.agent_id],
+  );
+  await client.query(
+    `SELECT 1 FROM control_fences
+     WHERE scope_type = 'POLICY' AND scope_id = $1 FOR UPDATE`,
+    [identityRow.policy_id],
+  );
+
+  const binding = await client.query<{
+    reservation_id: string;
+    envelope_id: string;
+    envelope_revision: number;
+  }>(
+    `SELECT reservation_id, envelope_id, envelope_revision
+     FROM authorization_evidence
+     WHERE operation_id = $1 AND authorization_id = $2`,
+    [ids.operationId, ids.authorizationId],
+  );
+  const bindingRow = binding.rows[0];
+  if (!bindingRow) throw new Error("authorization evidence is missing");
+
+  await client.query(
+    `SELECT ae.authorization_id
+     FROM authorization_evidence ae
+     JOIN policy_decisions pd
+       ON pd.operation_id = ae.operation_id
+      AND pd.decision_id = ae.policy_decision_id
+     WHERE ae.operation_id = $1 AND ae.authorization_id = $2
+     FOR UPDATE OF ae, pd`,
+    [ids.operationId, ids.authorizationId],
+  );
+  await client.query(
+    `SELECT operation_id FROM operations WHERE operation_id = $1 FOR UPDATE`,
+    [ids.operationId],
+  );
+  await client.query(
+    `SELECT reservation_id FROM budget_reservations
+     WHERE operation_id = $1 AND reservation_id = $2 FOR UPDATE`,
+    [ids.operationId, bindingRow.reservation_id],
+  );
+  await client.query(
+    `SELECT envelope_id FROM execution_envelopes
+     WHERE operation_id = $1 AND envelope_id = $2 AND revision = $3 FOR UPDATE`,
+    [ids.operationId, bindingRow.envelope_id, bindingRow.envelope_revision],
+  );
+  await client.query(
+    `SELECT simulation_id FROM transaction_simulations
+     WHERE operation_id = $1 FOR SHARE`,
+    [ids.operationId],
+  );
+
   const result = await client.query<SigningAuthorityRow>(
     `SELECT o.current_state AS operation_state, o.operation_id,
             o.intent_id, o.agent_id, o.wallet_id, w.owner_id,
@@ -423,7 +503,7 @@ const assertCurrentSigningAuthority = async (
          WHERE newer.operation_id = o.operation_id
            AND newer.revision > ae.envelope_revision
        )
-     FOR UPDATE OF o, ae, br`,
+    `,
     [ids.operationId, ids.authorizationId],
   );
   const row = result.rows[0];
@@ -468,7 +548,7 @@ const assertCurrentSigningAuthority = async (
      WHERE (scope_type, scope_id) IN (
        ('SYSTEM', 'system'), ('OWNER', $1), ('AGENT', $2), ('POLICY', $3)
      )
-     FOR UPDATE`,
+    `,
     [row.owner_id, row.agent_id, row.policy_id],
   );
   const current = new Map(
@@ -524,17 +604,19 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
         : null;
     }),
 
-  beginSigning: (ids, audit) =>
+  signAndPersistEvidence: (input, sign, audit, onSigningStarted) =>
     withClient(pool, async (client) => {
       await client.query("BEGIN");
       try {
-        const authority = await assertCurrentSigningAuthority(client, ids);
+        await client.query("SET LOCAL lock_timeout = '2000ms'");
+        await client.query("SET LOCAL statement_timeout = '5000ms'");
+        const authority = await assertCurrentSigningAuthority(client, input.ids);
         if (authority.operation_state === "AUTHORIZED") {
           const update = await client.query(
             `UPDATE operations
              SET current_state = 'SIGNING', version = version + 1, updated_at = now()
              WHERE operation_id = $1 AND current_state = 'AUTHORIZED'`,
-            [ids.operationId],
+            [input.ids.operationId],
           );
           if (update.rowCount !== 1)
             throw new Error("operation left AUTHORIZED concurrently");
@@ -548,7 +630,7 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
           eventType: "signing.started",
           data: {
             reservationId: authority.reservation_id,
-            authorizationId: ids.authorizationId,
+            authorizationId: input.ids.authorizationId,
             credentialId: audit.credentialId,
             componentId: audit.actorId,
             componentRole: "ADAPTER",
@@ -557,27 +639,15 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
             chainId: "eip155:31337",
           },
         });
-        await client.query("COMMIT");
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      }
-    }),
-
-  persistSignedEvidence: (input, audit) =>
-    withClient(pool, async (client) => {
-      await client.query("BEGIN");
-      try {
-        const authority = await assertCurrentSigningAuthority(
-          client,
-          input.ids,
-          {
-            reservationId: input.reservationId,
-            envelopeId: input.envelopeId,
-            envelopeRevision: input.envelopeRevision,
-            envelopeHash: input.envelopeHash,
-          },
-        );
+        onSigningStarted?.();
+        const material: SignedTransactionMaterial = await sign();
+        if (!SIGNED_HASH_PATTERN.test(material.transactionHash))
+          throw new Error("signer returned an invalid transaction hash");
+        if (
+          input.expectedTransactionHash !== undefined &&
+          input.expectedTransactionHash !== material.transactionHash
+        )
+          throw new Error("signed transaction hash does not match input");
         await client.query(
           `INSERT INTO signed_transactions
             (signed_transaction_id, operation_id, reservation_id, envelope_id,
@@ -595,7 +665,7 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
             input.ids.authorizationId,
             input.simulationId,
             input.fixtureInstanceId,
-            input.expectedTransactionHash,
+            material.transactionHash,
             input.signerCredentialId,
             audit.actorId,
             input.signedAt,
@@ -622,7 +692,7 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
             envelopeId: input.envelopeId,
             envelopeRevision: input.envelopeRevision,
             envelopeHash: input.envelopeHash,
-            transactionHash: input.expectedTransactionHash,
+            transactionHash: material.transactionHash,
             componentId: audit.actorId,
             componentRole: "ADAPTER",
             authenticationMethod: "ed25519",
@@ -631,6 +701,7 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
           },
         });
         await client.query("COMMIT");
+        return material;
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;
