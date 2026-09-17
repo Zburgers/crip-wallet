@@ -76,6 +76,10 @@ and race attackers; insiders with partial access; and accidental operator error.
 | T-033 | Response-loss falsely releases reservation   | Persist expected hash/attempt before send; transport uncertainty remains pending/disputed and cannot authorize release | TM-033 |
 | T-034 | Receipt or transaction evidence substitution | Full transaction/receipt/log + operation/reservation/hash binding; ADR-0014 authenticated RECONCILER evidence before ledger mutation | TM-034 |
 | T-035 | Local-chain reset confusion                  | Chain/genesis/fixture/deployment-code fingerprint plus canonical simulation block identity at execution boundaries | TM-035 |
+| T-036 | Control changes after signing but before send, or an alternate raw sender bypasses `STARTED` | Sole restricted send gateway; fence-first send gate; signed/no-attempt quarantine; retained disputed reservation; authenticated no-send recovery | TM-036 |
+| T-037 | Post-send control change blocks recovery      | Immutable committed attempt/hash authority after `STARTED`; current fences cannot cancel or strand reconciliation | TM-037 |
+| T-038 | Signer/control deadlock or stale lock winner  | One canonical fence-first lock order and deterministic two-winner concurrency barriers | TM-038 |
+| T-039 | Stale recovery worker resolves with app-clock skew | SQL DB-time lease/version check at final mutation | TM-039 |
 
 ## Abuse paths
 
@@ -120,7 +124,8 @@ ADR-0015 is **ACCEPTED** and closes the architecture-level exact-signing gap:
 The owning Phase-2 packets provide executable local evidence; protected
 implementation/provenance checks and external review `5126373971` accepted the
 governing local boundary. S2 requirement evidence is PASS and Gate S2 is
-**PASS / ACCEPTED**. Phase 3 is NOT OPENED.
+**PASS / ACCEPTED**. Phase 3 is now OPENED / PLANNED / NOT IMPLEMENTED; the
+Phase-2 evidence does not satisfy its integrated-control requirements.
 
 P2-03 provides local executable evidence for the canonical-block, loopback-only,
 RPC-disagreement, fee-ceiling, token/native separation, exact-field mutation,
@@ -134,4 +139,13 @@ ADR-0016 addresses autonomous-authority forgery, approval fabrication, cross-kin
 
 ADR-0017 addresses raw-byte leakage and the signed-evidence/pre-send crash gap by composing signing and the accepted broadcaster inside the restricted local child. Serialized bytes remain volatile. Deterministic rematerialization is permitted only with durable signed evidence and no attempt, after full current revalidation and durable-hash equality. Any send-capable attempt prohibits re-signing and uses expected-hash recovery. P2-05D proves the clean path locally; P2-06 proves fault, ambiguity and substitution handling locally.
 
-The implementation retains a narrow dependency on deterministic behavior of the locked transaction serializer/signature stack and a restricted child with loopback send capability. Golden signed vectors, dependency review, strict output scans, loopback/fixture checks and reuse of the accepted broadcaster are evidenced locally; the external S2 review accepts only this local boundary. Public-network Byzantine independence, production finality, production telemetry and Phase-3 integrated controls remain unclaimed. Phase 3 is not opened.
+The implementation retains a narrow dependency on deterministic behavior of the locked transaction serializer/signature stack and a restricted child with loopback send capability. Golden signed vectors, dependency review, strict output scans, loopback/fixture checks and reuse of the accepted broadcaster are evidenced locally; the external S2 review accepts only this local boundary. Public-network Byzantine independence, production finality, and production telemetry remain unclaimed.
+
+## Phase-3 planned threat treatment
+
+Phase 3 / WS-005 is OPENED / PLANNED and not implemented. P3-00 identified the
+signed/no-attempt control race, signer/control lock inversion, and post-send
+current-fence recovery conflict. Accepted ADR-0018 and
+`docs/plans/PHASE-3.md` define the planned controls for T-036 through T-039.
+Those threats remain open until P3-01 through P3-06 pass on a protected exact
+SHA. Planning evidence must not be reported as mitigation or acceptance.

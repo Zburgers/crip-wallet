@@ -36,3 +36,4 @@ rejected, deprecated, or superseded.
 | [0015](ADR-0015-exact-evm-envelope-v2.md)                | Exact EVM envelope v2 and local evidence       | Accepted |
 | [0016](ADR-0016-canonical-autonomous-authorization.md)   | Canonical autonomous authorization             | Accepted |
 | [0017](ADR-0017-signer-local-signed-byte-broadcast-handoff.md) | Signer-local signed-byte broadcast handoff | Accepted |
+| [0018](ADR-0018-integrated-control-send-commit.md) | Integrated control and send-commit boundary | Accepted |

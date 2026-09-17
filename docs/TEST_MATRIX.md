@@ -63,7 +63,18 @@ Secret Scan: `33189082181` — PASS.
 
 **Gate S1: PASS / ACCEPTED. S2-01: PASS. S2-02: PASS. S2-03: PASS. S2 requirement evidence: PASS. External S2 acceptance: PASS / ACCEPTED in review `5126373971`. Gate S2: PASS / ACCEPTED.**
 
-**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 is NOT OPENED.**
+**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is OPENED / PLANNED / NOT IMPLEMENTED.**
+
+## Phase-3 planning checkpoint
+
+Planning base: `main` at `769db481472aab60a07efdd4b2390058321402e4`.
+Planning branch: `phase-3/ws-005-integrated-controls`.
+
+P3-00 mapped the current signer/control lock inversion, signed/no-attempt
+control gap, pre-`STARTED` authority gap, post-`STARTED` recovery conflict, and
+app-clock lease-resolution gap. Accepted ADR-0018 and
+`docs/plans/PHASE-3.md` define the planned treatment. All Phase-3 rows remain
+`PLANNED`; documentation and a green planning PR are not implementation proof.
 
 ADR-0015 is accepted architectural authority, not test evidence. It removes the previous P2-02 architecture blocker but no Phase-2 threat/product row becomes PASS until the named implementation test exists and protected current-head evidence is recorded.
 
@@ -83,9 +94,9 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | PR-010 | independent decode/verification | PASS / ACCEPTED for Phase-2 local boundary | P2-02 independent decoder and static verifier mutation tests |
 | PR-011 | state-changing operations simulated | PASS / ACCEPTED for Phase-2 local boundary | P2-03 unit + loopback chain simulation |
 | PR-012 | immutable envelope after reservation | PASS / ACCEPTED for Phase-2 local boundary | WS-002 approval binding; P2-02 exact signed-field proof |
-| PR-013 | approval envelope-bound and one-time | PASS locally | WP-07/08; E2E Phase 3 |
+| PR-013 | approval envelope-bound and one-time | PASS locally / PLANNED integrated E2E | WP-07/08; P3-01/05 |
 | PR-014 | owner/signer key outside agent process | PASS / ACCEPTED for Phase-2 local boundary | P2-04 IDs-only local signer and P2-06 leakage checks; production custody excluded |
-| PR-015 | revocation/pause before signing | PASS for S1 control plane / PLANNED at signer boundary | Phase 3 |
+| PR-015 | revocation/pause before signing | PASS for S1 control plane / PLANNED at signer and send boundaries | P3-01/02/03 |
 | PR-016 | native fee ceiling | PASS / ACCEPTED for Phase-2 local boundary | P2-03/P2-06 integer max-cost, native-balance and fee-escalation tests |
 | PR-017 | MCP/CLI/dashboard share core | PLANNED | Phase 4 |
 | PR-018 | no raw signing surface in interfaces | PLANNED | P2-04 local adapter + Phase 4 public interfaces |
@@ -111,9 +122,9 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-007 | recipient/amount/asset substitution | PASS / ACCEPTED for Phase-2 local boundary | P2-02/P2-06 static verifier and mutation tests |
 | TM-008 | calldata/extra-call substitution | PASS / ACCEPTED for Phase-2 local boundary | P2-02/P2-06 strict 68-byte decoder and calldata mutation tests |
 | TM-009 | fee bypass/spike | PASS / ACCEPTED for Phase-2 local boundary | P2-03/P2-06 priority/max-fee, ceiling and freshness escalation tests |
-| TM-010 | stale/downgraded policy | PASS locally / PLANNED pre-sign | fence + binding; Phase 3 |
+| TM-010 | stale/downgraded policy | PASS locally / PLANNED integrated pre-sign/send | fence + binding; P3-01/03 |
 | TM-011 | expired approval | PASS locally | WP-08 |
-| TM-012 | revocation/pause race | PASS locally / PLANNED pre-sign | WP-04/10 then Phase 3 |
+| TM-012 | revocation/pause race | PASS locally / PLANNED integrated pre-sign/send/recovery | WP-04/10 then P3-01–P3-05 |
 | TM-013 | permit/unlimited/signature abuse | PLANNED | P2-02/P2-04/Phase 4 |
 | TM-014 | delegatecall/multicall/proxy | PASS / ACCEPTED for Phase-2 local boundary | P2-02/P2-06 unknown-selector and exact-length decoder tests |
 | TM-015 | token metadata manipulation | PASS for P2-01 fixture / PLANNED E2E | deployment metadata and runtime code-hash checks; P2-02 |
@@ -122,7 +133,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-018 | signed-unbroadcast ambiguity | PASS / ACCEPTED for Phase-2 local boundary | P2-04/P2-06 IDs-only signer, UNKNOWN/DISPUTED retention and no-resign proof |
 | TM-019 | broadcast persistence timeout | PASS / ACCEPTED for Phase-2 local boundary | P2-05/P2-06 durable attempt and recovery proof; adapter integration remains local-only |
 | TM-020 | revert/reorg/receipt confusion | PASS / ACCEPTED for Phase-2 local boundary | P2-05/P2-06 canonical block, transaction, receipt and Transfer-log matching; no production-finality claim |
-| TM-021 | reservation expiry race | PASS core lifecycle / PLANNED E2E | Phase 3 |
+| TM-021 | reservation expiry race | PASS core lifecycle / PLANNED integrated E2E | P3-04/05 |
 | TM-022 | malicious/replayed webhook | NOT APPLICABLE to current local MVP surface | revisit if webhook adapter added |
 | TM-023 | audit tampering/omission | PASS / ACCEPTED for Phase-2 local boundary | DB guards and P2-05D/P2-06 correlated audit evidence; integrated telemetry remains Phase 5 |
 | TM-024 | secret output/log exposure | PASS / ACCEPTED for Phase-2 local boundary | mode-0600 state, IDs-only signer and P2-06 redaction/leakage checks |
@@ -137,6 +148,21 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-033 | response-loss false failure/release | PASS / ACCEPTED for Phase-2 local boundary | exact-byte broadcast, DB release/recovery fence and crash-resume orchestration |
 | TM-034 | receipt/cross-operation substitution | PASS / ACCEPTED for Phase-2 local boundary | P2-05C/P2-06 transaction, receipt, log, operation, reservation, fixture, auth and legacy-evidence mismatch coverage |
 | TM-035 | local-chain reset confusion | PASS / ACCEPTED for Phase-2 local boundary | genesis/fixture/deployment/code fingerprints plus P2-03/P2-06 fixture-bound evidence |
+| TM-036 | control after signing before send / alternate send gateway | PLANNED | P3-02/03 deterministic quarantine/no-send and sole-`STARTED`-gateway proof |
+| TM-037 | post-send control blocks recovery | PLANNED | P3-03/04 immutable-attempt reconciliation proof |
+| TM-038 | signer/control lock inversion | PLANNED | P3-01 canonical-order two-winner concurrency proof |
+| TM-039 | stale recovery worker/app-clock skew | PLANNED | P3-04 SQL DB-time lease/version resolution proof |
+
+## Phase-3 implementation matrix
+
+| Packet | Status | Required evidence before PASS |
+| --- | --- | --- |
+| P3-01 pre-sign authority transaction and binding | PLANNED / READY | migration-upgrade/uniqueness; owner + autonomous common gate; both lock winners; drift rejection; signer rollback; one signed row |
+| P3-02 signed-unbroadcast lifecycle/control | PLANNED | signed/no-attempt quarantine, retained reservation, zero attempt/RPC, authenticated no-send recovery prerequisites, idempotent control audits |
+| P3-03 send commit + UNKNOWN/recovery integration | PLANNED | control-before/after `STARTED`; crash/response-loss; one attempt; later fence change cannot block exact reconciliation |
+| P3-04 control/recovery concurrency fencing | PLANNED | DB-time lease expiry/takeover; signed-no-attempt exact release; concurrent retry/control/recovery; one economic effect |
+| P3-05 adversarial/fault matrix | PLANNED | P3-F01–P3-F19; owner/autonomous parity; replay/substitution/leakage/public-boundary refusal |
+| P3-06 clean-room and independent closeout | PLANNED | fresh clone/runtime, full inherited + Phase-3 gates, protected exact-SHA CI/Secret Scan, independent review, clean teardown |
 
 ## Phase-2 implementation matrix
 
@@ -346,7 +372,8 @@ Gate S2: **PASS / ACCEPTED**.
 
 Phase 2 / WS-004: **PASS / ACCEPTED** for the governing local MVP boundary.
 
-P2-06D: **COMPLETE / ACCEPTED / INTEGRATED**. Phase 3: **NOT OPENED**.
+P2-06D: **COMPLETE / ACCEPTED / INTEGRATED**. At this historical S2 checkpoint,
+Phase 3 was **NOT OPENED**; it is now OPENED / PLANNED / NOT IMPLEMENTED.
 
 #### Fresh exact clean-room counts
 
@@ -390,4 +417,5 @@ P2-06D: **COMPLETE / ACCEPTED / INTEGRATED**. Phase 3: **NOT OPENED**.
 P2-06D is complete / accepted / integrated. S2 requirement evidence is PASS;
 external S2 acceptance is PASS / ACCEPTED. Phase 2 / WS-004 is COMPLETE /
 ACCEPTED for the governing local MVP boundary. Gate S2 is **PASS / ACCEPTED**;
-Phase 3 is NOT OPENED.
+This Phase-2 closeout originally left Phase 3 NOT OPENED. Phase 3 is now OPENED
+/ PLANNED / NOT IMPLEMENTED under `docs/plans/PHASE-3.md`.

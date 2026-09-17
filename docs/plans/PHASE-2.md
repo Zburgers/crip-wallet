@@ -8,7 +8,7 @@
 
 **Tech stack:** strict TypeScript/Node.js workspaces, PostgreSQL 17, Vitest/fast-check, the existing digest-pinned Foundry/Anvil/Forge image, Solidity, `viem` beginning in P2-02, existing `@noble/hashes`, Zod, and the existing Ed25519 component-authentication boundary.
 
-**Status:** P2-05 is ACCEPTED on canonical branch `phase-2/ws-004-local-erc20` / PR #5; auxiliary PRs #8 and #12 are merged/closed. P2-06A/B/C/D are integrated and externally accepted; P2-06D is COMPLETE / ACCEPTED. S2 requirement evidence is PASS; external S2 acceptance review `5126373971` is PASS / ACCEPTED. Phase 2 / WS-004 is COMPLETE / ACCEPTED for the governing local MVP boundary. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 is **PASS / ACCEPTED**; Phase 3 is NOT OPENED.
+**Status:** P2-05 is ACCEPTED on canonical branch `phase-2/ws-004-local-erc20` / PR #5; auxiliary PRs #8 and #12 are merged/closed. P2-06A/B/C/D are integrated and externally accepted; P2-06D is COMPLETE / ACCEPTED. S2 requirement evidence is PASS; external S2 acceptance review `5126373971` is PASS / ACCEPTED. Phase 2 / WS-004 is COMPLETE / ACCEPTED for the governing local MVP boundary. ADR-0015, ADR-0016 and ADR-0017 are accepted. Gate S2 is **PASS / ACCEPTED**. Phase 3 is now OPENED / PLANNED / NOT IMPLEMENTED under `docs/plans/PHASE-3.md`; this Phase-2 plan remains historical accepted authority.
 
 ---
 

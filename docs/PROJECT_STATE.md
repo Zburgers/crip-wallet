@@ -6,7 +6,7 @@ Update rule: at every meaningful integration point; keep this as the current res
 ## Repository
 
 - Repository: `Zburgers/crip-wallet`
-- Current default branch: `main` at Phase-2 merge commit `2c7e50f6aee6887ddd4af74c7bc33639707451b4`
+- Current default branch at Phase-3 planning start: `main` at `769db481472aab60a07efdd4b2390058321402e4`
 - Phase 0/1 merge: PR #1 merged as `4dd91b481ccac51247e2c7e1220b5e74f968c0d5`
 - Phase 2 / WS-004 merge: PR #5 merged to `main` as `2c7e50f6aee6887ddd4af74c7bc33639707451b4`
 - Historical Phase-2 integration branch: `phase-2/ws-004-local-erc20`
@@ -18,6 +18,8 @@ Update rule: at every meaningful integration point; keep this as the current res
 - Phase-1 Secret Scan: run `31919254475` — PASS
 - Phase-2 post-merge `main` CI: run `34058182763` — PASS
 - Phase-2 post-merge `main` Secret Scan: run `34058183008` — PASS
+- Phase-3 planning branch: `phase-3/ws-005-integrated-controls`
+- ADR-0018: **ACCEPTED — 2026-09-17 by product owner**; implementation remains not started
 
 ## Gate status
 
@@ -69,6 +71,23 @@ The actual post-merge `main` candidate passed CI `34058182763` and Secret Scan `
 
 **Gate S2 is PASS / ACCEPTED, and Phase 2 / WS-004 is COMPLETE / ACCEPTED for the local boundary.**
 
+### Phase 3 — OPENED / PLANNED / NOT IMPLEMENTED
+
+Phase 3 / WS-005 is formally opened for architecture and execution planning.
+`docs/plans/PHASE-3.md` maps the integrated authority-to-economic-finality
+boundary and packets P3-01 through P3-06. Accepted ADR-0018 defines the planned
+signing and send-commit linearization points, signed-unbroadcast quarantine,
+post-send recovery authority, canonical lock order, and minimum migration
+backstops. P3-01 implementation begins only from the protected post-planning
+main.
+
+P3-00 found a real integration gap rather than an accepted implementation:
+current control invalidation does not cover signed/no-attempt work, the current
+broadcast writer does not revalidate control authority, signer/control lock
+ordering is inverted, and current-fence guards can obstruct post-send recovery.
+No Phase-3 code, migration, or acceptance evidence is claimed by this planning
+state.
+
 ## Dependency state
 
 - The merged `main` carries `@types/node` `26.2.0`, `@types/pg` `8.23.1`, `eslint` `10.9.1`, `typescript-eslint` `8.68.0`, and `@noble/hashes` `2.4.0`; the full protected Phase-2 merge-ref and post-merge `main` CI passed with those versions.
@@ -83,19 +102,22 @@ The actual post-merge `main` candidate passed CI `34058182763` and Secret Scan `
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
 - WS-004 Phase-2 transaction pipeline/local adapter — P2-06D COMPLETE / ACCEPTED; Phase 2 / WS-004 COMPLETE / ACCEPTED / MERGED TO `main`.
-- WS-005 Phase-3 integrated approval/control/recovery slice — NOT OPENED.
+- WS-005 Phase-3 integrated approval/control/recovery slice — OPENED / PLANNED / NOT IMPLEMENTED.
 - WS-006/007 — NOT OPENED.
 
 ## Safety boundary
 
 Phase 2 remains strictly local and fake-money only: Anvil chain `31337` / `0x7a69`, disposable local keys and a mock ERC-20. Public RPC, testnet, mainnet, real funds, production custody and production identity remain prohibited.
 
-## Phase-2 closeout handoff
+## Phase-2 closeout and Phase-3 handoff
 
 - `docs/plans/PHASE-2.md` contains the accepted architecture, APIs, lifecycle mapping, migration impact, packet-level TDD tasks, fault model, threat ownership and S2 reproduction gate.
 - ADR-0015 is **ACCEPTED**. Envelope v2 uses schema version `2.0` and a distinct v2 hash-preimage version; binds all unsigned type-2 fields including `accessList: []`; uses bounded simulation-freshness rules; preserves the local-Anvil IDs-only signer as a reference-adapter mechanism rather than a universal DB-coupling requirement; persists expected transaction hash/broadcast attempt before send; and keeps ADR-0014 authenticated reconciler evidence in front of exactly-once ledger reconciliation.
 - P2-01 through P2-06D and the complete external review lineage are recorded in `docs/TEST_MATRIX.md` and PR #5.
 - S2 requirement evidence is PASS; external S2 acceptance is PASS / ACCEPTED in review `5126373971`; final Phase-2 main-merge review is `5126534096`; PR #5 merged to `main` as `2c7e50f6aee6887ddd4af74c7bc33639707451b4`.
-- Phase 3 remains NOT OPENED. Opening it requires an explicit new planning decision; Phase-2 acceptance does not widen the local-only safety boundary.
+- Phase 3 is OPENED / PLANNED on `phase-3/ws-005-integrated-controls`.
+  `docs/plans/PHASE-3-EXECUTION-HANDOFF.md` is the concise implementation
+  handoff. Phase-2 acceptance and Phase-3 planning do not widen the local-only
+  safety boundary.
 
-Last updated: 2026-09-07 for the post-merge Phase-2 / S2 closeout.
+Last updated: 2026-09-17 for Phase-3 / WS-005 architecture planning.

@@ -9,18 +9,18 @@ Open risks must remain visible until their related phase/gate evidence exists.
 | R-001 | Real/public funds accidentally configured | Critical | Local-only validation and no-real-funds boundary; **mitigated for S0**, remains release-sensitive |
 | R-002 | Provider coupling creates alternate authority | High | ADR-0001/0009 plus accepted ADR-0015 keep core provider-neutral; the local IDs-only DB-loaded signer is explicitly a reference-adapter mechanism, not a universal provider requirement; adapter conformance remains Phase 2+ |
 | R-003 | Concurrent reservations overspend | Critical | Serializable ledger + deterministic concurrency/property proof; **mitigated for S1** |
-| R-004 | Retry duplicates reservation/execution | Critical | Request-bound idempotency plus P2-05/P2-06 local broadcast/recovery proof; **mitigated for the Phase-2 local boundary**; integrated controls remain Phase 3 |
+| R-004 | Retry duplicates reservation/execution | Critical | Request-bound idempotency plus P2-05/P2-06 local proof; **mitigated for the Phase-2 local boundary**. P3-01/03/04 plan unconditional signed/attempt uniqueness and one-effect retry/takeover proof |
 | R-005 | Envelope mismatch | Critical | Canonical hash/binding/replacement invalidation and exact envelope-v2 signed-field proof; **mitigated / accepted for the Phase-2 local boundary**; later integrated controls remain Phase 3 |
-| R-006 | Stale approval/control state authorizes | Critical | WP-07/08/10 canonical auth + owner authentication + four-scope fences; **mitigated for S1**, immediate pre-sign integration Phase 3 |
+| R-006 | Stale approval/control state authorizes | Critical | WP-07/08/10 canonical auth + owner authentication + four-scope fences; **mitigated for S1**. Phase-3 pre-sign/send integration is OPEN until P3-01/02/03 evidence |
 | R-007 | Enforcement-grade coercion | High | Strict enum/order implemented; adapter claims remain Phase 2+ |
-| R-008 | Revocation mistaken for chain cancellation | High | Local lifecycle semantics proven; chain semantics remain Phase 3 |
+| R-008 | Revocation mistaken for chain cancellation | High | ADR-0005 semantics proven locally; Phase 3 plans signed/no-attempt quarantine and treats `STARTED` as irrevocable send commit; implementation evidence OPEN |
 | R-009 | Destructive migration/data loss | Critical | Forward-only checksum-locked migrations and corrective migration practice; backup/restore drill later |
 | R-010 | Native fees corrupt token budget | High | Separate-asset rule plus P2-03/P2-06 checked type-2 max-cost/native-balance and signer-boundary proof; **mitigated / accepted for the Phase-2 local boundary** |
 | R-011 | Local approval represented as production identity | High | ADR-0008 local-test owner authentication implemented; production identity explicitly out of scope; **mitigated for local S1** |
 | R-012 | Signer key leaks | Critical | Mode-0600 generated state, isolated IDs-only signer, quiet logs and P2-06 adversarial leakage checks; **mitigated for the Phase-2 local boundary** |
 | R-013 | Audit omitted/tampered | High | Row-derived same-transaction guards plus P2-05D durable trace and P2-06 adversarial evidence; integrated telemetry remains Phase 5 |
 | R-014 | Telemetry leaks sensitive data | High | Phase 5 |
-| R-015 | Stale worker acts after lease loss | Critical | Authenticated bounded DB-time recovery leases; **mitigated for local S1**, provider integration later |
+| R-015 | Stale worker acts after lease loss | Critical | Authenticated bounded recovery leases; **mitigated for local S1**. P3-04 must enforce DB time/version at final integrated economic mutation |
 | R-016 | Interface bypasses core | Critical | Interfaces not opened; Phase 4 |
 | R-017 | UI reports failure while funds moved | High | Phase 3/4 structured uncertainty |
 | R-018 | License incompatibility | High | MIT via ADR-0013; mitigated |
@@ -35,5 +35,8 @@ Open risks must remain visible until their related phase/gate evidence exists.
 | R-027 | `ALLOW_AUTONOMOUS` cannot create canonical authorization without fabricated approval | Critical | **MITIGATED / ACCEPTED FOR THE PHASE-2 LOCAL BOUNDARY:** ADR-0016 canonical authorization, persisted immutable decision/hash/fence binding, shared invalidation, race/forgery tests, clean production-writer E2E and completed P2-06 adversarial evidence; no production-control claim |
 | R-028 | Signer-local bytes are discarded before the accepted broadcaster can send them | Critical | **MITIGATED / ACCEPTED FOR THE PHASE-2 LOCAL BOUNDARY:** ADR-0017 same-child signer/broadcaster composition, volatile raw bytes, durable signed evidence before STARTED/send, exact frozen vector, clean E2E and completed P2-06 fault evidence; no production-finality claim |
 | R-029 | Serializer/signature dependency change invalidates deterministic rematerialization | High | **OPEN / proposed mitigation:** lock exact viem/crypto versions, freeze signed-byte/hash vectors, and require explicit dependency/security review before upgrade |
+| R-030 | Pause/revoke after signed evidence or an alternate raw sender still reaches broadcast | Critical | **OPEN:** P3-02/03 must replace the invalidation trigger, quarantine signed/no-attempt work, make one restricted `STARTED`-gated sender, and revalidate full current authority before send; ADR-0018 accepted |
+| R-031 | Post-send fence change strands or falsely releases economic effect | Critical | **OPEN:** P3-03/04 must recover from immutable attempt/hash evidence after `STARTED`, preserve uncertainty, and prove exactly-once reconciliation |
+| R-032 | Signer/control lock inversion deadlocks or selects stale authority | High | **OPEN:** P3-01 must normalize all security writers to canonical fence-first order and prove both lock winners deterministically |
 
 Detection evidence lives in `docs/TEST_MATRIX.md` and the relevant workstream files.
