@@ -37,6 +37,6 @@ Open risks must remain visible until their related phase/gate evidence exists.
 | R-029 | Serializer/signature dependency change invalidates deterministic rematerialization | High | **OPEN / proposed mitigation:** lock exact viem/crypto versions, freeze signed-byte/hash vectors, and require explicit dependency/security review before upgrade |
 | R-030 | Pause/revoke after signed evidence or an alternate raw sender still reaches broadcast | Critical | **OPEN:** P3-02/03 must replace the invalidation trigger, quarantine signed/no-attempt work, make one restricted `STARTED`-gated sender, and revalidate full current authority before send; ADR-0018 accepted |
 | R-031 | Post-send fence change strands or falsely releases economic effect | Critical | **OPEN:** P3-03/04 must recover from immutable attempt/hash evidence after `STARTED`, preserve uncertainty, and prove exactly-once reconciliation |
-| R-032 | Signer/control lock inversion deadlocks or selects stale authority | High | **OPEN:** P3-01 must normalize all security writers to canonical fence-first order and prove both lock winners deterministically |
+| R-032 | Signer/control lock inversion deadlocks or selects stale authority | High | **IN PROGRESS:** P3-01 normalizes the signer path to canonical fence-first order and adds bounded lock/expiry checks; deterministic two-winner proof remains with P3-02/P3-05 |
 
 Detection evidence lives in `docs/TEST_MATRIX.md` and the relevant workstream files.

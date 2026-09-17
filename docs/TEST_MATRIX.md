@@ -63,7 +63,7 @@ Secret Scan: `33189082181` — PASS.
 
 **Gate S1: PASS / ACCEPTED. S2-01: PASS. S2-02: PASS. S2-03: PASS. S2 requirement evidence: PASS. External S2 acceptance: PASS / ACCEPTED in review `5126373971`. Gate S2: PASS / ACCEPTED.**
 
-**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is OPENED / PLANNED / NOT IMPLEMENTED.**
+**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 is implemented and P3-02–P3-06 remain planned.**
 
 ## Phase-3 planning checkpoint
 
@@ -157,7 +157,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 
 | Packet | Status | Required evidence before PASS |
 | --- | --- | --- |
-| P3-01 pre-sign authority transaction and binding | PLANNED / READY | migration-upgrade/uniqueness; owner + autonomous common gate; both lock winners; drift rejection; signer rollback; one signed row |
+| P3-01 pre-sign authority transaction and binding | IMPLEMENTED / LOCAL GATES GREEN | `0026`; atomic fence-first signer/evidence path; DB 126/126; concurrency 18/18; invariants 7/7; focused signer/execution 44/44 |
 | P3-02 signed-unbroadcast lifecycle/control | PLANNED | signed/no-attempt quarantine, retained reservation, zero attempt/RPC, authenticated no-send recovery prerequisites, idempotent control audits |
 | P3-03 send commit + UNKNOWN/recovery integration | PLANNED | control-before/after `STARTED`; crash/response-loss; one attempt; later fence change cannot block exact reconciliation |
 | P3-04 control/recovery concurrency fencing | PLANNED | DB-time lease expiry/takeover; signed-no-attempt exact release; concurrent retry/control/recovery; one economic effect |

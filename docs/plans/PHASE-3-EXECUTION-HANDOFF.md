@@ -7,7 +7,8 @@
   from current protected `main` only after the Phase-3 planning PR and
   ADR-0018 are accepted/merged.
 - Planning authority: `docs/plans/PHASE-3.md`
-- Status: Phase 3 / WS-005 is **OPENED / PLANNED, NOT IMPLEMENTED**.
+- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 IMPLEMENTED** on
+  `phase-3/ws-005-implementation`; P3-02–P3-06 remain open.
 - Boundary: loopback Anvil `eip155:31337`, fake ERC-20, disposable local
   identities only. Public networks, real value, and production custody remain
   prohibited.

@@ -7,12 +7,18 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ### Phase 3 planning
 
+- Implemented P3-01 on canonical Phase-3 head `91f649b`: migration 0026,
+  fence-first atomic signing/evidence persistence, current binding/fixture
+  revalidation, and uniqueness backstops. Local gates are green; P3-02–P3-06
+  remain open.
+
 - Accepted ADR-0018 on 2026-09-17 by product owner. Its fence-first signing,
   send-commit, signed-unbroadcast quarantine, and immutable-attempt recovery
-  decisions now govern P3-01 through P3-06; implementation remains unstarted.
+  decisions now govern P3-01 through P3-06; P3-01 is implemented and the
+  remaining packets are open.
 
-- Formally opened Phase 3 / WS-005 as **OPENED / PLANNED / NOT IMPLEMENTED**
-  on `phase-3/ws-005-integrated-controls`.
+- Formally opened Phase 3 / WS-005 on `phase-3/ws-005-integrated-controls`,
+  then began implementation on canonical `phase-3/ws-005-implementation`.
 - Added the implementation-ready P3-00 race model and P3-01–P3-06 execution
   plan, concise orchestrator handoff, and ADR-0018 for atomic
   fence-first signing, signed-unbroadcast quarantine, the `STARTED` send-commit
@@ -20,8 +26,8 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 - Added planned risks/tests for the signed-to-send control race, post-send
   recovery after fence changes, canonical lock ordering, DB-time stale-worker
   fencing, and exact-once retry/takeover.
-- No Phase-3 code, migration, acceptance, public-network, real-fund, production-
-  custody, or S3 readiness claim is made.
+- No full Phase-3 acceptance, public-network, real-fund, production-custody, or
+  S3 readiness claim is made.
 
 ### Phase 2
 

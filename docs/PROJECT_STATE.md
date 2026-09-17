@@ -6,7 +6,7 @@ Update rule: at every meaningful integration point; keep this as the current res
 ## Repository
 
 - Repository: `Zburgers/crip-wallet`
-- Current default branch at Phase-3 planning start: `main` at `769db481472aab60a07efdd4b2390058321402e4`
+- Protected `main` after PR #26: `43f20fee99f7f771971871c852819be79849639f`
 - Phase 0/1 merge: PR #1 merged as `4dd91b481ccac51247e2c7e1220b5e74f968c0d5`
 - Phase 2 / WS-004 merge: PR #5 merged to `main` as `2c7e50f6aee6887ddd4af74c7bc33639707451b4`
 - Historical Phase-2 integration branch: `phase-2/ws-004-local-erc20`
@@ -18,8 +18,8 @@ Update rule: at every meaningful integration point; keep this as the current res
 - Phase-1 Secret Scan: run `31919254475` — PASS
 - Phase-2 post-merge `main` CI: run `34058182763` — PASS
 - Phase-2 post-merge `main` Secret Scan: run `34058183008` — PASS
-- Phase-3 planning branch: `phase-3/ws-005-integrated-controls`
-- ADR-0018: **ACCEPTED — 2026-09-17 by product owner**; implementation remains not started
+- Phase-3 canonical branch: `phase-3/ws-005-implementation` at `91f649b`
+- ADR-0018: **ACCEPTED — 2026-09-17 by product owner**
 
 ## Gate status
 
@@ -71,22 +71,26 @@ The actual post-merge `main` candidate passed CI `34058182763` and Secret Scan `
 
 **Gate S2 is PASS / ACCEPTED, and Phase 2 / WS-004 is COMPLETE / ACCEPTED for the local boundary.**
 
-### Phase 3 — OPENED / PLANNED / NOT IMPLEMENTED
+### Phase 3 — IN PROGRESS / P3-01 IMPLEMENTED
 
-Phase 3 / WS-005 is formally opened for architecture and execution planning.
+Phase 3 / WS-005 is executing from protected `main`.
 `docs/plans/PHASE-3.md` maps the integrated authority-to-economic-finality
 boundary and packets P3-01 through P3-06. Accepted ADR-0018 defines the planned
 signing and send-commit linearization points, signed-unbroadcast quarantine,
 post-send recovery authority, canonical lock order, and minimum migration
-backstops. P3-01 implementation begins only from the protected post-planning
-main.
+backstops. P3-01 is implemented at `91f649b`; P3-02 through P3-06 remain
+unstarted.
 
 P3-00 found a real integration gap rather than an accepted implementation:
 current control invalidation does not cover signed/no-attempt work, the current
 broadcast writer does not revalidate control authority, signer/control lock
 ordering is inverted, and current-fence guards can obstruct post-send recovery.
-No Phase-3 code, migration, or acceptance evidence is claimed by this planning
-state.
+P3-01 evidence: migration `0026_ws005_integrated_control_boundary.sql`,
+`npm run check` (21 repository tests and 344 package tests), `npm run test:db`
+(126 tests), `npm run test:concurrency` (18 tests), `npm run test:invariants`
+(7 tests), focused signer/execution (44 tests), and `npm audit --audit-level=high`
+(exit 0; two moderate Vitest advisories remain). Full Phase-3 acceptance is not
+claimed.
 
 ## Dependency state
 
@@ -102,7 +106,7 @@ state.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
 - WS-004 Phase-2 transaction pipeline/local adapter — P2-06D COMPLETE / ACCEPTED; Phase 2 / WS-004 COMPLETE / ACCEPTED / MERGED TO `main`.
-- WS-005 Phase-3 integrated approval/control/recovery slice — OPENED / PLANNED / NOT IMPLEMENTED.
+- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 IMPLEMENTED.
 - WS-006/007 — NOT OPENED.
 
 ## Safety boundary

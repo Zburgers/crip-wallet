@@ -72,12 +72,12 @@ outcomes remain disputed until authenticated reconciliation.
 
 ## Phase-3 planned integration boundary
 
-Phase 3 is opened for planning but is not implemented. Accepted ADR-0018 closes
-the gap between the accepted S1 fences and accepted S2 execution path with two
-planned linearization points:
+Phase 3 is in progress. Accepted ADR-0018 closes the gap between the accepted
+S1 fences and accepted S2 execution path with two linearization points; P3-01
+implements the first and P3-02/P3-03 will implement the second:
 
 1. bounded local signing and signed-evidence persistence occur atomically in one
-   fence-first database transaction; and
+   fence-first database transaction (P3-01 implemented); and
 2. a second fence-first transaction revalidates the exact authority before its
    `STARTED` commit becomes the send-commit point.
 

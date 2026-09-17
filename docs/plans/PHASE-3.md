@@ -1,6 +1,6 @@
 # Phase 3 Plan - WS-005 Integrated Approval Controls
 
-Status: **OPENED / PLANNED — NOT IMPLEMENTED**
+Status: **IN PROGRESS — P3-01 IMPLEMENTED; P3-02–P3-06 NOT STARTED**
 
 Planning branch: `phase-3/ws-005-integrated-controls`
 
@@ -131,8 +131,8 @@ identity strings, and wall-clock time are not authoritative.
 
 ## Frozen architecture decision
 
-ADR-0018 is the Phase-3 design boundary. Its decisions are frozen for packet
-planning and require explicit ADR acceptance before P3-01 implementation:
+ADR-0018 is the Phase-3 design boundary. Its decisions were frozen during
+packet planning and are accepted before P3-01 implementation:
 
 - Reuse the four control-fence versions plus immutable authorization ID as the
   authority epoch. Do not add another epoch table.
@@ -456,6 +456,9 @@ and scripts must be updated in the same packet.
 ## Work packets
 
 ### P3-01 - Pre-sign authority transaction and execution binding
+
+Status: **IMPLEMENTED / LOCAL GATES GREEN** at `91f649b`; sequential
+integration continues with P3-02.
 
 Scope:
 
