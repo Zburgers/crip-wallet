@@ -70,6 +70,24 @@ actor labels are not authority. Evidence snapshots retain the credential and
 signature hash. Recovery leases and attempt IDs are durable and fenced; unknown
 outcomes remain disputed until authenticated reconciliation.
 
+## Phase-3 planned integration boundary
+
+Phase 3 is opened for planning but is not implemented. Proposed ADR-0018 closes
+the gap between the accepted S1 fences and accepted S2 execution path with two
+planned linearization points:
+
+1. bounded local signing and signed-evidence persistence occur atomically in one
+   fence-first database transaction; and
+2. a second fence-first transaction revalidates the exact authority before its
+   `STARTED` commit becomes the send-commit point.
+
+Before `STARTED`, a control change wins and signed evidence is retained in
+`DISPUTED` with no send. After `STARTED`, the immutable attempt/hash lineage,
+authenticated chain evidence, and a DB-time recovery lease authorize continued
+reconciliation even if current fences later change. Phase 3 reuses the existing
+four fence versions, authorization ID, attempt identity, and recovery
+`lease_version`; it does not add a parallel epoch or lifecycle model.
+
 ## Deployment topology
 
 MVP is a single developer-machine topology: loopback application processes,
@@ -92,5 +110,7 @@ review, schema tests, compatibility notes, and an ADR when security-relevant.
 
 ## Decision map
 
-ADRs 0001–0014 define the current architecture. `docs/decisions/README.md` is the
-index; accepted records are superseded rather than edited.
+ADRs 0001–0017 define the accepted current architecture. ADR-0018 is proposed
+for Phase 3 and is not implementation authority until accepted.
+`docs/decisions/README.md` is the index; accepted records are superseded rather
+than edited.
