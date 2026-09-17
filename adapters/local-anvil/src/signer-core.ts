@@ -718,17 +718,17 @@ export const signAuthorizedTransferCore = async (
     };
 
   const signFields: ExactTransactionFields = {
-      chainId: 31337,
-      from: asAddress(envelope.from),
-      to: asAddress(envelope.to),
-      value: 0n,
-      nonce: BigInt(envelope.nonce),
-      gas: BigInt(envelope.gasLimit),
-      maxFeePerGas: BigInt(envelope.maximumFeeConstraints.maxFeePerGas),
-      maxPriorityFeePerGas: BigInt(envelope.maxPriorityFeePerGas),
-      accessList: [],
-      data: envelope.calldata,
-    };
+    chainId: 31337,
+    from: asAddress(envelope.from),
+    to: asAddress(envelope.to),
+    value: 0n,
+    nonce: BigInt(envelope.nonce),
+    gas: BigInt(envelope.gasLimit),
+    maxFeePerGas: BigInt(envelope.maximumFeeConstraints.maxFeePerGas),
+    maxPriorityFeePerGas: BigInt(envelope.maxPriorityFeePerGas),
+    accessList: [],
+    data: envelope.calldata,
+  };
 
   const signedTransactionId = `signed:${ids.operationId}:${envelope.revision}`;
   if (existing) {
@@ -801,7 +801,11 @@ export const signAuthorizedTransferCore = async (
   } catch (error) {
     // A concurrent signer may have persisted the same evidence first.
     const raced = await deps.store.findDurableSignedEvidence(ids);
-    if (raced && attemptedHash !== undefined && raced.transactionHash === attemptedHash)
+    if (
+      raced &&
+      attemptedHash !== undefined &&
+      raced.transactionHash === attemptedHash
+    )
       return {
         ok: true,
         transactionHash: raced.transactionHash,

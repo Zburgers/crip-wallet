@@ -370,6 +370,8 @@ const assertCurrentSigningAuthority = async (
     envelopeId: string;
     envelopeRevision: number;
     envelopeHash: string;
+    simulationId: string;
+    fixtureInstanceId: string;
   },
 ): Promise<SigningAuthorityRow> => {
   const identity = await client.query<{
@@ -497,7 +499,8 @@ const assertCurrentSigningAuthority = async (
      LEFT JOIN approval_requests approval
        ON approval.approval_id = ae.approval_id
      WHERE o.operation_id = $1
-       AND ae.expires_at > now()
+       AND ae.expires_at > clock_timestamp()
+       AND br.expires_at > clock_timestamp()
        AND NOT EXISTS (
          SELECT 1 FROM execution_envelopes newer
          WHERE newer.operation_id = o.operation_id
@@ -536,6 +539,39 @@ const assertCurrentSigningAuthority = async (
         row.envelope_hash !== expected.envelopeHash))
   ) {
     throw new Error("canonical signing authority is stale or invalid");
+  }
+
+  const simulation = await client.query<{
+    simulation_id: string;
+    fixture_instance_id: string;
+  }>(
+    `SELECT s.simulation_id, s.fixture_instance_id
+     FROM transaction_simulations s
+     JOIN execution_envelopes e
+       ON e.operation_id = s.operation_id
+      AND e.envelope_id = $2
+      AND e.revision = $3
+      AND s.evidence_hash = e.payload ->> 'simulationResultHash'
+     WHERE s.operation_id = $1
+     FOR UPDATE OF s`,
+    [ids.operationId, row.envelope_id, row.envelope_revision],
+  );
+  const currentFixture = await client.query<{ fixture_instance_id: string }>(
+    `SELECT fixture_instance_id
+     FROM local_chain_fixtures
+     WHERE is_current
+     FOR UPDATE`,
+  );
+  if (
+    expected !== undefined &&
+    (simulation.rows.length !== 1 ||
+      simulation.rows[0]?.simulation_id !== expected.simulationId ||
+      simulation.rows[0]?.fixture_instance_id !== expected.fixtureInstanceId ||
+      currentFixture.rows.length !== 1 ||
+      currentFixture.rows[0]?.fixture_instance_id !==
+        expected.fixtureInstanceId)
+  ) {
+    throw new Error("canonical simulation or fixture binding is stale");
   }
 
   const fences = await client.query<{
@@ -610,7 +646,18 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
       try {
         await client.query("SET LOCAL lock_timeout = '2000ms'");
         await client.query("SET LOCAL statement_timeout = '5000ms'");
-        const authority = await assertCurrentSigningAuthority(client, input.ids);
+        const authority = await assertCurrentSigningAuthority(
+          client,
+          input.ids,
+          {
+            reservationId: input.reservationId,
+            envelopeId: input.envelopeId,
+            envelopeRevision: input.envelopeRevision,
+            envelopeHash: input.envelopeHash,
+            simulationId: input.simulationId,
+            fixtureInstanceId: input.fixtureInstanceId,
+          },
+        );
         if (authority.operation_state === "AUTHORIZED") {
           const update = await client.query(
             `UPDATE operations
@@ -658,10 +705,10 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
           [
             input.signedTransactionId,
             input.ids.operationId,
-            input.reservationId,
-            input.envelopeId,
-            input.envelopeRevision,
-            input.envelopeHash,
+            authority.reservation_id,
+            authority.envelope_id,
+            authority.envelope_revision,
+            authority.envelope_hash,
             input.ids.authorizationId,
             input.simulationId,
             input.fixtureInstanceId,
@@ -689,9 +736,9 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
           data: {
             reservationId: authority.reservation_id,
             authorizationId: input.ids.authorizationId,
-            envelopeId: input.envelopeId,
-            envelopeRevision: input.envelopeRevision,
-            envelopeHash: input.envelopeHash,
+            envelopeId: authority.envelope_id,
+            envelopeRevision: Number(authority.envelope_revision),
+            envelopeHash: authority.envelope_hash,
             transactionHash: material.transactionHash,
             componentId: audit.actorId,
             componentRole: "ADAPTER",

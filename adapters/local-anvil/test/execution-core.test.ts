@@ -337,7 +337,10 @@ class MemorySignerStore implements SignerStore {
       signerCredentialId: string;
       signedAt: string;
     },
-    sign: () => Promise<{ transactionHash: `0x${string}`; rawTransaction?: string }>,
+    sign: () => Promise<{
+      transactionHash: `0x${string}`;
+      rawTransaction?: string;
+    }>,
     _audit: unknown,
     onSigningStarted?: () => void,
   ) {

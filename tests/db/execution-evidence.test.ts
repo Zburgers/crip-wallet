@@ -711,7 +711,9 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       "SELECT filename FROM schema_migrations ORDER BY filename",
     );
     expect(rows.rows).toHaveLength(26);
-    expect(rows.rows.at(-1)?.filename).toBe("0026_ws005_integrated_control_boundary.sql");
+    expect(rows.rows.at(-1)?.filename).toBe(
+      "0026_ws005_integrated_control_boundary.sql",
+    );
   });
 
   test("serializes release behind real-store STARTED creation", async () => {

@@ -372,7 +372,10 @@ class FakeStore implements SignerStore {
 
   async signAndPersistEvidence(
     input: PersistSignedEvidenceInput,
-    sign: () => Promise<{ transactionHash: `0x${string}`; rawTransaction?: string }>,
+    sign: () => Promise<{
+      transactionHash: `0x${string}`;
+      rawTransaction?: string;
+    }>,
     _audit: SigningAuditTrail,
     onSigningStarted?: () => void,
   ) {
@@ -381,7 +384,10 @@ class FakeStore implements SignerStore {
     onSigningStarted?.();
     const material = await sign();
     this.persistCalls += 1;
-    this.persisted.push({ ...input, expectedTransactionHash: material.transactionHash });
+    this.persisted.push({
+      ...input,
+      expectedTransactionHash: material.transactionHash,
+    });
     if (this.persistError) throw this.persistError;
     return material;
   }
