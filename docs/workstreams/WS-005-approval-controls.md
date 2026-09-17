@@ -5,7 +5,7 @@
 Prove that owner approval, replay protection, revocation, pause and worker recovery cannot authorize stale work.
 
 **Phase-1 S1 slice: COMPLETE LOCALLY.**
-**Phase-3 integrated execution slice: NOT OPENED.**
+**Phase-3 integrated execution slice: OPENED / PLANNED / NOT IMPLEMENTED.**
 
 ## S1 contract now implemented
 
@@ -30,6 +30,24 @@ At implementation head `de9cac0cc19fb17b6964074878d4916cb30899ef`:
 - WP-10 pre-envelope revoke/pause lifecycle coverage passes;
 - WP-09 lease tamper/clock/bounds coverage passes.
 
-## Remaining Phase-3 work
+## Phase-3 integrated execution plan
 
-After WS-004 exists, re-prove these controls immediately before signing and across signed-unbroadcast, broadcast-unknown and chain-reconciliation states. That later integration is S2/Phase-3 scope; it is not a reason to keep S1 open.
+`docs/plans/PHASE-3.md` owns P3-00 through P3-06. It re-proves the S1 controls
+at the accepted S2 execution boundary without reopening either accepted gate.
+
+The planned invariants are:
+
+- canonical fence-first locking and full transactional revalidation immediately
+  before bounded local signing;
+- one atomic signing/signed-evidence transaction, with no RPC under DB locks;
+- a second full authority gate before durable broadcast `STARTED`;
+- signed/no-attempt control changes quarantine to `DISPUTED`, retain value, and
+  never broadcast until authenticated no-send recovery;
+- `STARTED` is the send-commit point, after which pause/revocation cannot claim
+  cancellation or release and exact-attempt recovery continues;
+- DB-time recovery lease fencing, no new authority on retry, and one economic
+  effect under crash/restart/takeover.
+
+Proposed ADR-0018 records the new architecture decision and must be accepted
+before P3-01 implementation. Phase 3 remains local Anvil/fake-money only and is
+not implemented or accepted by this planning work.

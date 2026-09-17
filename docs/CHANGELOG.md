@@ -5,6 +5,20 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ## Unreleased
 
+### Phase 3 planning
+
+- Formally opened Phase 3 / WS-005 as **OPENED / PLANNED / NOT IMPLEMENTED**
+  on `phase-3/ws-005-integrated-controls`.
+- Added the implementation-ready P3-00 race model and P3-01–P3-06 execution
+  plan, concise orchestrator handoff, and proposed ADR-0018 for atomic
+  fence-first signing, signed-unbroadcast quarantine, the `STARTED` send-commit
+  boundary, and immutable-attempt recovery.
+- Added planned risks/tests for the signed-to-send control race, post-send
+  recovery after fence changes, canonical lock ordering, DB-time stale-worker
+  fencing, and exact-once retry/takeover.
+- No Phase-3 code, migration, acceptance, public-network, real-fund, production-
+  custody, or S3 readiness claim is made.
+
 ### Phase 2
 
 - Phase 2 / WS-004 merged to `main` through canonical PR #5 at `2c7e50f6aee6887ddd4af74c7bc33639707451b4` after final main-merge review `5126534096`. Post-merge `main` CI `34058182763` and Secret Scan `34058183008` pass the complete Phase-2 protected gate. S2 remains ACCEPTED only for the governing local Anvil `eip155:31337` / fake-ERC20 / disposable-identity boundary; Phase 3 remains NOT OPENED.

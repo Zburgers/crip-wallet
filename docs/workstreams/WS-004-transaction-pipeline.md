@@ -103,4 +103,5 @@ WS-004 is complete only when protected current-head evidence proves the entire l
 
 Phase 2 / WS-004 is COMPLETE / ACCEPTED for the governing local MVP boundary.
 S2 requirement evidence is PASS; external S2 acceptance is PASS / ACCEPTED. Gate
-S2 is **PASS / ACCEPTED**; Phase 3 is NOT OPENED.
+S2 is **PASS / ACCEPTED**. Phase 3 is now OPENED / PLANNED / NOT IMPLEMENTED
+under `docs/plans/PHASE-3.md`; that does not change this accepted local boundary.
