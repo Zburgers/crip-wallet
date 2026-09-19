@@ -2023,8 +2023,7 @@ const autonomousAuthorizationRow = async (
             owner_fence_version, owner_state, agent_fence_version, agent_state,
             policy_fence_version, policy_state
      FROM authorization_evidence
-     WHERE authorization_id = $1
-     FOR UPDATE`,
+     WHERE authorization_id = $1`,
     [authorizationId],
   );
   return result.rows[0] ?? null;

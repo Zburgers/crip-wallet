@@ -5,7 +5,7 @@
 Prove that owner approval, replay protection, revocation, pause and worker recovery cannot authorize stale work.
 
 **Phase-1 S1 slice: COMPLETE LOCALLY.**
-**Phase-3 integrated execution slice: IN PROGRESS; P3-01 IMPLEMENTED.**
+**Phase-3 integrated execution slice: IN PROGRESS; P3-01 REVALIDATION BLOCKED by R-033.**
 
 ## S1 contract now implemented
 
@@ -49,6 +49,7 @@ The planned invariants are:
   effect under crash/restart/takeover.
 
 Accepted ADR-0018 records the new architecture decision and governs
-before P3-01 implementation. P3-01 is implemented on the canonical Phase-3
-branch; P3-02 through P3-06 remain open. Phase 3 remains local Anvil/fake-money
-only and is not fully accepted.
+before P3-01 implementation. P3-01's DB authority, lock-order, rollback, and
+deadline work has local evidence, but its chain-advance-during-lock-wait
+acceptance remains blocked by R-033. P3-02 through P3-06 remain gated. Phase 3
+remains local Anvil/fake-money only and is not fully accepted.

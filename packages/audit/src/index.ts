@@ -141,6 +141,7 @@ export const verifyAuditEvent = (value: unknown): AuditEvent => {
 export const appendAuditEvent = async (
   client: PoolClient,
   input: AuditEventInput,
+  beforeInsert?: () => Promise<unknown>,
 ): Promise<void> => {
   const data = auditDataSchema.parse(input.data);
   const isControlEvent = [
@@ -190,6 +191,7 @@ export const appendAuditEvent = async (
   });
   const canonicalPayload = canonicalizeAuditEvent(unverifiedEvent);
   const eventHash = computeAuditEventHash(unverifiedEvent);
+  await beforeInsert?.();
   await client.query(
     `INSERT INTO audit_events
       (event_id, event_type, sequence_no, actor_type, actor_id, owner_id, agent_id, wallet_id,

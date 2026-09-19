@@ -7,7 +7,7 @@
   from current protected `main` only after the Phase-3 planning PR and
   ADR-0018 are accepted/merged.
 - Planning authority: `docs/plans/PHASE-3.md`
-- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 IMPLEMENTED** on
+- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 REVALIDATION BLOCKED by R-033** on
   `phase-3/ws-005-implementation`; P3-02–P3-06 remain open.
 - Boundary: loopback Anvil `eip155:31337`, fake ERC-20, disposable local
   identities only. Public networks, real value, and production custody remain
@@ -80,7 +80,11 @@ Stop the affected packet if ADR-0018 is unaccepted; authority/attempt identity
 cannot be proven; raw bytes must escape the child; a migration cannot fail
 closed; a send-capable result would need cancellation/re-sign/release; scope
 widens toward public networks/real funds/production custody; or any critical/
-high finding remains. Continue independent work that does not rely on the
+high finding remains. P3-01 currently has a blocking conflict: the accepted
+chain-advance-during-lock-wait guarantee requires observing live Anvil state
+after a lock wait, while ADR-0018 forbids RPC under the DB locks and Anvil has no
+database-backed mutation lease. Do not begin P3-02 until product-owner
+direction resolves R-033. Continue independent work that does not rely on the
 blocked decision.
 
 ## Completion

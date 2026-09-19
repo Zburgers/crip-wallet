@@ -94,10 +94,9 @@ if (gate === "concurrency") {
   );
 }
 if (gate === "db") {
-  const parameters = PHASE1_TEST_PARAMETERS.database;
   const runtime = loadLocalRuntime({ root: repoRoot });
   log(
-    `Database runtime: host=${runtime.postgres.host} port=${runtime.postgres.port} database=${parameters.database} user=${parameters.user}`,
+    `Database runtime: host=${runtime.postgres.host} port=${runtime.postgres.port} database=${runtime.postgres.database} user=${runtime.postgres.user}`,
   );
 }
 if (gate === "concurrency") {

@@ -15,6 +15,8 @@ import {
 
 import {
   approveApproval,
+  authorizeAutonomous,
+  changeControlFence,
   consumeApproval,
   createApprovalRequest,
 } from "@crip/approvals";
@@ -28,15 +30,22 @@ import {
 } from "@crip/budget-ledger";
 import { type ExecutionEnvelopeV2 } from "@crip/schemas";
 import {
+  hashExecutableCandidate,
+  hashSimulationEvidence,
   verifyUntrustedChainEvidence,
+  type ExecutableTransferCandidate,
   type ChainEvidenceExpectation,
+  type LocalReadRpc,
+  type SimulationEvidence,
   type UntrustedChainEvidence,
 } from "@crip/transaction-pipeline";
 import {
   broadcastSignedTransaction,
   createBroadcastStore,
+  createSignerStore,
   createFaultProxy,
   reconcileLocalChainEvidence,
+  signAuthorizedTransferCore,
   type ReconciliationInput,
 } from "@crip/local-anvil-adapter";
 import {
@@ -141,7 +150,11 @@ const v1Envelope = (operationId: string, reservationId: string) => ({
   envelopeHash: hash,
 });
 
-const v2Envelope = (operationId: string, reservationId: string) => ({
+const v2Envelope = (
+  operationId: string,
+  reservationId: string,
+  simulationResultHash = hash,
+) => ({
   schemaVersion: "2.0",
   envelopeId: `env_${operationId}_1`,
   revision: 1,
@@ -176,7 +189,7 @@ const v2Envelope = (operationId: string, reservationId: string) => ({
   ],
   simulationBlockNumber: "100",
   simulationBlockHash: hash,
-  simulationResultHash: hash,
+  simulationResultHash,
   nonceStrategy: "pending",
   nonce: "7",
   transactionType: "eip1559",
@@ -221,7 +234,7 @@ const seed = async (client: Queryable): Promise<void> => {
     INSERT INTO wallets (wallet_id, owner_id, display_name) VALUES ('wallet_1', 'owner_1', 'Evidence wallet');
     INSERT INTO policies (policy_id, owner_id, agent_id, wallet_id, status) VALUES ('policy_1', 'owner_1', 'agent_1', 'wallet_1', 'active');
     INSERT INTO policy_versions (policy_id, version, document, document_hash)
-      VALUES ('policy_1', 1, '{"schemaVersion":"1.0"}', 'sha256:${"0".repeat(64)}');
+      VALUES ('policy_1', 1, '{"schemaVersion":"1.0","maximumNetworkFeeAtomic":"100000"}', 'sha256:${"0".repeat(64)}');
     INSERT INTO budget_accounts
       (budget_id, agent_id, wallet_id, policy_id, policy_version, asset_address, allocated, available, reserved, finalized_spend)
       VALUES ('budget_1', 'agent_1', 'wallet_1', 'policy_1', 1, '${address("1")}', 100, 100, 0, 0);
@@ -237,7 +250,7 @@ const seed = async (client: Queryable): Promise<void> => {
       VALUES ('${ownerCredential.keyId}', 'owner_1', 'ED25519', '${ownerCredential.publicKeyPem}');
     INSERT INTO intents
       (intent_id, idempotency_key, agent_id, wallet_id, policy_id, policy_version, payload, payload_hash)
-      VALUES ('intent_op_1', 'intent-key-op_1', 'agent_1', 'wallet_1', 'policy_1', 1, '{"action":"asset.transfer"}', 'sha256:${"1".repeat(64)}');
+      VALUES ('intent_op_1', 'intent-key-op_1', 'agent_1', 'wallet_1', 'policy_1', 1, '{"action":"asset.transfer","maximumNetworkFee":{"asset":"native","atomic":"100000"}}', 'sha256:${"1".repeat(64)}');
     INSERT INTO operations
       (operation_id, intent_id, agent_id, wallet_id, policy_id, policy_version, current_state)
       VALUES ('op_1', 'intent_op_1', 'agent_1', 'wallet_1', 'policy_1', 1, 'POLICY_FINALIZED');
@@ -246,7 +259,7 @@ const seed = async (client: Queryable): Promise<void> => {
       VALUES ('res_1', 'budget_1', 'op_1', 'reserve-key-op_1', 10, 'HELD', '2099-01-01T01:00:00Z');
     INSERT INTO intents
       (intent_id, idempotency_key, agent_id, wallet_id, policy_id, policy_version, payload, payload_hash)
-      VALUES ('intent_op_2', 'intent-key-op_2', 'agent_1', 'wallet_1', 'policy_1', 1, '{"action":"asset.transfer"}', 'sha256:${"2".repeat(64)}');
+      VALUES ('intent_op_2', 'intent-key-op_2', 'agent_1', 'wallet_1', 'policy_1', 1, '{"action":"asset.transfer","maximumNetworkFee":{"asset":"native","atomic":"100000"}}', 'sha256:${"2".repeat(64)}');
     INSERT INTO operations
       (operation_id, intent_id, agent_id, wallet_id, policy_id, policy_version, current_state)
       VALUES ('op_2', 'intent_op_2', 'agent_1', 'wallet_1', 'policy_1', 1, 'POLICY_FINALIZED');
@@ -309,7 +322,116 @@ const audit = (operationId: string, suffix: string, actorType = "system") => ({
   traceId: createHash("md5").update(`${operationId}:${suffix}`).digest("hex"),
 });
 
-const insertSimulation = async (client: Queryable): Promise<void> => {
+const signingInput = (envelopeHash: string, acceptedDeadlineAt?: string) => {
+  const freshnessSampledAt = new Date().toISOString();
+  return {
+    signedTransactionId: "signed:op_1:1",
+    ids: {
+      operationId: "op_1",
+      authorizationId: "approval_1:authorization",
+      adapterRequestId: "signer-store-test",
+    },
+    reservationId: "res_1",
+    envelopeId: "env_op_1_1",
+    envelopeRevision: 1,
+    envelopeHash,
+    simulationId: "sim_1",
+    fixtureInstanceId: fixtureId,
+    signedAt: new Date().toISOString(),
+    signerCredentialId: adapterCredential.credentialId,
+    freshnessObservation: {
+      headNumber: "100",
+      simulationBlockNumber: "100",
+      simulationBlockHash: hash,
+      senderNonce: "7",
+      tokenBalanceAtomic: "100",
+      nativeBalanceWei: "100000",
+      baseFeePerGas: "1",
+      maxPriorityFeePerGas: "1",
+    },
+    freshnessSampledAt,
+    freshnessDeadlineAt:
+      acceptedDeadlineAt ??
+      new Date(Date.parse(freshnessSampledAt) + 2_000).toISOString(),
+  };
+};
+
+const coreTestSimulation = (): SimulationEvidence => {
+  const executable = {
+    action: "asset.transfer",
+    chainId: "eip155:31337",
+    from: address("10"),
+    target: address("1"),
+    nativeValue: "0",
+    calldata: v2Envelope("op_1", "res_1").calldata,
+    selector: "0xa9059cbb",
+    recipient: address("20"),
+    amountAtomic: "10",
+    nonceStrategy: "pending",
+    fixtureInstanceId: fixtureId,
+    provenance: {
+      intentId: "intent_op_1",
+      agentId: "agent_1",
+      walletId: "wallet_1",
+      operationId: "op_1",
+      policyId: "policy_1",
+      policyVersion: 1,
+      policyDecisionHash: hash,
+    },
+    nonce: "7",
+    transactionType: "eip1559",
+    gasLimit: "50000",
+    maxPriorityFeePerGas: "1",
+    maxFeePerGas: "2",
+    accessList: [],
+  } as ExecutableTransferCandidate;
+  const evidence = {
+    schemaVersion: "1.0",
+    fixtureInstanceId: fixtureId,
+    chainId: "eip155:31337",
+    blockNumber: "100",
+    blockHash: hash,
+    candidateHash: hashExecutableCandidate(executable),
+    from: address("10"),
+    to: address("1"),
+    value: "0",
+    calldata: v2Envelope("op_1", "res_1").calldata,
+    senderNonce: "7",
+    tokenBalance: "100",
+    nativeBalance: "100000",
+    gasEstimate: "45454",
+    gasLimit: "50000",
+    baseFeePerGas: "1",
+    maxPriorityFeePerGas: "1",
+    maxFeePerGas: "2",
+    accessList: [],
+    outcome: "success",
+    expectedAssetDeltas: [
+      {
+        assetAddress: address("1"),
+        from: address("10"),
+        to: address("20"),
+        amountAtomic: "10",
+      },
+    ],
+    maximumNativeFeeAtomic: "100000",
+    simulatorVersion: "viem@2.56.0",
+    evidenceHash: `0x${"0".repeat(64)}`,
+  } as SimulationEvidence;
+  return { ...evidence, evidenceHash: hashSimulationEvidence(evidence) };
+};
+
+const signingAudit = (suffix: string) => ({
+  eventIdBase: `evt:op_1:${suffix}`,
+  traceId: createHash("md5").update(suffix).digest("hex"),
+  actorId: adapterCredential.componentId,
+  credentialId: adapterCredential.credentialId,
+});
+
+const insertSimulation = async (
+  client: Queryable,
+  evidence?: SimulationEvidence,
+): Promise<void> => {
   await client.query(
     `INSERT INTO transaction_simulations
       (simulation_id, operation_id, transfer_core_candidate_hash, fixture_instance_id,
@@ -318,10 +440,10 @@ const insertSimulation = async (client: Queryable): Promise<void> => {
        base_fee_per_gas, max_priority_fee_per_gas, max_fee_per_gas, access_list,
        outcome, expected_asset_deltas, maximum_native_fee_atomic, simulator_version, evidence_hash)
      VALUES ('sim_1', 'op_1', $1, $2, 'eip155:31337', 100, $3, $4, 7, 100, 100000,
-       21000, 50000, 1, 1, 2, '[]', 'SUCCESS', $5::jsonb, 100000,
-       'viem@2.56.0', $6)`,
+       $6, 50000, 1, 1, 2, '[]', 'SUCCESS', $5::jsonb, 100000,
+       'viem@2.56.0', $7)`,
     [
-      hash,
+      evidence?.candidateHash ?? hash,
       fixtureId,
       hash,
       address("10"),
@@ -333,25 +455,56 @@ const insertSimulation = async (client: Queryable): Promise<void> => {
           amountAtomic: "10",
         },
       ]),
-      hash,
+      evidence?.gasEstimate ?? "21000",
+      evidence?.evidenceHash ?? hash,
     ],
   );
 };
 
-const prepareAuthorizedV2 = async (): Promise<string> => {
+const prepareAuthorizedV2 = async (
+  authorizationKind: "OWNER_APPROVAL" | "AUTONOMOUS_POLICY" = "OWNER_APPROVAL",
+  coreValidSimulation = false,
+): Promise<string> => {
   await insertFixture(pool);
-  const envelope = v2Envelope("op_1", "res_1");
+  const evidence = coreValidSimulation ? coreTestSimulation() : undefined;
+  const envelope = v2Envelope("op_1", "res_1", evidence?.evidenceHash ?? hash);
   const envelopeHash = await insertEnvelope(pool, envelope);
-  await insertSimulation(pool);
+  await insertSimulation(pool, evidence);
+  const autonomous = authorizationKind === "AUTONOMOUS_POLICY";
   await pool.query(
     `INSERT INTO policy_decisions
       (decision_id, operation_id, policy_id, policy_version, decision, decision_hash, payload)
-     VALUES ('decision_1', 'op_1', 'policy_1', 1, 'REQUIRE_APPROVAL', $1, $2::jsonb)`,
-    [hash, JSON.stringify({ decision: "REQUIRE_APPROVAL", policyVersion: 1 })],
+     VALUES ('decision_1', 'op_1', 'policy_1', 1, $1, $2, $3::jsonb)`,
+    [
+      autonomous ? "ALLOW_AUTONOMOUS" : "REQUIRE_APPROVAL",
+      hash,
+      JSON.stringify({
+        decision: autonomous ? "ALLOW_AUTONOMOUS" : "REQUIRE_APPROVAL",
+        policyVersion: 1,
+      }),
+    ],
   );
   await pool.query(
     "UPDATE operations SET current_state = 'ENVELOPE_FINALIZED', version = version + 1 WHERE operation_id = 'op_1'",
   );
+  if (autonomous) {
+    await authorizeAutonomous(
+      pool,
+      {
+        authorizationId: "approval_1:authorization",
+        operationId: "op_1",
+        reservationId: "res_1",
+        envelopeId: envelope.envelopeId as string,
+        envelopeRevision: 1,
+        envelopeHash: envelopeHash as `0x${string}`,
+        policyDecisionId: "decision_1",
+        policyDecisionHash: hash as `0x${string}`,
+        idempotencyKey: "signer-store-autonomous",
+      },
+      audit("op_1", "autonomous-authorization"),
+    );
+    return envelopeHash;
+  }
   await createApprovalRequest(pool, {
     approvalId: "approval_1",
     operationId: "op_1",
@@ -714,6 +867,562 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     expect(rows.rows.at(-1)?.filename).toBe(
       "0026_ws005_integrated_control_boundary.sql",
     );
+  });
+
+  test("does not invoke the signer after its accepted freshness deadline", async () => {
+    const envelopeHash = await prepareAuthorizedV2();
+    let signCalls = 0;
+
+    await expect(
+      createSignerStore(pool).signAndPersistEvidence(
+        signingInput(envelopeHash, new Date(Date.now() - 1_000).toISOString()),
+        async () => {
+          signCalls += 1;
+          return { transactionHash: `0x${"b".repeat(64)}` };
+        },
+        signingAudit("expired-sample"),
+      ),
+    ).rejects.toThrow(/freshness|deadline/i);
+
+    expect(signCalls).toBe(0);
+    await expect(
+      pool.query<{ current_state: string }>(
+        "SELECT current_state FROM operations WHERE operation_id = 'op_1'",
+      ),
+    ).resolves.toMatchObject({ rows: [{ current_state: "AUTHORIZED" }] });
+  });
+
+  test("does not invoke the signer when freshness expires during fence lock wait", async () => {
+    const envelopeHash = await prepareAuthorizedV2();
+    const blocker = await pool.connect();
+    const signerPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: "p3-signer-freshness-wait",
+    });
+    const applicationName = "p3-signer-freshness-wait";
+    const deadlineAt = new Date(Date.now() + 300).toISOString();
+    let signCalls = 0;
+
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query(
+        `SELECT 1 FROM control_fences
+         WHERE scope_type = 'SYSTEM' AND scope_id = 'system' FOR UPDATE`,
+      );
+      const signing = createSignerStore(signerPool).signAndPersistEvidence(
+        signingInput(envelopeHash, deadlineAt),
+        async () => {
+          signCalls += 1;
+          return { transactionHash: `0x${"d".repeat(64)}` };
+        },
+        signingAudit("freshness-wait"),
+      );
+
+      await waitForDatabaseBlock(applicationName);
+      await expect(signing).rejects.toThrow(/freshness|deadline/i);
+      expect(signCalls).toBe(0);
+      await expect(
+        pool.query<{ current_state: string }>(
+          "SELECT current_state FROM operations WHERE operation_id = 'op_1'",
+        ),
+      ).resolves.toMatchObject({ rows: [{ current_state: "AUTHORIZED" }] });
+    } finally {
+      await blocker.query("ROLLBACK");
+      blocker.release();
+      await signerPool.end();
+    }
+  });
+
+  test("rolls back if local signing outlives its accepted freshness deadline", async () => {
+    const envelopeHash = await prepareAuthorizedV2();
+    const deadlineAt = new Date(Date.now() + 150).toISOString();
+    let signCalls = 0;
+    let signerSettled!: () => void;
+    const settled = new Promise<void>((resolve) => {
+      signerSettled = resolve;
+    });
+
+    const signing = createSignerStore(pool).signAndPersistEvidence(
+      signingInput(envelopeHash, deadlineAt),
+      async () => {
+        signCalls += 1;
+        await new Promise<void>((resolve) => setTimeout(resolve, 400));
+        signerSettled();
+        return { transactionHash: `0x${"e".repeat(64)}` };
+      },
+      signingAudit("slow-signer"),
+    );
+
+    await expect(signing).rejects.toThrow(/freshness|deadline/i);
+    await settled;
+    expect(signCalls).toBe(1);
+    await expect(
+      pool.query<{ current_state: string; signed_count: number }>(
+        `SELECT o.current_state,
+                (SELECT count(*)::int FROM signed_transactions s
+                 WHERE s.operation_id = o.operation_id) AS signed_count
+         FROM operations o WHERE o.operation_id = 'op_1'`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ current_state: "AUTHORIZED", signed_count: 0 }],
+    });
+  });
+
+  test("does not sign with a credential revoked before the authority transaction", async () => {
+    const envelopeHash = await prepareAuthorizedV2();
+    await pool.query(
+      `UPDATE trusted_component_credentials
+       SET status = 'REVOKED', revoked_at = clock_timestamp()
+       WHERE credential_id = $1`,
+      [adapterCredential.credentialId],
+    );
+    let signCalls = 0;
+
+    await expect(
+      createSignerStore(pool).signAndPersistEvidence(
+        signingInput(envelopeHash),
+        async () => {
+          signCalls += 1;
+          return { transactionHash: `0x${"c".repeat(64)}` };
+        },
+        signingAudit("revoked-credential"),
+      ),
+    ).rejects.toThrow(/credential/i);
+
+    expect(signCalls).toBe(0);
+    await expect(
+      pool.query<{ current_state: string }>(
+        "SELECT current_state FROM operations WHERE operation_id = 'op_1'",
+      ),
+    ).resolves.toMatchObject({ rows: [{ current_state: "AUTHORIZED" }] });
+  });
+
+  test("does not sign when credential revocation wins the credential lock", async () => {
+    const envelopeHash = await prepareAuthorizedV2();
+    const revoker = await pool.connect();
+    const applicationName = "p3-signer-credential-revocation";
+    const signerPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: applicationName,
+    });
+    let signCalls = 0;
+
+    try {
+      await revoker.query("BEGIN");
+      await revoker.query(
+        `UPDATE trusted_component_credentials
+         SET status = 'REVOKED', revoked_at = clock_timestamp()
+         WHERE credential_id = $1`,
+        [adapterCredential.credentialId],
+      );
+      const signing = createSignerStore(signerPool).signAndPersistEvidence(
+        signingInput(envelopeHash),
+        async () => {
+          signCalls += 1;
+          return { transactionHash: `0x${"c".repeat(64)}` };
+        },
+        signingAudit("credential-revocation-race"),
+      );
+
+      await waitForDatabaseBlock(applicationName);
+      await revoker.query("COMMIT");
+      await expect(signing).rejects.toThrow(/credential/i);
+      expect(signCalls).toBe(0);
+      await expect(
+        pool.query<{ current_state: string; signed_count: number }>(
+          `SELECT o.current_state,
+                  (SELECT count(*)::int FROM signed_transactions s
+                   WHERE s.operation_id = o.operation_id) AS signed_count
+           FROM operations o WHERE o.operation_id = 'op_1'`,
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ current_state: "AUTHORIZED", signed_count: 0 }],
+      });
+    } finally {
+      await revoker.query("ROLLBACK").catch(() => undefined);
+      revoker.release();
+      await signerPool.end();
+    }
+  });
+
+  test("control fence that wins the lock order prevents signing", async () => {
+    const envelopeHash = await prepareAuthorizedV2();
+    await pool.query(
+      "UPDATE budget_accounts SET available = 80, reserved = 20 WHERE budget_id = 'budget_1'",
+    );
+    const blocker = await pool.connect();
+    const controlApplicationName = "p3-control-first";
+    const signerApplicationName = "p3-signer-after-control";
+    const controlPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: controlApplicationName,
+    });
+    const signerPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: signerApplicationName,
+    });
+    let signCalls = 0;
+
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query(
+        "SELECT operation_id FROM operations WHERE operation_id = 'op_1' FOR UPDATE",
+      );
+      const control = changeControlFence(controlPool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "PAUSE",
+        audit: audit("op_1", "control-first"),
+      });
+      await waitForDatabaseBlock(controlApplicationName);
+      const signing = createSignerStore(signerPool).signAndPersistEvidence(
+        signingInput(envelopeHash),
+        async () => {
+          signCalls += 1;
+          return { transactionHash: `0x${"d".repeat(64)}` };
+        },
+        signingAudit("control-first"),
+      );
+      await waitForDatabaseBlock(signerApplicationName);
+      await blocker.query("COMMIT");
+
+      await expect(control).resolves.toMatchObject({
+        state: "PAUSED",
+        changed: true,
+      });
+      await expect(signing).rejects.toThrow();
+      expect(signCalls).toBe(0);
+      await expect(
+        pool.query<{
+          current_state: string;
+          reservation_status: string;
+          signed_count: number;
+        }>(
+          `SELECT o.current_state, r.status AS reservation_status,
+                  (SELECT count(*)::int FROM signed_transactions s
+                   WHERE s.operation_id = o.operation_id) AS signed_count
+           FROM operations o JOIN budget_reservations r USING (operation_id)
+           WHERE o.operation_id = 'op_1'`,
+        ),
+      ).resolves.toMatchObject({
+        rows: [
+          {
+            current_state: "REVALIDATION_REQUIRED",
+            reservation_status: "RELEASED",
+            signed_count: 0,
+          },
+        ],
+      });
+    } finally {
+      await blocker.query("ROLLBACK").catch(() => undefined);
+      blocker.release();
+      await controlPool.end();
+      await signerPool.end();
+    }
+  });
+
+  test("signing that wins the fence lock commits before a later control change", async () => {
+    const envelopeHash = await prepareAuthorizedV2();
+    await pool.query(
+      "UPDATE budget_accounts SET available = 80, reserved = 20 WHERE budget_id = 'budget_1'",
+    );
+    const signerApplicationName = "p3-signer-first";
+    const controlApplicationName = "p3-control-after-signer";
+    const signerPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: signerApplicationName,
+    });
+    const controlPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: controlApplicationName,
+    });
+    const signingEntered = deferred();
+    const finishSigning = deferred();
+
+    try {
+      const signing = createSignerStore(signerPool).signAndPersistEvidence(
+        signingInput(envelopeHash),
+        async () => {
+          await finishSigning.promise;
+          return { transactionHash: `0x${"e".repeat(64)}` };
+        },
+        signingAudit("signer-first"),
+        () => signingEntered.resolve(),
+      );
+      await signingEntered.promise;
+      const control = changeControlFence(controlPool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "PAUSE",
+        audit: audit("op_1", "control-after-signer"),
+      });
+      await waitForDatabaseBlock(controlApplicationName);
+      finishSigning.resolve();
+
+      await expect(signing).resolves.toMatchObject({
+        transactionHash: `0x${"e".repeat(64)}`,
+      });
+      await expect(control).resolves.toMatchObject({
+        state: "PAUSED",
+        changed: true,
+      });
+      await expect(
+        pool.query<{ current_state: string; signed_count: number }>(
+          `SELECT o.current_state,
+                  (SELECT count(*)::int FROM signed_transactions s
+                   WHERE s.operation_id = o.operation_id) AS signed_count
+           FROM operations o WHERE o.operation_id = 'op_1'`,
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ current_state: "SIGNED", signed_count: 1 }],
+      });
+    } finally {
+      finishSigning.resolve();
+      await controlPool.end();
+      await signerPool.end();
+    }
+  });
+
+  test("autonomous authorization can persist signed evidence", async () => {
+    const envelopeHash = await prepareAuthorizedV2("AUTONOMOUS_POLICY");
+    await expect(
+      createSignerStore(pool).signAndPersistEvidence(
+        signingInput(envelopeHash),
+        async () => ({ transactionHash: `0x${"f".repeat(64)}` }),
+        signingAudit("autonomous-signing"),
+      ),
+    ).resolves.toMatchObject({
+      transactionHash: `0x${"f".repeat(64)}`,
+    });
+    await expect(
+      pool.query<{ authorization_kind: string; current_state: string }>(
+        `SELECT ae.authorization_kind, o.current_state
+         FROM authorization_evidence ae JOIN operations o USING (operation_id)
+         WHERE ae.authorization_id = 'approval_1:authorization'`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        { authorization_kind: "AUTONOMOUS_POLICY", current_state: "SIGNED" },
+      ],
+    });
+  });
+
+  test("autonomous authorization passes signer core and persists its live sample", async () => {
+    await prepareAuthorizedV2("AUTONOMOUS_POLICY", true);
+    const head = {
+      number: 100n,
+      hash: hash as `0x${string}`,
+      baseFeePerGas: 1n,
+    };
+    const rpc: LocalReadRpc = {
+      getChainId: async () => 31337n,
+      getBlockNumber: async () => 100n,
+      getBlockByNumber: async (number) =>
+        number === head.number ? head : null,
+      getBlockByHash: async (blockHash) =>
+        blockHash === head.hash ? head : null,
+      getPendingNonce: async () => 7n,
+      getNativeBalance: async () => 100_000n,
+      getTokenBalance: async () => 100n,
+      simulateTransfer: async () => ({ outcome: "success" }),
+      estimateGas: async () => 45_454n,
+      getFeeData: async () => ({
+        baseFeePerGas: 1n,
+        maxPriorityFeePerGas: 1n,
+      }),
+      rpcUrl: "http://127.0.0.1:8545/",
+      fixtureInstanceId: fixtureId,
+    };
+    let signCalls = 0;
+    const signerCredential = {
+      credentialId: adapterCredential.credentialId,
+      componentId: adapterCredential.componentId,
+      role: "ADAPTER" as const,
+    };
+
+    const outcome = await signAuthorizedTransferCore(
+      {
+        store: createSignerStore(pool),
+        credential: signerCredential,
+        rpcUrl: rpc.rpcUrl,
+        loadDisposableAccount: () => ({
+          address: address("10") as `0x${string}`,
+        }),
+        makeRpc: () => rpc,
+        signTransaction: async () => {
+          signCalls += 1;
+          return { transactionHash: `0x${"f".repeat(64)}` as `0x${string}` };
+        },
+        authorizeResult: (payload) =>
+          signComponentAction(
+            adapterCredential,
+            "sign-authorized-transfer",
+            payload,
+          ),
+        now: () => new Date(),
+        maxBlockAge: 10n,
+      },
+      {
+        operationId: "op_1",
+        authorizationId: "approval_1:authorization",
+        adapterRequestId: "autonomous-signer-core",
+      },
+    );
+
+    expect(outcome).toMatchObject({
+      ok: true,
+      fromDurableEvidence: false,
+      transactionHash: `0x${"f".repeat(64)}`,
+    });
+    expect(signCalls).toBe(1);
+    const signedAudit = await pool.query<{ data: Record<string, unknown> }>(
+      `SELECT data FROM audit_events
+       WHERE operation_id = 'op_1' AND event_type = 'transaction.signed'
+       ORDER BY sequence_no DESC LIMIT 1`,
+    );
+    expect(signedAudit.rows[0]?.data).toMatchObject({
+      fixtureInstanceId: fixtureId,
+      simulationBlockNumber: "100",
+      simulationBlockHash: hash,
+      freshnessHeadNumber: "100",
+      freshnessSenderNonce: "7",
+      freshnessTokenBalanceAtomic: "100",
+      freshnessNativeBalanceWei: "100000",
+      freshnessBaseFeePerGas: "1",
+      freshnessMaxPriorityFeePerGas: "1",
+    });
+    expect(signedAudit.rows[0]?.data.freshnessSampledAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
+    expect(signedAudit.rows[0]?.data.freshnessDeadlineAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
+  });
+
+  test("autonomous retry waits on fences before locking authorization evidence", async () => {
+    const envelopeHash = await prepareAuthorizedV2("AUTONOMOUS_POLICY");
+    const authorizationBlocker = await pool.connect();
+    const fenceBlocker = await pool.connect();
+    const retryApplicationName = "p3-autonomous-retry";
+    const retryPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: retryApplicationName,
+    });
+    const request = {
+      authorizationId: "approval_1:authorization",
+      operationId: "op_1",
+      reservationId: "res_1",
+      envelopeId: "env_op_1_1",
+      envelopeRevision: 1,
+      envelopeHash: envelopeHash as `0x${string}`,
+      policyDecisionId: "decision_1",
+      policyDecisionHash: hash as `0x${string}`,
+      idempotencyKey: "signer-store-autonomous",
+    };
+    let retry: ReturnType<typeof authorizeAutonomous> | undefined;
+
+    try {
+      await authorizationBlocker.query("BEGIN");
+      await authorizationBlocker.query(
+        "SELECT authorization_id FROM authorization_evidence WHERE authorization_id = 'approval_1:authorization' FOR UPDATE",
+      );
+      await fenceBlocker.query("BEGIN");
+      await fenceBlocker.query(
+        `SELECT 1 FROM control_fences
+         WHERE scope_type = 'SYSTEM' AND scope_id = 'system' FOR UPDATE`,
+      );
+      retry = authorizeAutonomous(
+        retryPool,
+        request,
+        audit("op_1", "autonomous-exact-retry"),
+      );
+      await waitForDatabaseBlock(retryApplicationName);
+      const blocked = await pool.query<{ query: string }>(
+        `SELECT query FROM pg_stat_activity
+         WHERE application_name = $1 AND cardinality(pg_blocking_pids(pid)) > 0`,
+        [retryApplicationName],
+      );
+      expect(blocked.rows[0]?.query).toMatch(/control_fences/i);
+      await fenceBlocker.query("COMMIT");
+      await authorizationBlocker.query("COMMIT");
+      await expect(retry).resolves.toMatchObject({
+        authorizationId: "approval_1:authorization",
+      });
+    } finally {
+      await fenceBlocker.query("ROLLBACK").catch(() => undefined);
+      await authorizationBlocker.query("ROLLBACK").catch(() => undefined);
+      if (retry) await retry.catch(() => undefined);
+      fenceBlocker.release();
+      authorizationBlocker.release();
+      await retryPool.end();
+    }
+  });
+
+  test("signer failure rolls back signing state, evidence, and start audit", async () => {
+    const envelopeHash = await prepareAuthorizedV2();
+    await expect(
+      createSignerStore(pool).signAndPersistEvidence(
+        signingInput(envelopeHash),
+        async () => {
+          throw new Error("local key operation failed");
+        },
+        signingAudit("signer-failure"),
+      ),
+    ).rejects.toThrow("local key operation failed");
+    await expect(
+      pool.query<{
+        current_state: string;
+        signed_count: number;
+        start_audit_count: number;
+      }>(
+        `SELECT o.current_state,
+                (SELECT count(*)::int FROM signed_transactions s
+                 WHERE s.operation_id = o.operation_id) AS signed_count,
+                (SELECT count(*)::int FROM audit_events a
+                 WHERE a.operation_id = o.operation_id
+                   AND a.event_type = 'signing.started') AS start_audit_count
+         FROM operations o WHERE o.operation_id = 'op_1'`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        { current_state: "AUTHORIZED", signed_count: 0, start_audit_count: 0 },
+      ],
+    });
   });
 
   test("serializes release behind real-store STARTED creation", async () => {
@@ -1173,7 +1882,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     ).rejects.toThrow();
   });
 
-  test("enforces signed hash uniqueness and signed-row immutability", async () => {
+  test("enforces authorization uniqueness and signed-row immutability", async () => {
     const envelopeHash = await prepareAuthorizedV2();
     await expect(
       pool.query(
@@ -1186,7 +1895,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         [
           envelopeHash,
           fixtureId,
-          hash,
+          `0x${"c".repeat(64)}`,
           adapterCredential.credentialId,
           adapterCredential.componentId,
         ],
@@ -1255,6 +1964,17 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         "UPDATE broadcast_attempts SET status = 'UNKNOWN' WHERE attempt_id = 'attempt_1'",
       ),
     ).rejects.toThrow(/invalid broadcast attempt transition/i);
+    await expect(
+      pool.query(
+        `INSERT INTO broadcast_attempts
+          (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,
+           envelope_revision, envelope_hash, authorization_id, fixture_instance_id,
+           expected_transaction_hash)
+         VALUES ('attempt_2', 'signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $1,
+           'approval_1:authorization', $2, $3)`,
+        [envelopeHash, fixtureId, hash],
+      ),
+    ).rejects.toThrow(/unique|duplicate/i);
   });
 
   test("persists a contradictory valid returned hash as CONFLICT", async () => {

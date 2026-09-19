@@ -13,6 +13,7 @@ import {
   type ActiveFeeAndExecutionConstraints,
   type ExecutableTransferCandidate,
   type FreshnessFailureCode,
+  type FreshnessObservation,
   type LocalReadRpc,
   type SimulationEvidence,
   type SuccessfulFreshSimulation,
@@ -22,6 +23,8 @@ import {
 
 /** Default bounded simulation age accepted immediately before signing. */
 export const SIGNER_DEFAULT_MAX_BLOCK_AGE = 10n;
+/** Maximum wall-clock age accepted for a live pre-sign sample. */
+export const SIGNER_FRESHNESS_WINDOW_MS = 2_000;
 
 export type Hash = `0x${string}`;
 export type Address = `0x${string}`;
@@ -197,6 +200,9 @@ export interface PersistSignedEvidenceInput {
   /** Filled by the atomic store from the in-memory signer result. */
   expectedTransactionHash?: Hash;
   signedAt: string;
+  freshnessSampledAt: string;
+  freshnessDeadlineAt: string;
+  freshnessObservation: FreshnessObservation;
   /** Trusted-component credential that produced the signature. */
   signerCredentialId: string;
 }
@@ -689,6 +695,7 @@ export const signAuthorizedTransferCore = async (
   if (disposable.address !== envelope.from)
     return auditRefusal(refuse("SENDER_INVALID"));
 
+  const freshnessSampledAt = deps.now();
   const freshness = await checkSimulationFreshness({
     verifiedCore,
     executable,
@@ -706,6 +713,23 @@ export const signAuthorizedTransferCore = async (
   });
   if (!freshness.ok)
     return auditRefusal(refuse("SIMULATION_STALE", freshness.code));
+
+  const freshnessDeadlineMs = Math.min(
+    freshnessSampledAt.getTime() + SIGNER_FRESHNESS_WINDOW_MS,
+    Date.parse(envelope.expiresAt),
+    ...(authorization.expiresAt === null
+      ? []
+      : [Date.parse(authorization.expiresAt)]),
+    ...(context.reservation.expiresAt === null
+      ? []
+      : [Date.parse(context.reservation.expiresAt)]),
+  );
+  if (
+    !Number.isFinite(freshnessDeadlineMs) ||
+    freshnessDeadlineMs <= deps.now().getTime()
+  )
+    return auditRefusal(refuse("SIMULATION_STALE"));
+  const freshnessDeadlineAt = new Date(freshnessDeadlineMs).toISOString();
 
   if (existing && !options.rematerializeExistingEvidence)
     return {
@@ -780,6 +804,9 @@ export const signAuthorizedTransferCore = async (
         simulationId: candidate.simulationId,
         fixtureInstanceId,
         signedAt,
+        freshnessSampledAt: freshnessSampledAt.toISOString(),
+        freshnessDeadlineAt,
+        freshnessObservation: freshness.observation,
         signerCredentialId: deps.credential.credentialId,
       },
       async () => {
@@ -819,13 +846,18 @@ export const signAuthorizedTransferCore = async (
       /canonical signing authority|canonical control fence|operation left AUTHORIZED|operation is missing|authorization evidence is missing/.test(
         error.message,
       );
+    const freshnessDeadlineFailure =
+      error instanceof Error &&
+      /freshness deadline expired/i.test(error.message);
     return auditRefusal(
       refuse(
-        signerFailed
-          ? "INTERNAL"
-          : authorityFailure
-            ? "OPERATION_NOT_AUTHORIZED"
-            : "PERSISTENCE_FAILED",
+        freshnessDeadlineFailure
+          ? "SIMULATION_STALE"
+          : signerFailed
+            ? "INTERNAL"
+            : authorityFailure
+              ? "OPERATION_NOT_AUTHORIZED"
+              : "PERSISTENCE_FAILED",
       ),
     );
   }

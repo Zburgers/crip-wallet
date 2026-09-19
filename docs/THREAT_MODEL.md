@@ -124,7 +124,8 @@ ADR-0015 is **ACCEPTED** and closes the architecture-level exact-signing gap:
 The owning Phase-2 packets provide executable local evidence; protected
 implementation/provenance checks and external review `5126373971` accepted the
 governing local boundary. S2 requirement evidence is PASS and Gate S2 is
-**PASS / ACCEPTED**. Phase 3 is now IN PROGRESS with P3-01 implemented; the
+**PASS / ACCEPTED**. Phase 3 is now IN PROGRESS; P3-01 revalidation is blocked
+by R-033; the
 remaining Phase-3 evidence is still open.
 
 P2-03 provides local executable evidence for the canonical-block, loopback-only,
@@ -143,7 +144,7 @@ The implementation retains a narrow dependency on deterministic behavior of the 
 
 ## Phase-3 planned threat treatment
 
-Phase 3 / WS-005 is IN PROGRESS with P3-01 implemented. P3-00 identified the
+Phase 3 / WS-005 is IN PROGRESS with P3-01 revalidation blocked by R-033. P3-00 identified the
 signed/no-attempt control race, signer/control lock inversion, and post-send
 current-fence recovery conflict. Accepted ADR-0018 and
 `docs/plans/PHASE-3.md` define the controls for T-036 through T-039. Those

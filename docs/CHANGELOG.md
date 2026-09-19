@@ -5,17 +5,32 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ## Unreleased
 
+### Phase 3 revalidation
+
+- P3-01 revalidation added database-time bounds through lock acquisition,
+  signing, evidence persistence, and commit; locks the active signer
+  credential; records the sampled simulation block, nonce, balance, fee, and
+  freshness timestamps in the signed audit event; and proves lock-order
+  winners and rollback locally. The audit append refreshes the DB deadline
+  between its lock read and insert. Local inherited gates pass: check 21 + 346,
+  DB 137, concurrency 18, invariants 7, contracts 10, chain 10, E2E 1, fault
+  145, adversarial 181. The chain-advance-during-lock-wait requirement remains
+  BLOCKED: a time deadline cannot observe changed Anvil facts, and ADR-0018
+  prohibits RPC under the held DB locks. See R-033 and the P3-01 blocker in
+  `docs/plans/PHASE-3.md`.
+
 ### Phase 3 planning
 
-- Implemented P3-01 on canonical Phase-3 head `91f649b`: migration 0026,
-  fence-first atomic signing/evidence persistence, current binding/fixture
-  revalidation, and uniqueness backstops. Local gates are green; P3-02–P3-06
-  remain open.
+- P3-01 implementation was integrated at `91f649b`: migration 0026,
+  fence-first atomic signing/evidence persistence, current DB binding/fixture
+  revalidation, and uniqueness backstops. Later revalidation found R-033; this
+  historical implementation record is not a claim that P3-01 now passes its
+  complete chain-freshness acceptance.
 
 - Accepted ADR-0018 on 2026-09-17 by product owner. Its fence-first signing,
   send-commit, signed-unbroadcast quarantine, and immutable-attempt recovery
-  decisions now govern P3-01 through P3-06; P3-01 is implemented and the
-  remaining packets are open.
+  decisions now govern P3-01 through P3-06; P3-01 revalidation is blocked by
+  R-033 and the remaining packets are gated.
 
 - Formally opened Phase 3 / WS-005 on `phase-3/ws-005-integrated-controls`,
   then began implementation on canonical `phase-3/ws-005-implementation`.

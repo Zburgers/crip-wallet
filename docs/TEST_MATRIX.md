@@ -63,7 +63,7 @@ Secret Scan: `33189082181` — PASS.
 
 **Gate S1: PASS / ACCEPTED. S2-01: PASS. S2-02: PASS. S2-03: PASS. S2 requirement evidence: PASS. External S2 acceptance: PASS / ACCEPTED in review `5126373971`. Gate S2: PASS / ACCEPTED.**
 
-**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 is implemented and P3-02–P3-06 remain planned.**
+**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 revalidation is blocked by the documented chain-freshness conflict; P3-02–P3-06 remain gated.**
 
 ## Phase-3 planning checkpoint
 
@@ -150,14 +150,14 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-035 | local-chain reset confusion | PASS / ACCEPTED for Phase-2 local boundary | genesis/fixture/deployment/code fingerprints plus P2-03/P2-06 fixture-bound evidence |
 | TM-036 | control after signing before send / alternate send gateway | PLANNED | P3-02/03 deterministic quarantine/no-send and sole-`STARTED`-gateway proof |
 | TM-037 | post-send control blocks recovery | PLANNED | P3-03/04 immutable-attempt reconciliation proof |
-| TM-038 | signer/control lock inversion | PLANNED | P3-01 canonical-order two-winner concurrency proof |
+| TM-038 | signer/control lock inversion | PASS LOCALLY | P3-01 canonical-order two-winner PostgreSQL concurrency proof; chain freshness during the wait remains open under P3-F04A |
 | TM-039 | stale recovery worker/app-clock skew | PLANNED | P3-04 SQL DB-time lease/version resolution proof |
 
 ## Phase-3 implementation matrix
 
 | Packet | Status | Required evidence before PASS |
 | --- | --- | --- |
-| P3-01 pre-sign authority transaction and binding | IMPLEMENTED / LOCAL GATES GREEN | `0026`; atomic fence-first signer/evidence path; DB 126/126; concurrency 18/18; invariants 7/7; focused signer/execution 44/44 |
+| P3-01 pre-sign authority transaction and binding | PARTIAL / BLOCKED | `0026`; atomic fence-first path; follow-up local gates on the candidate tree: check 21 repository + 346 package tests, DB 137/137, concurrency 18/18, invariants 7/7, focused signer/execution 45/45, contracts 10/10, chain 10/10, E2E 1/1, fault 145/145, adversarial 181/181; P3-F04A chain advance during lock wait is not detected by the DB-time deadline; see PHASE-3 blocker |
 | P3-02 signed-unbroadcast lifecycle/control | PLANNED | signed/no-attempt quarantine, retained reservation, zero attempt/RPC, authenticated no-send recovery prerequisites, idempotent control audits |
 | P3-03 send commit + UNKNOWN/recovery integration | PLANNED | control-before/after `STARTED`; crash/response-loss; one attempt; later fence change cannot block exact reconciliation |
 | P3-04 control/recovery concurrency fencing | PLANNED | DB-time lease expiry/takeover; signed-no-attempt exact release; concurrent retry/control/recovery; one economic effect |

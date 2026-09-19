@@ -529,6 +529,25 @@ describe("restricted local signer core", () => {
     expect(store.persisted[0]?.signerCredentialId).toBe(
       credential.credentialId,
     );
+    const freshnessSampledAt = Date.parse(
+      String(store.persisted[0]?.freshnessSampledAt),
+    );
+    const freshnessDeadlineAt = Date.parse(
+      String(store.persisted[0]?.freshnessDeadlineAt),
+    );
+    expect(freshnessSampledAt).toBe(now.getTime());
+    expect(freshnessDeadlineAt).toBeGreaterThan(freshnessSampledAt);
+    expect(freshnessDeadlineAt).toBeLessThanOrEqual(freshnessSampledAt + 2_000);
+    expect(store.persisted[0]?.freshnessObservation).toEqual({
+      headNumber: "100",
+      simulationBlockNumber: "100",
+      simulationBlockHash: blockHash,
+      senderNonce: "3",
+      tokenBalanceAtomic: "1000000",
+      nativeBalanceWei: "100000000",
+      baseFeePerGas: "10",
+      maxPriorityFeePerGas: "2",
+    });
     expect(store.refusals).toHaveLength(0);
   });
 
@@ -563,6 +582,19 @@ describe("restricted local signer core", () => {
       expect(outcome).toEqual({ ok: false, code: "INVALID_REQUEST" });
     }
     expect(store.beginCalls).toBe(0);
+  });
+
+  it("reports a store freshness timeout as stale simulation evidence", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    store.persistError = new Error("signing freshness deadline expired");
+
+    await expect(
+      signAuthorizedTransferCore(buildDeps(store, new FakeRpc()), ids),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: "SIMULATION_STALE",
+    });
   });
 
   it("returns durable evidence without re-signing", async () => {

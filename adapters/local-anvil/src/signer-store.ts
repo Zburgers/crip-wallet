@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { appendAuditEvent } from "@crip/audit";
-import type { Pool, PoolClient } from "pg";
+import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 import type {
   SignAuthorizedTransferIds,
@@ -10,6 +10,7 @@ import type {
   SigningContext,
   SimulationRecord,
 } from "./signer-core.js";
+import { SIGNER_FRESHNESS_WINDOW_MS } from "./signer-core.js";
 
 interface ContextRow {
   operation_state: string;
@@ -362,23 +363,157 @@ const withClient = async <T>(
   }
 };
 
+const signingFreshnessExpired = () =>
+  new Error("signing freshness deadline expired");
+
+const isPostgresTimeout = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  (error.code === "55P03" || error.code === "57014");
+
+const refreshSigningTimeouts = async (
+  client: PoolClient,
+  deadlineAt: string,
+): Promise<number> => {
+  try {
+    const remaining = await client.query<{
+      fresh: boolean;
+      remaining_ms: number;
+    }>(
+      `SELECT $1::timestamptz > clock_timestamp() AS fresh,
+              floor(extract(epoch FROM ($1::timestamptz - clock_timestamp())) * 1000)::int AS remaining_ms`,
+      [deadlineAt],
+    );
+    const row = remaining.rows[0];
+    if (!row?.fresh || row.remaining_ms <= 0) throw signingFreshnessExpired();
+    const timeout = `${Math.min(SIGNER_FRESHNESS_WINDOW_MS, row.remaining_ms)}ms`;
+    await client.query(
+      `SELECT set_config('lock_timeout', $1, true),
+              set_config('statement_timeout', $1, true)`,
+      [timeout],
+    );
+    return row.remaining_ms;
+  } catch (error) {
+    if (isPostgresTimeout(error)) throw signingFreshnessExpired();
+    throw error;
+  }
+};
+
+const queryBeforeSigningDeadline = async <T extends QueryResultRow>(
+  client: PoolClient,
+  deadlineAt: string,
+  query: string,
+  values?: unknown[],
+) => {
+  await refreshSigningTimeouts(client, deadlineAt);
+  try {
+    return await client.query<T>(query, values);
+  } catch (error) {
+    if (isPostgresTimeout(error)) throw signingFreshnessExpired();
+    throw error;
+  }
+};
+
+const lockSigningDeadline = async (
+  client: PoolClient,
+  input: {
+    ids: SignAuthorizedTransferIds;
+    reservationId: string;
+    envelopeId: string;
+    freshnessSampledAt: string;
+    freshnessDeadlineAt: string;
+  },
+): Promise<string> => {
+  if (
+    !Number.isFinite(Date.parse(input.freshnessSampledAt)) ||
+    !Number.isFinite(Date.parse(input.freshnessDeadlineAt)) ||
+    Date.parse(input.freshnessSampledAt) >=
+      Date.parse(input.freshnessDeadlineAt)
+  )
+    throw signingFreshnessExpired();
+  const result = await client.query<{
+    deadline_at: Date | string;
+    remaining_ms: number;
+  }>(
+    `WITH deadline AS (
+       SELECT LEAST(
+         $2::timestamptz,
+         $1::timestamptz + ($5::int * interval '1 millisecond'),
+         clock_timestamp() + ($5::int * interval '1 millisecond'),
+         (SELECT expires_at FROM authorization_evidence
+          WHERE operation_id = $3 AND authorization_id = $4),
+         (SELECT expires_at FROM budget_reservations
+          WHERE operation_id = $3 AND reservation_id = $6),
+         (SELECT (payload ->> 'expiresAt')::timestamptz
+          FROM execution_envelopes
+          WHERE operation_id = $3 AND envelope_id = $7)
+       ) AS deadline_at,
+       $1::timestamptz <= clock_timestamp() AS sample_not_future
+     )
+     SELECT deadline_at,
+            floor(extract(epoch FROM (deadline_at - clock_timestamp())) * 1000)::int AS remaining_ms
+     FROM deadline
+     WHERE sample_not_future AND deadline_at > clock_timestamp()`,
+    [
+      input.freshnessSampledAt,
+      input.freshnessDeadlineAt,
+      input.ids.operationId,
+      input.ids.authorizationId,
+      SIGNER_FRESHNESS_WINDOW_MS,
+      input.reservationId,
+      input.envelopeId,
+    ],
+  );
+  const row = result.rows[0];
+  if (!row || row.remaining_ms <= 0) throw signingFreshnessExpired();
+  const deadlineAt =
+    row.deadline_at instanceof Date
+      ? row.deadline_at.toISOString()
+      : new Date(row.deadline_at).toISOString();
+  await refreshSigningTimeouts(client, deadlineAt);
+  return deadlineAt;
+};
+
+const signBeforeDeadline = async (
+  client: PoolClient,
+  deadlineAt: string,
+  sign: () => Promise<SignedTransactionMaterial>,
+): Promise<SignedTransactionMaterial> => {
+  const remainingMs = await refreshSigningTimeouts(client, deadlineAt);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(signingFreshnessExpired()), remainingMs);
+  });
+  try {
+    return await Promise.race([sign(), deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
 const assertCurrentSigningAuthority = async (
   client: PoolClient,
   ids: SignAuthorizedTransferIds,
-  expected?: {
+  deadlineAt: string,
+  expected: {
     reservationId: string;
     envelopeId: string;
     envelopeRevision: number;
     envelopeHash: string;
     simulationId: string;
     fixtureInstanceId: string;
+    signerCredentialId: string;
+    signerComponentId: string;
   },
 ): Promise<SigningAuthorityRow> => {
-  const identity = await client.query<{
+  const identity = await queryBeforeSigningDeadline<{
     agent_id: string;
     policy_id: string;
     owner_id: string;
   }>(
+    client,
+    deadlineAt,
     `SELECT o.agent_id, o.policy_id, w.owner_id
      FROM operations o
      JOIN wallets w ON w.wallet_id = o.wallet_id
@@ -388,31 +523,41 @@ const assertCurrentSigningAuthority = async (
   const identityRow = identity.rows[0];
   if (!identityRow) throw new Error("operation is missing");
 
-  await client.query(
+  await queryBeforeSigningDeadline(
+    client,
+    deadlineAt,
     `SELECT 1 FROM control_fences
      WHERE scope_type = 'SYSTEM' AND scope_id = 'system' FOR UPDATE`,
   );
-  await client.query(
+  await queryBeforeSigningDeadline(
+    client,
+    deadlineAt,
     `SELECT 1 FROM control_fences
      WHERE scope_type = 'OWNER' AND scope_id = $1 FOR UPDATE`,
     [identityRow.owner_id],
   );
-  await client.query(
+  await queryBeforeSigningDeadline(
+    client,
+    deadlineAt,
     `SELECT 1 FROM control_fences
      WHERE scope_type = 'AGENT' AND scope_id = $1 FOR UPDATE`,
     [identityRow.agent_id],
   );
-  await client.query(
+  await queryBeforeSigningDeadline(
+    client,
+    deadlineAt,
     `SELECT 1 FROM control_fences
      WHERE scope_type = 'POLICY' AND scope_id = $1 FOR UPDATE`,
     [identityRow.policy_id],
   );
 
-  const binding = await client.query<{
+  const binding = await queryBeforeSigningDeadline<{
     reservation_id: string;
     envelope_id: string;
     envelope_revision: number;
   }>(
+    client,
+    deadlineAt,
     `SELECT reservation_id, envelope_id, envelope_revision
      FROM authorization_evidence
      WHERE operation_id = $1 AND authorization_id = $2`,
@@ -421,7 +566,9 @@ const assertCurrentSigningAuthority = async (
   const bindingRow = binding.rows[0];
   if (!bindingRow) throw new Error("authorization evidence is missing");
 
-  await client.query(
+  await queryBeforeSigningDeadline(
+    client,
+    deadlineAt,
     `SELECT ae.authorization_id
      FROM authorization_evidence ae
      JOIN policy_decisions pd
@@ -431,27 +578,37 @@ const assertCurrentSigningAuthority = async (
      FOR UPDATE OF ae, pd`,
     [ids.operationId, ids.authorizationId],
   );
-  await client.query(
+  await queryBeforeSigningDeadline(
+    client,
+    deadlineAt,
     `SELECT operation_id FROM operations WHERE operation_id = $1 FOR UPDATE`,
     [ids.operationId],
   );
-  await client.query(
+  await queryBeforeSigningDeadline(
+    client,
+    deadlineAt,
     `SELECT reservation_id FROM budget_reservations
      WHERE operation_id = $1 AND reservation_id = $2 FOR UPDATE`,
     [ids.operationId, bindingRow.reservation_id],
   );
-  await client.query(
+  await queryBeforeSigningDeadline(
+    client,
+    deadlineAt,
     `SELECT envelope_id FROM execution_envelopes
      WHERE operation_id = $1 AND envelope_id = $2 AND revision = $3 FOR UPDATE`,
     [ids.operationId, bindingRow.envelope_id, bindingRow.envelope_revision],
   );
-  await client.query(
+  await queryBeforeSigningDeadline(
+    client,
+    deadlineAt,
     `SELECT simulation_id FROM transaction_simulations
      WHERE operation_id = $1 FOR SHARE`,
     [ids.operationId],
   );
 
-  const result = await client.query<SigningAuthorityRow>(
+  const result = await queryBeforeSigningDeadline<SigningAuthorityRow>(
+    client,
+    deadlineAt,
     `SELECT o.current_state AS operation_state, o.operation_id,
             o.intent_id, o.agent_id, o.wallet_id, w.owner_id,
             o.policy_id, o.policy_version,
@@ -532,19 +689,20 @@ const assertCurrentSigningAuthority = async (
     row.persisted_policy_decision_hash !== row.policy_decision_hash ||
     row.decision_policy_id !== row.policy_id ||
     Number(row.decision_policy_version) !== Number(row.policy_version) ||
-    (expected !== undefined &&
-      (row.reservation_id !== expected.reservationId ||
-        row.envelope_id !== expected.envelopeId ||
-        Number(row.envelope_revision) !== expected.envelopeRevision ||
-        row.envelope_hash !== expected.envelopeHash))
+    row.reservation_id !== expected.reservationId ||
+    row.envelope_id !== expected.envelopeId ||
+    Number(row.envelope_revision) !== expected.envelopeRevision ||
+    row.envelope_hash !== expected.envelopeHash
   ) {
     throw new Error("canonical signing authority is stale or invalid");
   }
 
-  const simulation = await client.query<{
+  const simulation = await queryBeforeSigningDeadline<{
     simulation_id: string;
     fixture_instance_id: string;
   }>(
+    client,
+    deadlineAt,
     `SELECT s.simulation_id, s.fixture_instance_id
      FROM transaction_simulations s
      JOIN execution_envelopes e
@@ -556,29 +714,33 @@ const assertCurrentSigningAuthority = async (
      FOR UPDATE OF s`,
     [ids.operationId, row.envelope_id, row.envelope_revision],
   );
-  const currentFixture = await client.query<{ fixture_instance_id: string }>(
+  const currentFixture = await queryBeforeSigningDeadline<{
+    fixture_instance_id: string;
+  }>(
+    client,
+    deadlineAt,
     `SELECT fixture_instance_id
      FROM local_chain_fixtures
      WHERE is_current
      FOR UPDATE`,
   );
   if (
-    expected !== undefined &&
-    (simulation.rows.length !== 1 ||
-      simulation.rows[0]?.simulation_id !== expected.simulationId ||
-      simulation.rows[0]?.fixture_instance_id !== expected.fixtureInstanceId ||
-      currentFixture.rows.length !== 1 ||
-      currentFixture.rows[0]?.fixture_instance_id !==
-        expected.fixtureInstanceId)
+    simulation.rows.length !== 1 ||
+    simulation.rows[0]?.simulation_id !== expected.simulationId ||
+    simulation.rows[0]?.fixture_instance_id !== expected.fixtureInstanceId ||
+    currentFixture.rows.length !== 1 ||
+    currentFixture.rows[0]?.fixture_instance_id !== expected.fixtureInstanceId
   ) {
     throw new Error("canonical simulation or fixture binding is stale");
   }
 
-  const fences = await client.query<{
+  const fences = await queryBeforeSigningDeadline<{
     scope_type: "SYSTEM" | "OWNER" | "AGENT" | "POLICY";
     state: string;
     fence_version: string;
   }>(
+    client,
+    deadlineAt,
     `SELECT scope_type, state, fence_version::text AS fence_version
      FROM control_fences
      WHERE (scope_type, scope_id) IN (
@@ -601,6 +763,26 @@ const assertCurrentSigningAuthority = async (
     current.get("AGENT")?.fence_version === row.agent_fence_version &&
     current.get("POLICY")?.fence_version === row.policy_fence_version;
   if (!matches) throw new Error("canonical control fence is stale or inactive");
+
+  const credential = await queryBeforeSigningDeadline<{
+    component_id: string;
+    component_role: string;
+    status: string;
+  }>(
+    client,
+    deadlineAt,
+    `SELECT component_id, component_role, status
+     FROM trusted_component_credentials
+     WHERE credential_id = $1 FOR SHARE`,
+    [expected.signerCredentialId],
+  );
+  if (
+    credential.rows.length !== 1 ||
+    credential.rows[0]?.component_id !== expected.signerComponentId ||
+    credential.rows[0]?.component_role !== "ADAPTER" ||
+    credential.rows[0]?.status !== "ACTIVE"
+  )
+    throw new Error("signer credential is revoked or does not match");
   return row;
 };
 
@@ -644,11 +826,14 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
     withClient(pool, async (client) => {
       await client.query("BEGIN");
       try {
-        await client.query("SET LOCAL lock_timeout = '2000ms'");
         await client.query("SET LOCAL statement_timeout = '5000ms'");
+        if (audit.credentialId !== input.signerCredentialId)
+          throw new Error("signer credential binding does not match audit");
+        const deadlineAt = await lockSigningDeadline(client, input);
         const authority = await assertCurrentSigningAuthority(
           client,
           input.ids,
+          deadlineAt,
           {
             reservationId: input.reservationId,
             envelopeId: input.envelopeId,
@@ -656,10 +841,15 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
             envelopeHash: input.envelopeHash,
             simulationId: input.simulationId,
             fixtureInstanceId: input.fixtureInstanceId,
+            signerCredentialId: input.signerCredentialId,
+            signerComponentId: audit.actorId,
           },
         );
+        await refreshSigningTimeouts(client, deadlineAt);
         if (authority.operation_state === "AUTHORIZED") {
-          const update = await client.query(
+          const update = await queryBeforeSigningDeadline(
+            client,
+            deadlineAt,
             `UPDATE operations
              SET current_state = 'SIGNING', version = version + 1, updated_at = now()
              WHERE operation_id = $1 AND current_state = 'AUTHORIZED'`,
@@ -668,26 +858,31 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
           if (update.rowCount !== 1)
             throw new Error("operation left AUTHORIZED concurrently");
         }
-        await appendAuditEvent(client, {
-          eventId: `${audit.eventIdBase}:started:${randomUUID()}`,
-          actorType: "adapter",
-          actorId: audit.actorId,
-          traceId: audit.traceId,
-          ...auditCorrelation(authority),
-          eventType: "signing.started",
-          data: {
-            reservationId: authority.reservation_id,
-            authorizationId: input.ids.authorizationId,
-            credentialId: audit.credentialId,
-            componentId: audit.actorId,
-            componentRole: "ADAPTER",
-            authenticationMethod: "ed25519",
-            adapterId: "local-anvil",
-            chainId: "eip155:31337",
+        await refreshSigningTimeouts(client, deadlineAt);
+        await appendAuditEvent(
+          client,
+          {
+            eventId: `${audit.eventIdBase}:started:${randomUUID()}`,
+            actorType: "adapter",
+            actorId: audit.actorId,
+            traceId: audit.traceId,
+            ...auditCorrelation(authority),
+            eventType: "signing.started",
+            data: {
+              reservationId: authority.reservation_id,
+              authorizationId: input.ids.authorizationId,
+              credentialId: audit.credentialId,
+              componentId: audit.actorId,
+              componentRole: "ADAPTER",
+              authenticationMethod: "ed25519",
+              adapterId: "local-anvil",
+              chainId: "eip155:31337",
+            },
           },
-        });
+          () => refreshSigningTimeouts(client, deadlineAt),
+        );
         onSigningStarted?.();
-        const material: SignedTransactionMaterial = await sign();
+        const material = await signBeforeDeadline(client, deadlineAt, sign);
         if (!SIGNED_HASH_PATTERN.test(material.transactionHash))
           throw new Error("signer returned an invalid transaction hash");
         if (
@@ -695,7 +890,9 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
           input.expectedTransactionHash !== material.transactionHash
         )
           throw new Error("signed transaction hash does not match input");
-        await client.query(
+        await queryBeforeSigningDeadline(
+          client,
+          deadlineAt,
           `INSERT INTO signed_transactions
             (signed_transaction_id, operation_id, reservation_id, envelope_id,
              envelope_revision, envelope_hash, authorization_id, simulation_id,
@@ -718,7 +915,9 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
             input.signedAt,
           ],
         );
-        const update = await client.query(
+        const update = await queryBeforeSigningDeadline(
+          client,
+          deadlineAt,
           `UPDATE operations
            SET current_state = 'SIGNED', version = version + 1, updated_at = now()
            WHERE operation_id = $1 AND current_state IN ('AUTHORIZED', 'SIGNING')`,
@@ -726,31 +925,54 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
         );
         if (update.rowCount !== 1)
           throw new Error("operation left the signable window");
-        await appendAuditEvent(client, {
-          eventId: `${audit.eventIdBase}:signed:${randomUUID()}`,
-          actorType: "adapter",
-          actorId: audit.actorId,
-          traceId: audit.traceId,
-          ...auditCorrelation(authority),
-          eventType: "transaction.signed",
-          data: {
-            reservationId: authority.reservation_id,
-            authorizationId: input.ids.authorizationId,
-            envelopeId: authority.envelope_id,
-            envelopeRevision: Number(authority.envelope_revision),
-            envelopeHash: authority.envelope_hash,
-            transactionHash: material.transactionHash,
-            componentId: audit.actorId,
-            componentRole: "ADAPTER",
-            authenticationMethod: "ed25519",
-            adapterId: "local-anvil",
-            chainId: "eip155:31337",
+        await refreshSigningTimeouts(client, deadlineAt);
+        await appendAuditEvent(
+          client,
+          {
+            eventId: `${audit.eventIdBase}:signed:${randomUUID()}`,
+            actorType: "adapter",
+            actorId: audit.actorId,
+            traceId: audit.traceId,
+            ...auditCorrelation(authority),
+            eventType: "transaction.signed",
+            data: {
+              reservationId: authority.reservation_id,
+              authorizationId: input.ids.authorizationId,
+              envelopeId: authority.envelope_id,
+              envelopeRevision: Number(authority.envelope_revision),
+              envelopeHash: authority.envelope_hash,
+              transactionHash: material.transactionHash,
+              fixtureInstanceId: input.fixtureInstanceId,
+              componentId: audit.actorId,
+              componentRole: "ADAPTER",
+              authenticationMethod: "ed25519",
+              adapterId: "local-anvil",
+              chainId: "eip155:31337",
+              simulationBlockNumber:
+                input.freshnessObservation.simulationBlockNumber,
+              simulationBlockHash:
+                input.freshnessObservation.simulationBlockHash,
+              freshnessSampledAt: input.freshnessSampledAt,
+              freshnessDeadlineAt: input.freshnessDeadlineAt,
+              freshnessHeadNumber: input.freshnessObservation.headNumber,
+              freshnessSenderNonce: input.freshnessObservation.senderNonce,
+              freshnessTokenBalanceAtomic:
+                input.freshnessObservation.tokenBalanceAtomic,
+              freshnessNativeBalanceWei:
+                input.freshnessObservation.nativeBalanceWei,
+              freshnessBaseFeePerGas: input.freshnessObservation.baseFeePerGas,
+              freshnessMaxPriorityFeePerGas:
+                input.freshnessObservation.maxPriorityFeePerGas,
+            },
           },
-        });
+          () => refreshSigningTimeouts(client, deadlineAt),
+        );
+        await refreshSigningTimeouts(client, deadlineAt);
         await client.query("COMMIT");
         return material;
       } catch (error) {
         await client.query("ROLLBACK");
+        if (isPostgresTimeout(error)) throw signingFreshnessExpired();
         throw error;
       }
     }),

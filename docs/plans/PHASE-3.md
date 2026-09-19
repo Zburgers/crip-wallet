@@ -1,6 +1,6 @@
 # Phase 3 Plan - WS-005 Integrated Approval Controls
 
-Status: **IN PROGRESS — P3-01 IMPLEMENTED; P3-02–P3-06 NOT STARTED**
+Status: **IN PROGRESS — P3-01 REVALIDATION BLOCKED; P3-02–P3-06 NOT STARTED**
 
 Planning branch: `phase-3/ws-005-integrated-controls`
 
@@ -457,8 +457,10 @@ and scripts must be updated in the same packet.
 
 ### P3-01 - Pre-sign authority transaction and execution binding
 
-Status: **IMPLEMENTED / LOCAL GATES GREEN** at `91f649b`; sequential
-integration continues with P3-02.
+Status: **PARTIAL / BLOCKED**. The atomic database boundary and bounded
+database-time deadline have local evidence, but the required chain-advance
+barrier is not satisfied. Do not start P3-02 until the accepted-design conflict
+below is resolved.
 
 Scope:
 
@@ -479,6 +481,45 @@ Acceptance:
 - Signer failure/crash leaves `AUTHORIZED`, no signed row, and no secret output.
 - Exactly one signed row exists for one operation/authorization.
 - Existing Phase-1 approval/autonomous and Phase-2 signer suites remain green.
+
+#### P3-01 chain-freshness design blocker
+
+Revalidation on the working tree based on `d48a503fe67475fe59fcfa2e99dcfaf884a1c8e2`
+found an unresolved requirement conflict in ADR-0018. `checkSimulationFreshness`
+reads Anvil before the signing transaction and now returns a sample containing
+the head number, simulation block identity, pending nonce, balances, and fee
+facts; the signed audit event records those facts with the sample/deadline
+timestamps. The store then checks PostgreSQL authority and time while holding
+the fence locks, but does not re-read Anvil after acquiring them. A chain
+mutation inside the still-valid deadline is therefore not observable to that
+transaction. The two-second database deadline bounds elapsed time; it is not a
+chain-state lease.
+
+This matters for P3-F04A: a pending nonce, balance, fee, canonical head, or
+fixture assumption can change while signing waits for a fence lock, yet the
+store may still call the signer and commit. The execution advisory lock is
+per-operation, and fixture tooling can mutate Anvil directly. The accepted
+boundary also treats Anvil as untrusted. No database-only comparison detects a
+post-sample change at that endpoint.
+
+The same ADR requires stale chain facts to cause rollback/resampling after a
+lock wait and prohibits RPC or other unbounded network calls while database
+locks are held. Under the current independently mutable Anvil boundary, those
+requirements cannot both be guaranteed by the implemented database-time check.
+No architecture change is selected here; the accepted ADR is left unchanged.
+The product owner must choose a revised consistency boundary before P3-01 can
+close. Options are: permit a bounded live RPC recheck after lock acquisition;
+provide and enforce a chain-mutation lease/proxy that covers every Anvil writer;
+or revise the acceptance criterion so stale samples are prevented from
+broadcasting at P3-03, while explicitly accepting that signing may occur first.
+Each choice changes the accepted guarantee or boundary and requires explicit
+product-owner direction.
+
+The follow-up local evidence is recorded in `docs/TEST_MATRIX.md`. The
+wall-clock deadline, credential lock, signer rollback, owner/autonomous parity,
+and deterministic database lock-order cases pass locally; the actual
+chain-advance-during-lock-wait case remains unproven and is a blocking High
+finding. P3-02 through P3-06 remain gated by the strict packet order.
 
 ### P3-02 - Signed-unbroadcast lifecycle and control semantics
 

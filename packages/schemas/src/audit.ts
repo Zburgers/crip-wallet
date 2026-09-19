@@ -54,6 +54,8 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "transaction.simulated",
 ] as const);
 
+const utcMillisecondSchema = z.iso.datetime({ offset: false, precision: 3 });
+
 export const auditDataSchema = z.strictObject({
   reservationId: canonicalIdentifierSchema.optional(),
   approvalId: canonicalIdentifierSchema.optional(),
@@ -137,6 +139,14 @@ export const auditDataSchema = z.strictObject({
   simulationEvidenceHash: evmHashSchema.optional(),
   simulationBlockNumber: atomicUnitSchema.optional(),
   simulationBlockHash: evmHashSchema.optional(),
+  freshnessSampledAt: utcMillisecondSchema.optional(),
+  freshnessDeadlineAt: utcMillisecondSchema.optional(),
+  freshnessHeadNumber: atomicUnitSchema.optional(),
+  freshnessSenderNonce: atomicUnitSchema.optional(),
+  freshnessTokenBalanceAtomic: atomicUnitSchema.optional(),
+  freshnessNativeBalanceWei: atomicUnitSchema.optional(),
+  freshnessBaseFeePerGas: atomicUnitSchema.optional(),
+  freshnessMaxPriorityFeePerGas: atomicUnitSchema.optional(),
   result: z
     .enum([
       "ALLOW_READ",

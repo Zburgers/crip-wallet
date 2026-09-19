@@ -71,26 +71,31 @@ The actual post-merge `main` candidate passed CI `34058182763` and Secret Scan `
 
 **Gate S2 is PASS / ACCEPTED, and Phase 2 / WS-004 is COMPLETE / ACCEPTED for the local boundary.**
 
-### Phase 3 — IN PROGRESS / P3-01 IMPLEMENTED
+### Phase 3 — IN PROGRESS / P3-01 REVALIDATION BLOCKED
 
 Phase 3 / WS-005 is executing from protected `main`.
 `docs/plans/PHASE-3.md` maps the integrated authority-to-economic-finality
 boundary and packets P3-01 through P3-06. Accepted ADR-0018 defines the planned
 signing and send-commit linearization points, signed-unbroadcast quarantine,
 post-send recovery authority, canonical lock order, and minimum migration
-backstops. P3-01 is implemented at `91f649b`; P3-02 through P3-06 remain
-unstarted.
+backstops. P3-01 was integrated at `91f649b` and advanced through integration
+evidence at `d48a503`; revalidation of the chain-freshness acceptance is blocked
+by an unresolved conflict between detecting Anvil changes during a DB lock wait
+and the accepted no-RPC-under-lock rule. P3-02 through P3-06 remain gated.
 
 P3-00 found a real integration gap rather than an accepted implementation:
 current control invalidation does not cover signed/no-attempt work, the current
 broadcast writer does not revalidate control authority, signer/control lock
 ordering is inverted, and current-fence guards can obstruct post-send recovery.
-P3-01 evidence: migration `0026_ws005_integrated_control_boundary.sql`,
-`npm run check` (21 repository tests and 344 package tests), `npm run test:db`
-(126 tests), `npm run test:concurrency` (18 tests), `npm run test:invariants`
-(7 tests), focused signer/execution (44 tests), and `npm audit --audit-level=high`
-(exit 0; two moderate Vitest advisories remain). Full Phase-3 acceptance is not
-claimed.
+P3-01 follow-up evidence on the candidate tree based at `d48a503`:
+`npm run check` (21 repository tests and 346 package tests), `npm run test:db`
+(137 tests), `npm run test:concurrency` (18 tests), `npm run test:invariants`
+(7 tests), contracts (10/10), chain (10/10), E2E (1/1), fault (145/145),
+adversarial (181/181), and focused signer/execution (45 tests). The dependency
+audit exits 0 at the high-severity threshold; two moderate Vitest advisories
+remain. These gates do not cover an Anvil chain advance during the DB lock wait.
+The two-second DB deadline does not observe changed live chain facts; P3-01 is
+not closed and full Phase-3 acceptance is not claimed.
 
 ## Dependency state
 
@@ -106,7 +111,7 @@ claimed.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
 - WS-004 Phase-2 transaction pipeline/local adapter — P2-06D COMPLETE / ACCEPTED; Phase 2 / WS-004 COMPLETE / ACCEPTED / MERGED TO `main`.
-- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 IMPLEMENTED.
+- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 revalidation BLOCKED by R-033.
 - WS-006/007 — NOT OPENED.
 
 ## Safety boundary

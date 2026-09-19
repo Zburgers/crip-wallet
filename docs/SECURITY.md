@@ -47,7 +47,7 @@ claims. Database queries are parameterized and transactions use one client.
 | S0 repository safety | Secret scanning/push protection, locked dependencies, CODEOWNERS, active main ruleset `20791659`, vulnerability reporting, MIT licensing, and no-real-wallet/local-runtime controls were accepted in Phase 0/PR #1 | **PASS** |
 | S1 core invariant proof | Protected Phase-1 evidence proves strict schemas/hashing, atomic ledger/idempotency, approval replay protection, authenticated local-owner approval, four-scope pause/revocation fences, authenticated recovery leases, DB/concurrency/property invariants, and current-head CI/Secret Scan | **PASS / ACCEPTED** |
 | S2 local E2E | Phase 2 implementation and P2-06D evidence package are complete; S2 requirement evidence is PASS. P2-06A/B/C/D are integrated and accepted under the ADR-0015 boundary; external S2 acceptance review `5126373971` accepted the local boundary. | **PASS / ACCEPTED** |
-| Phase-3 integrated controls | ADR-0018 is accepted; P3-01 atomic sign/evidence implementation is at `91f649b` with local gates green. P3-02–P3-06 remain open. | **IN PROGRESS / P3-01 IMPLEMENTED** |
+| Phase-3 integrated controls | ADR-0018 is accepted; P3-01 DB-time/lock/rollback gates pass locally, but chain drift during the DB lock wait is not detected under the accepted no-RPC-under-lock rule. P3-02–P3-06 are gated pending product-owner resolution. | **IN PROGRESS / P3-01 BLOCKED** |
 | S3 testnet readiness | Out of MVP; requires stronger adapter/auth and review | NOT STARTED |
 | S4 real-value canary | Prohibited without explicit owner approval | OUT OF SCOPE |
 
@@ -145,8 +145,10 @@ Accepted ADR-0018 requires fence-first atomic local signing, full authority
 revalidation before durable `STARTED`, signed/no-attempt quarantine, immutable
 attempt-based post-send recovery, DB-time lease fencing, and unconditional DB
 uniqueness for signed/attempt lineage. The plan is
-`docs/plans/PHASE-3.md`. P3-01 is implemented locally; until P3-02 through P3-06
-and protected clean-room evidence pass, these are not Phase-3 acceptance.
+`docs/plans/PHASE-3.md`. P3-01 revalidation is blocked by R-033: a DB-time
+deadline cannot detect an Anvil state change during the fence-lock wait, while
+ADR-0018 prohibits RPC under those locks. Until that product decision is
+resolved, P3-02 through P3-06 remain gated and no Phase-3 acceptance is claimed.
 
 Phase 3 does not weaken signer locality, current envelope/fence binding,
 persist-before-send uncertainty, authenticated recovery, or the local-only
