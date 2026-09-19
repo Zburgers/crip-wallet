@@ -312,6 +312,7 @@ class MemorySignerStore implements SignerStore {
   signed: DurableSignedTransaction | null = null;
   attempts = new Map<string, BroadcastAttempt>();
   phases: string[] = [];
+  refusals: string[] = [];
   constructor(input: SigningContext | null = context) {
     this.signingContext = input
       ? structuredClone(input)
@@ -363,7 +364,9 @@ class MemorySignerStore implements SignerStore {
     this.signingContext.operation.state = "SIGNED";
     return material;
   }
-  async recordSigningRefusal() {}
+  async recordSigningRefusal(_operationId: string, reasonCode: string) {
+    this.refusals.push(reasonCode);
+  }
 }
 
 const makeBroadcastStore = (store: MemorySignerStore): BroadcastStore => ({
@@ -476,6 +479,7 @@ describe("signer-local execution handoff", () => {
     );
 
     expect(outcome).toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(store.refusals).toEqual(["PERSISTENCE_FAILED"]);
     expect(signs).toBe(0);
     expect(sends).toBe(0);
   });

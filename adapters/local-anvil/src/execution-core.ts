@@ -9,7 +9,6 @@ import {
 } from "./broadcast-core.js";
 import {
   signAuthorizedTransferCore,
-  type DurableSignedEvidence,
   type SignAuthorizedTransferIds,
   type SignerDeps,
   type SignerRefusalCode,
@@ -139,12 +138,6 @@ export const executeAuthorizedTransferCore = async (
       );
     }
 
-    let durableEvidence: DurableSignedEvidence | null;
-    try {
-      durableEvidence = await deps.store.findDurableSignedEvidence(ids);
-    } catch {
-      return { ok: false, code: "PERSISTENCE_FAILED" };
-    }
     let material:
       | {
           signedTransactionId: string;
@@ -154,7 +147,7 @@ export const executeAuthorizedTransferCore = async (
         }
       | undefined;
     const signerOutcome = await signAuthorizedTransferCore(deps, ids, {
-      rematerializeExistingEvidence: durableEvidence !== null,
+      rematerializeExistingEvidence: true,
       onSignedMaterial: (value) => {
         material = value;
       },
@@ -170,11 +163,7 @@ export const executeAuthorizedTransferCore = async (
     } catch {
       return { ok: false, code: "INTERNAL" };
     }
-    if (
-      derivedHash !== signerOutcome.transactionHash ||
-      (durableEvidence !== null &&
-        derivedHash !== durableEvidence.transactionHash)
-    )
+    if (derivedHash !== signerOutcome.transactionHash)
       return { ok: false, code: "INTERNAL" };
 
     const attemptId = material.signedTransactionId.replace(
