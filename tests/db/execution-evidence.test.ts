@@ -905,7 +905,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       application_name: "p3-signer-freshness-wait",
     });
     const applicationName = "p3-signer-freshness-wait";
-    const deadlineAt = new Date(Date.now() + 300).toISOString();
+    const deadlineAt = new Date(Date.now() + 1_800).toISOString();
     let signCalls = 0;
 
     try {
@@ -940,7 +940,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
 
   test("rolls back if local signing outlives its accepted freshness deadline", async () => {
     const envelopeHash = await prepareAuthorizedV2();
-    const deadlineAt = new Date(Date.now() + 150).toISOString();
+    const deadlineAt = new Date(Date.now() + 1_750).toISOString();
     let signCalls = 0;
     let signerSettled!: () => void;
     const settled = new Promise<void>((resolve) => {
@@ -951,7 +951,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       signingInput(envelopeHash, deadlineAt),
       async () => {
         signCalls += 1;
-        await new Promise<void>((resolve) => setTimeout(resolve, 400));
+        await new Promise<void>((resolve) => setTimeout(resolve, 2_250));
         signerSettled();
         return { transactionHash: `0x${"e".repeat(64)}` };
       },
@@ -959,8 +959,21 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     );
 
     await expect(signing).rejects.toThrow(/freshness|deadline/i);
-    await settled;
     expect(signCalls).toBe(1);
+    let settlementTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        settled,
+        new Promise<never>((_resolve, reject) => {
+          settlementTimeout = setTimeout(
+            () => reject(new Error("local signer callback did not settle")),
+            3_000,
+          );
+        }),
+      ]);
+    } finally {
+      if (settlementTimeout) clearTimeout(settlementTimeout);
+    }
     await expect(
       pool.query<{ current_state: string; signed_count: number }>(
         `SELECT o.current_state,
