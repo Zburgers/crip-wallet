@@ -199,7 +199,6 @@ export interface PersistSignedEvidenceInput {
   fixtureInstanceId: string;
   /** Filled by the atomic store from the in-memory signer result. */
   expectedTransactionHash?: Hash;
-  signedAt: string;
   freshnessSampledAt: string;
   freshnessDeadlineAt: string;
   freshnessObservation: FreshnessObservation;
@@ -505,7 +504,12 @@ export const signAuthorizedTransferCore = async (
   )
     return auditRefusal(refuse("SIGNER_CREDENTIAL_INVALID"));
 
-  const existing = await deps.store.findDurableSignedEvidence(ids);
+  let existing: DurableSignedEvidence | null;
+  try {
+    existing = await deps.store.findDurableSignedEvidence(ids);
+  } catch {
+    return auditRefusal(refuse("PERSISTENCE_FAILED"));
+  }
 
   const { authorization } = context;
   if (!authorization) return auditRefusal(refuse("AUTHORIZATION_NOT_FOUND"));
@@ -785,10 +789,6 @@ export const signAuthorizedTransferCore = async (
     };
   }
 
-  const signedAt = deps
-    .now()
-    .toISOString()
-    .replace(/\.\d{3}Z$/, "Z");
   let signerFailed = false;
   let attemptedHash: Hash | undefined;
   let signature: SignedTransactionMaterial;
@@ -803,7 +803,6 @@ export const signAuthorizedTransferCore = async (
         envelopeHash: envelope.envelopeHash,
         simulationId: candidate.simulationId,
         fixtureInstanceId,
-        signedAt,
         freshnessSampledAt: freshnessSampledAt.toISOString(),
         freshnessDeadlineAt,
         freshnessObservation: freshness.observation,
@@ -827,7 +826,12 @@ export const signAuthorizedTransferCore = async (
     );
   } catch (error) {
     // A concurrent signer may have persisted the same evidence first.
-    const raced = await deps.store.findDurableSignedEvidence(ids);
+    let raced: DurableSignedEvidence | null = null;
+    try {
+      raced = await deps.store.findDurableSignedEvidence(ids);
+    } catch {
+      // The durable outcome is unknown; preserve the sanitized refusal below.
+    }
     if (
       raced &&
       attemptedHash !== undefined &&

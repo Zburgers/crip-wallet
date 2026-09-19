@@ -9,6 +9,7 @@ import {
 } from "./broadcast-core.js";
 import {
   signAuthorizedTransferCore,
+  type DurableSignedEvidence,
   type SignAuthorizedTransferIds,
   type SignerDeps,
   type SignerRefusalCode,
@@ -138,7 +139,12 @@ export const executeAuthorizedTransferCore = async (
       );
     }
 
-    const durableEvidence = await deps.store.findDurableSignedEvidence(ids);
+    let durableEvidence: DurableSignedEvidence | null;
+    try {
+      durableEvidence = await deps.store.findDurableSignedEvidence(ids);
+    } catch {
+      return { ok: false, code: "PERSISTENCE_FAILED" };
+    }
     let material:
       | {
           signedTransactionId: string;

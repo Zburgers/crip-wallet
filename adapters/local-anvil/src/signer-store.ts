@@ -898,7 +898,7 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
              envelope_revision, envelope_hash, authorization_id, simulation_id,
              fixture_instance_id, expected_transaction_hash, signer_credential_id,
              signer_component_id, signed_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::timestamptz)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, clock_timestamp())`,
           [
             input.signedTransactionId,
             input.ids.operationId,
@@ -912,7 +912,6 @@ export const createSignerStore = (pool: Pool): SignerStore => ({
             material.transactionHash,
             input.signerCredentialId,
             audit.actorId,
-            input.signedAt,
           ],
         );
         const update = await queryBeforeSigningDeadline(

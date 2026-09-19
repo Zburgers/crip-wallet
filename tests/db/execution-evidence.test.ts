@@ -337,7 +337,6 @@ const signingInput = (envelopeHash: string, acceptedDeadlineAt?: string) => {
     envelopeHash,
     simulationId: "sim_1",
     fixtureInstanceId: fixtureId,
-    signedAt: new Date().toISOString(),
     signerCredentialId: adapterCredential.credentialId,
     freshnessObservation: {
       headNumber: "100",
@@ -1228,10 +1227,15 @@ describe.sequential("WS-004 execution evidence persistence", () => {
 
   test("autonomous authorization can persist signed evidence", async () => {
     const envelopeHash = await prepareAuthorizedV2("AUTONOMOUS_POLICY");
+    let signerReturnedAt = 0;
     await expect(
       createSignerStore(pool).signAndPersistEvidence(
         signingInput(envelopeHash),
-        async () => ({ transactionHash: `0x${"f".repeat(64)}` }),
+        async () => {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          signerReturnedAt = Date.now();
+          return { transactionHash: `0x${"f".repeat(64)}` };
+        },
         signingAudit("autonomous-signing"),
       ),
     ).resolves.toMatchObject({
@@ -1248,6 +1252,13 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         { authorization_kind: "AUTONOMOUS_POLICY", current_state: "SIGNED" },
       ],
     });
+    const signedEvidence = await pool.query<{ signed_at: string }>(
+      `SELECT signed_at::text AS signed_at FROM signed_transactions
+       WHERE operation_id = 'op_1'`,
+    );
+    expect(
+      Date.parse(signedEvidence.rows[0]?.signed_at ?? ""),
+    ).toBeGreaterThanOrEqual(signerReturnedAt);
   });
 
   test("autonomous authorization passes signer core and persists its live sample", async () => {

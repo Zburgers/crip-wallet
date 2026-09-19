@@ -335,7 +335,6 @@ class MemorySignerStore implements SignerStore {
       simulationId: string;
       fixtureInstanceId: string;
       signerCredentialId: string;
-      signedAt: string;
     },
     sign: () => Promise<{
       transactionHash: `0x${string}`;
@@ -348,7 +347,7 @@ class MemorySignerStore implements SignerStore {
     const material = await sign();
     this.durable = {
       transactionHash: material.transactionHash,
-      signedAt: input.signedAt,
+      signedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
     };
     this.signed = {
       signedTransactionId: input.signedTransactionId,
@@ -448,6 +447,39 @@ describe("signer-local execution handoff", () => {
     expect(keccak256(rawTransaction)).toBe(FROZEN_SIGNED_TRANSACTION_HASH);
   });
 
+  it("fails closed when durable evidence cannot be read before signing", async () => {
+    const store = new MemorySignerStore();
+    store.findDurableSignedEvidence = async () => {
+      throw new Error("database connection detail");
+    };
+    const rpc = new FakeRpc();
+    let signs = 0;
+    let sends = 0;
+
+    const outcome = await executeAuthorizedTransferCore(
+      {
+        ...makeSignerDeps(store, rpc, rawTransaction),
+        signTransaction: async () => {
+          signs += 1;
+          return { transactionHash: FROZEN_SIGNED_TRANSACTION_HASH };
+        },
+        broadcastStore: makeBroadcastStore(store),
+        sender: {
+          sendRawTransaction: async () => {
+            sends += 1;
+            return FROZEN_SIGNED_TRANSACTION_HASH;
+          },
+        },
+        executionStore: noAttemptStore(),
+      },
+      ids,
+    );
+
+    expect(outcome).toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(signs).toBe(0);
+    expect(sends).toBe(0);
+  });
+
   it("signs, persists safe evidence, enters STARTED, and sends the exact bytes", async () => {
     const store = new MemorySignerStore();
     const rpc = new FakeRpc();
@@ -496,10 +528,7 @@ describe("signer-local execution handoff", () => {
     expect(outcome.broadcastAttemptId).toBe(
       `${"attempt:" + ids.operationId}:1`,
     );
-    expect(store.durable).toEqual({
-      transactionHash: keccak256(rawTransaction),
-      signedAt: now.toISOString().replace(/\.\d{3}Z$/, "Z"),
-    });
+    expect(store.durable?.transactionHash).toBe(keccak256(rawTransaction));
   });
 
   it("rematerializes only proven pre-send evidence and gates it to the exact hash", async () => {

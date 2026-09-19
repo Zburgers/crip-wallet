@@ -597,6 +597,37 @@ describe("restricted local signer core", () => {
     });
   });
 
+  it("refuses when durable evidence cannot be read before signing", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    store.findDurableSignedEvidence = async () => {
+      throw new Error("database connection detail");
+    };
+
+    await expect(
+      signAuthorizedTransferCore(buildDeps(store, new FakeRpc()), ids),
+    ).resolves.toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(store.beginCalls).toBe(0);
+    expect(store.refusals).toEqual(["PERSISTENCE_FAILED"]);
+  });
+
+  it("keeps the persistence refusal if the follow-up evidence read fails", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    store.persistError = new Error("database connection detail");
+    let reads = 0;
+    store.findDurableSignedEvidence = async () => {
+      if (++reads === 1) return null;
+      throw new Error("second database connection detail");
+    };
+
+    await expect(
+      signAuthorizedTransferCore(buildDeps(store, new FakeRpc()), ids),
+    ).resolves.toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(reads).toBe(2);
+    expect(store.refusals).toEqual(["PERSISTENCE_FAILED"]);
+  });
+
   it("returns durable evidence without re-signing", async () => {
     const { context } = happyContext();
     const store = new FakeStore(context);
