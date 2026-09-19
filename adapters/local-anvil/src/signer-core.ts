@@ -469,12 +469,6 @@ export const signAuthorizedTransferCore = async (
   if (!parsedRequest.success) return refuse("INVALID_REQUEST");
   const ids = parsedRequest.data;
 
-  const context = await deps.store.loadSigningContext(
-    ids,
-    deps.credential.credentialId,
-  );
-  if (!context) return refuse("OPERATION_NOT_FOUND");
-
   const audit: SigningAuditTrail = {
     eventIdBase: `evt:${ids.operationId}:signing`,
     traceId: asTraceId(traceIdFor(ids)),
@@ -495,6 +489,17 @@ export const signAuthorizedTransferCore = async (
     }
     return outcome;
   };
+
+  let context: SigningContext | null;
+  try {
+    context = await deps.store.loadSigningContext(
+      ids,
+      deps.credential.credentialId,
+    );
+  } catch {
+    return auditRefusal(refuse("PERSISTENCE_FAILED"));
+  }
+  if (!context) return refuse("OPERATION_NOT_FOUND");
 
   if (
     !context.signerCredential ||

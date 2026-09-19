@@ -484,6 +484,41 @@ describe("signer-local execution handoff", () => {
     expect(sends).toBe(0);
   });
 
+  it("audits a refusal when broadcast state cannot be read", async () => {
+    const store = new MemorySignerStore();
+    const rpc = new FakeRpc();
+    let signs = 0;
+    let sends = 0;
+    const outcome = await executeAuthorizedTransferCore(
+      {
+        ...makeSignerDeps(store, rpc, rawTransaction),
+        signTransaction: async () => {
+          signs += 1;
+          return { transactionHash: FROZEN_SIGNED_TRANSACTION_HASH };
+        },
+        broadcastStore: makeBroadcastStore(store),
+        sender: {
+          sendRawTransaction: async () => {
+            sends += 1;
+            return FROZEN_SIGNED_TRANSACTION_HASH;
+          },
+        },
+        executionStore: {
+          withExecutionLock: async (_operationId, work) => work(),
+          findBroadcastAttempt: async () => {
+            throw new Error("database connection detail");
+          },
+        },
+      },
+      ids,
+    );
+
+    expect(outcome).toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(store.refusals).toEqual(["PERSISTENCE_FAILED"]);
+    expect(signs).toBe(0);
+    expect(sends).toBe(0);
+  });
+
   it("signs, persists safe evidence, enters STARTED, and sends the exact bytes", async () => {
     const store = new MemorySignerStore();
     const rpc = new FakeRpc();

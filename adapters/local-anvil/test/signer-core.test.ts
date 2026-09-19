@@ -355,6 +355,7 @@ class FakeStore implements SignerStore {
   persistCalls = 0;
   refusals: string[] = [];
   persisted: PersistSignedEvidenceInput[] = [];
+  loadError: Error | null = null;
   beginError: Error | null = null;
   persistError: Error | null = null;
 
@@ -363,6 +364,7 @@ class FakeStore implements SignerStore {
   }
 
   async loadSigningContext() {
+    if (this.loadError) throw this.loadError;
     return this.context;
   }
 
@@ -603,6 +605,18 @@ describe("restricted local signer core", () => {
     store.findDurableSignedEvidence = async () => {
       throw new Error("database connection detail");
     };
+
+    await expect(
+      signAuthorizedTransferCore(buildDeps(store, new FakeRpc()), ids),
+    ).resolves.toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(store.beginCalls).toBe(0);
+    expect(store.refusals).toEqual(["PERSISTENCE_FAILED"]);
+  });
+
+  it("audits a persistence refusal when signing context cannot be loaded", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    store.loadError = new Error("database connection detail");
 
     await expect(
       signAuthorizedTransferCore(buildDeps(store, new FakeRpc()), ids),

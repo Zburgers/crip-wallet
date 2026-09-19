@@ -8,6 +8,7 @@ import {
   type RawTransactionSender,
 } from "./broadcast-core.js";
 import {
+  signerTraceIdFor,
   signAuthorizedTransferCore,
   type SignAuthorizedTransferIds,
   type SignerDeps,
@@ -127,7 +128,26 @@ export const executeAuthorizedTransferCore = async (
   const ids = parsed.data;
 
   return deps.executionStore.withExecutionLock(ids.operationId, async () => {
-    const existingAttempt = await deps.executionStore.findBroadcastAttempt(ids);
+    let existingAttempt: BroadcastAttempt | null;
+    try {
+      existingAttempt = await deps.executionStore.findBroadcastAttempt(ids);
+    } catch {
+      try {
+        await deps.store.recordSigningRefusal(
+          ids.operationId,
+          "PERSISTENCE_FAILED",
+          {
+            eventIdBase: `evt:${ids.operationId}:signing`,
+            traceId: signerTraceIdFor(ids),
+            actorId: deps.credential.componentId,
+            credentialId: deps.credential.credentialId,
+          },
+        );
+      } catch {
+        // A failed refusal trail must not mask the sanitized refusal.
+      }
+      return { ok: false, code: "PERSISTENCE_FAILED" };
+    }
     if (existingAttempt) {
       return lifecycleResult(
         ids,
