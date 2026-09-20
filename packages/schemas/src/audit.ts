@@ -125,7 +125,7 @@ export const auditDataSchema = z.strictObject({
   attemptId: canonicalIdentifierSchema.optional(),
   signedTransactionId: canonicalIdentifierSchema.optional(),
   attemptStatus: z
-    .enum(["STARTED", "ACCEPTED", "REJECTED", "UNKNOWN"])
+    .enum(["STARTED", "ACCEPTED", "REJECTED", "UNKNOWN", "CONFLICT"])
     .optional(),
   leaseVersion: z.number().int().positive().safe().optional(),
   recoveryOutcome: z

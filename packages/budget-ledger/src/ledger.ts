@@ -768,6 +768,7 @@ const assertCanonicalAuthorizationEvidence = async (
   client: PoolClient,
   reservation: ReservationSnapshot,
   operationStates: readonly string[] = ["AUTHORIZED"],
+  allowExistingAttempt = false,
 ): Promise<void> => {
   const result = await client.query<{ authorization_id: string }>(
     `SELECT ae.authorization_id
@@ -785,7 +786,30 @@ const assertCanonicalAuthorizationEvidence = async (
      WHERE ae.reservation_id = $1
        AND ae.operation_id = $2
        AND o.current_state = ANY($3::text[])
-       AND ai.authorization_id IS NULL
+       AND (
+         ai.authorization_id IS NULL
+         OR (
+           $4::boolean
+           AND EXISTS (
+             SELECT 1
+             FROM signed_transactions s
+             JOIN broadcast_attempts a
+               ON a.signed_transaction_id = s.signed_transaction_id
+              AND a.operation_id = s.operation_id
+              AND a.reservation_id = s.reservation_id
+              AND a.envelope_id = s.envelope_id
+              AND a.envelope_revision = s.envelope_revision
+              AND a.envelope_hash = s.envelope_hash
+              AND a.authorization_id = s.authorization_id
+              AND a.fixture_instance_id = s.fixture_instance_id
+              AND a.expected_transaction_hash = s.expected_transaction_hash
+             WHERE s.operation_id = ae.operation_id
+               AND s.reservation_id = ae.reservation_id
+               AND s.authorization_id = ae.authorization_id
+               AND a.status IN ('STARTED', 'ACCEPTED', 'REJECTED', 'UNKNOWN', 'CONFLICT')
+           )
+         )
+       )
        AND e.envelope_hash = ae.envelope_hash
        AND pd.decision_hash = ae.policy_decision_hash
        AND pd.policy_id = ae.policy_id
@@ -797,7 +821,12 @@ const assertCanonicalAuthorizationEvidence = async (
            AND latest.revision > ae.envelope_revision
        )
      FOR SHARE OF ae, o, e, pd`,
-    [reservation.reservationId, reservation.operationId, operationStates],
+    [
+      reservation.reservationId,
+      reservation.operationId,
+      operationStates,
+      allowExistingAttempt,
+    ],
   );
   if (result.rowCount !== 1)
     throw new LedgerError(
@@ -853,11 +882,12 @@ export const markReservationBroadcast = (
           "INVALID_RESERVATION_TRANSITION",
           `cannot mark ${reservation.status} reservation as broadcast`,
         );
-      await assertCanonicalAuthorizationEvidence(client, reservation, [
-        "AUTHORIZED",
-        "SIGNING",
-        "SIGNED",
-      ]);
+      await assertCanonicalAuthorizationEvidence(
+        client,
+        reservation,
+        ["AUTHORIZED", "SIGNING", "SIGNED"],
+        true,
+      );
       if (reservation.status === "BROADCAST") {
         const existing = await getBroadcastEvidence(
           client,

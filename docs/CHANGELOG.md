@@ -34,11 +34,15 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
   retains its reservation, and records an authorization invalidation. A
   committed attempt remains unchanged and auditable; new STARTED work is fenced
   by current controls and invalidations.
+- Added forward-only migration `0028_ws005_existing_attempt_recovery.sql` so
+  authenticated reconciliation can continue from an exact committed attempt
+  after control changes. Control request IDs remain idempotent across later
+  state changes, and `CONFLICT` attempts can be audited by control.
 - Generic failed recovery and direct release/expiry cannot clear signed work
   with no attempt. Repeated control commands are audited once per distinct
-  event ID and exact event replay remains idempotent.
-- Local gates pass: static, DB 137/137 (execution evidence 45/45), and
-  concurrency 18/18. Exact-SHA MAX review and remote CI/Secret Scan are pending.
+  event ID and exact request replay remains idempotent. Static, DB 144/144
+  (execution evidence 52/52), and concurrency 18/18 pass locally; exact-SHA
+  MAX review and remote CI/Secret Scan are pending.
 
 ### Phase 3 planning
 

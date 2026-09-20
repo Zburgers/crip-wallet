@@ -53,8 +53,9 @@ R-033 resolution with a checkout-scoped Anvil mutation gateway and shared
 lease held from final freshness sampling through signed-evidence commit. The
 gateway is loopback-published, Anvil remains on an internal network without a
 host port, and PostgreSQL is isolated on a separate bridge. P3-01 passed fresh
-MAX review and exact-SHA CI/Secret Scan. P3-02 adds signed/no-attempt quarantine
-in migration `0027`; static, DB 137/137, and concurrency 18/18 pass locally.
-Its pushed candidate still needs MAX review and remote CI/Secret Scan. P3-03
-through P3-06 remain gated. Phase 3 remains local Anvil/fake-money only and is
-not fully accepted.
+MAX review and exact-SHA CI/Secret Scan. P3-02 uses migrations `0027` and
+`0028` for signed/no-attempt quarantine, exact-attempt recovery after control,
+and replay-safe, fully auditable control requests. Static, DB 144/144, and
+concurrency 18/18 pass locally; the fresh exact-SHA review/CI are pending.
+P3-03 through P3-06 remain gated. Phase 3 remains local Anvil/fake-money only
+and is not fully accepted.

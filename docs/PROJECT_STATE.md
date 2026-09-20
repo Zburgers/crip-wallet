@@ -84,10 +84,12 @@ lease shared by the loopback RPC gateway, lifecycle scripts, and signer. The
 signer samples chain freshness only after acquiring the lease and holds it
 through evidence commit, so RPC remains outside DB locks. P3-01 candidate
 `404837db138ad1bd5c3aceaff6bae67652d5ed01` passed fresh MAX review, exact-SHA
-CI, and Secret Scan. P3-02 implements signed/no-attempt quarantine in additive
-migration `0027`; local static, DB 137/137, and concurrency 18/18 gates pass.
-Its exact-SHA MAX review and remote CI/Secret Scan are pending; P3-03 through
-P3-06 remain gated.
+CI, and Secret Scan. P3-02 uses additive migrations `0027` and `0028` for
+signed/no-attempt quarantine, exact accepted-attempt reconciliation after
+control, replay-safe control request IDs, and all attempt-status audits.
+Static, DB 144/144, and concurrency 18/18 pass locally. Its revised exact-SHA
+MAX review and remote CI/Secret Scan are pending; P3-03 through P3-06 remain
+gated.
 
 P3-00 found a real integration gap rather than an accepted implementation:
 current control invalidation did not cover signed/no-attempt work, the

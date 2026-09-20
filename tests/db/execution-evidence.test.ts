@@ -862,9 +862,9 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     const rows = await pool.query<{ filename: string }>(
       "SELECT filename FROM schema_migrations ORDER BY filename",
     );
-    expect(rows.rows).toHaveLength(27);
+    expect(rows.rows).toHaveLength(28);
     expect(rows.rows.at(-1)?.filename).toBe(
-      "0027_ws005_signed_unbroadcast_control.sql",
+      "0028_ws005_existing_attempt_recovery.sql",
     );
   });
 
@@ -1240,6 +1240,152 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     }
   });
 
+  test("replays old control request IDs without undoing later fence changes", async () => {
+    await pool.query(
+      "UPDATE budget_accounts SET available = 80, reserved = 20 WHERE budget_id = 'budget_1'",
+    );
+    const pauseAudit = audit("op_1", "stable-control-pause");
+    const resumeAudit = audit("op_1", "stable-control-resume");
+    await expect(
+      changeControlFence(pool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "PAUSE",
+        audit: pauseAudit,
+      }),
+    ).resolves.toMatchObject({
+      state: "PAUSED",
+      fenceVersion: 2,
+      changed: true,
+    });
+    await expect(
+      changeControlFence(pool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "RESUME",
+        audit: resumeAudit,
+      }),
+    ).resolves.toMatchObject({
+      state: "ACTIVE",
+      fenceVersion: 3,
+      changed: true,
+    });
+    await expect(
+      changeControlFence(pool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "PAUSE",
+        audit: pauseAudit,
+      }),
+    ).resolves.toMatchObject({
+      state: "PAUSED",
+      fenceVersion: 2,
+      changed: false,
+    });
+
+    const laterPauseAudit = audit("op_1", "stable-control-later-pause");
+    await expect(
+      changeControlFence(pool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "PAUSE",
+        audit: laterPauseAudit,
+      }),
+    ).resolves.toMatchObject({
+      state: "PAUSED",
+      fenceVersion: 4,
+      changed: true,
+    });
+    await expect(
+      changeControlFence(pool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "RESUME",
+        audit: resumeAudit,
+      }),
+    ).resolves.toMatchObject({
+      state: "ACTIVE",
+      fenceVersion: 3,
+      changed: false,
+    });
+
+    await expect(
+      pool.query(
+        `SELECT fence_version, state, last_control_event_id
+         FROM control_fences WHERE scope_type = 'SYSTEM' AND scope_id = 'system'`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          fence_version: "4",
+          state: "PAUSED",
+          last_control_event_id: laterPauseAudit.eventId,
+        },
+      ],
+    });
+    await expect(
+      pool.query(
+        "SELECT count(*)::int AS count FROM audit_events WHERE event_id = ANY($1::text[])",
+        [[pauseAudit.eventId, resumeAudit.eventId, laterPauseAudit.eventId]],
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: 3 }] });
+  });
+
+  test.each([
+    { status: "STARTED", responseHash: null, reason: null },
+    { status: "ACCEPTED", responseHash: broadcastHash, reason: "accepted" },
+    { status: "REJECTED", responseHash: null, reason: "not transmitted" },
+    { status: "UNKNOWN", responseHash: null, reason: "response uncertain" },
+    {
+      status: "CONFLICT",
+      responseHash: `0x${"c".repeat(64)}`,
+      reason: "contradictory hash",
+    },
+  ] as const)(
+    "control records a $status existing attempt",
+    async ({ status, responseHash, reason }) => {
+      await broadcastStartFixture();
+      const signed = await pool.query<{ envelope_hash: string }>(
+        "SELECT envelope_hash FROM signed_transactions WHERE signed_transaction_id = 'signed_1'",
+      );
+      const attemptId = `attempt_control_${status.toLowerCase()}`;
+      await pool.query(
+        `INSERT INTO broadcast_attempts
+        (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,
+         envelope_revision, envelope_hash, authorization_id, fixture_instance_id,
+         expected_transaction_hash)
+       VALUES ($1, 'signed_1', 'op_1', 'res_1', 'env_op_1_1', 1, $2,
+         'approval_1:authorization', $3, $4)`,
+        [attemptId, signed.rows[0]!.envelope_hash, fixtureId, broadcastHash],
+      );
+      if (status !== "STARTED")
+        await pool.query(
+          `UPDATE broadcast_attempts
+         SET status = $2, response_transaction_hash = $3,
+             classification_reason = $4, completed_at = now()
+         WHERE attempt_id = $1`,
+          [attemptId, status, responseHash, reason],
+        );
+
+      await expect(
+        changeControlFence(pool, {
+          scopeType: "SYSTEM",
+          scopeId: "system",
+          command: "PAUSE",
+          audit: audit("op_1", `control-attempt-${status.toLowerCase()}`),
+        }),
+      ).resolves.toMatchObject({ state: "PAUSED", changed: true });
+      await expect(
+        pool.query<{ attempt_status: string }>(
+          `SELECT data ->> 'attemptStatus' AS attempt_status
+           FROM audit_events
+           WHERE operation_id = 'op_1'
+             AND event_type = 'authorization.invalidated'`,
+        ),
+      ).resolves.toMatchObject({ rows: [{ attempt_status: status }] });
+    },
+  );
+
   test("control quarantines signed work before STARTED and blocks generic release", async () => {
     await broadcastStartFixture();
     await pool.query(
@@ -1292,7 +1438,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     await expect(
       pool.query<{ event_type: string; data: Record<string, unknown> }>(
         `SELECT event_type, data FROM audit_events
-         WHERE event_id = 'evt:op_1:signed-control-before-start-duplicate:fence:2'`,
+         WHERE event_id = 'evt:op_1:signed-control-before-start-duplicate'`,
       ),
     ).resolves.toMatchObject({
       rows: [
@@ -2427,6 +2573,46 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       finalized_spend: "10",
       attempts: 1,
       effects: 1,
+    });
+  });
+
+  test("reconciles an accepted exact attempt after a control invalidation", async () => {
+    const input = await reconciliationFixture();
+    await pool.query(
+      "UPDATE budget_accounts SET available = 80, reserved = 20 WHERE budget_id = 'budget_1'",
+    );
+    await changeControlFence(pool, {
+      scopeType: "SYSTEM",
+      scopeId: "system",
+      command: "PAUSE",
+      audit: audit("op_1", "control-after-accepted-attempt"),
+    });
+
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "FINALIZED", finalizedSpendAtomic: "10" },
+    });
+    await expect(
+      pool.query(
+        `SELECT o.current_state, r.status,
+                (SELECT count(*)::int FROM authorization_invalidations ai
+                 WHERE ai.operation_id = o.operation_id) AS invalidations,
+                (SELECT count(*)::int FROM execution_economic_effects effect
+                 WHERE effect.operation_id = o.operation_id) AS effects
+         FROM operations o JOIN budget_reservations r USING (operation_id)
+         WHERE o.operation_id = 'op_1'`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          current_state: "RECONCILED",
+          status: "FINALIZED",
+          invalidations: 1,
+          effects: 1,
+        },
+      ],
     });
   });
 

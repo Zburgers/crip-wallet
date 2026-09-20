@@ -598,6 +598,7 @@ const invalidateAffectedAuthorizations = async (
   request: ChangeControlFenceRequest,
   fenceVersion: number,
   state: ControlState,
+  controlEventId: string,
 ): Promise<void> => {
   const predicate = targetPredicate(request.scopeType);
   const args = request.scopeType === "SYSTEM" ? [] : [request.scopeId];
@@ -702,7 +703,6 @@ const invalidateAffectedAuthorizations = async (
      FOR UPDATE OF e, o, r, b`,
     args,
   );
-  const controlEventId = `${request.audit.eventId}:fence:${fenceVersion}`;
   for (const row of authorized.rows)
     await invalidateAuthorized(
       client,
@@ -915,7 +915,7 @@ const appendControlAudit = async (
   previousState: ControlState,
 ): Promise<void> => {
   await appendAuditEvent(client, {
-    eventId: `${request.audit.eventId}:fence:${row.fence_version}`,
+    eventId: request.audit.eventId,
     eventType: eventType(request.scopeType, request.command),
     actorType: request.audit.actorType,
     actorId: request.audit.actorId,
@@ -969,65 +969,79 @@ export const changeControlFence = async (
       request.scopeType,
       request.scopeId,
     );
+    const requestedState: ControlState =
+      request.scopeType === "SYSTEM"
+        ? request.command === "PAUSE"
+          ? "PAUSED"
+          : "ACTIVE"
+        : "REVOKED";
+    const existing = await client.query<{
+      event_type: string;
+      actor_type: string;
+      actor_id: string;
+      trace_id: string;
+      data: Record<string, unknown>;
+    }>(
+      `SELECT event_type, actor_type, actor_id, trace_id, data
+       FROM audit_events WHERE event_id = $1`,
+      [request.audit.eventId],
+    );
+    if (existing.rows[0]) {
+      const event = existing.rows[0];
+      const fenceVersion = Number(event.data.fenceVersion);
+      if (
+        event.event_type !== eventType(request.scopeType, request.command) ||
+        event.actor_type !== request.audit.actorType ||
+        event.actor_id !== request.audit.actorId ||
+        event.trace_id !== request.audit.traceId ||
+        event.data.scopeType !== request.scopeType ||
+        event.data.scopeId !== request.scopeId ||
+        !Number.isSafeInteger(fenceVersion) ||
+        fenceVersion < 1 ||
+        event.data.controlState !== requestedState
+      )
+        throw new ControlFenceError(
+          "INVALID_COMMAND",
+          "audit event ID is already bound to another control event",
+        );
+      return {
+        scopeType: request.scopeType,
+        scopeId: request.scopeId,
+        fenceVersion,
+        state: requestedState,
+        changed: false,
+      };
+    }
+
     const currentVersion = Number(current.fence_version);
     const alreadyApplied =
       (request.command === "PAUSE" && current.state === "PAUSED") ||
       (request.command === "RESUME" && current.state === "ACTIVE") ||
       (request.command === "REVOKE" && current.state === "REVOKED");
     if (alreadyApplied) {
-      const duplicateEventId = `${request.audit.eventId}:fence:${currentVersion}`;
-      const existing = await client.query<{
-        event_type: string;
-        actor_type: string;
-        actor_id: string;
-        trace_id: string;
-        data: Record<string, unknown>;
-      }>(
-        `SELECT event_type, actor_type, actor_id, trace_id, data
-         FROM audit_events WHERE event_id = $1`,
-        [duplicateEventId],
-      );
-      if (existing.rows[0]) {
-        const event = existing.rows[0];
-        if (
-          event.event_type !== eventType(request.scopeType, request.command) ||
-          event.actor_type !== request.audit.actorType ||
-          event.actor_id !== request.audit.actorId ||
-          event.trace_id !== request.audit.traceId ||
-          event.data.scopeType !== request.scopeType ||
-          event.data.scopeId !== request.scopeId ||
-          Number(event.data.fenceVersion) !== currentVersion ||
-          event.data.controlState !== current.state
-        )
-          throw new ControlFenceError(
-            "INVALID_COMMAND",
-            "audit event ID is already bound to another control event",
-          );
-      } else {
-        const updated = await client.query(
-          `UPDATE control_fences SET last_control_event_id = $3
-           WHERE scope_type = $1 AND scope_id = $2
-             AND fence_version = $4 AND state = $5`,
-          [
-            request.scopeType,
-            request.scopeId,
-            duplicateEventId,
-            currentVersion,
-            current.state,
-          ],
-        );
-        if (updated.rowCount !== 1)
-          throw new ControlFenceError(
-            "CONTROL_TARGET_NOT_FOUND",
-            "control fence changed while auditing duplicate control",
-          );
-        await appendControlAudit(
-          client,
-          request,
-          { ...current, last_control_event_id: duplicateEventId },
+      const updated = await client.query(
+        `UPDATE control_fences SET last_control_event_id = $3
+         WHERE scope_type = $1 AND scope_id = $2
+           AND fence_version = $4 AND state = $5`,
+        [
+          request.scopeType,
+          request.scopeId,
+          request.audit.eventId,
+          currentVersion,
           current.state,
+        ],
+      );
+      if (updated.rowCount !== 1)
+        throw new ControlFenceError(
+          "CONTROL_TARGET_NOT_FOUND",
+          "control fence changed while auditing duplicate control",
         );
-      }
+      await appendControlAudit(
+        client,
+        request,
+        { ...current, last_control_event_id: request.audit.eventId },
+        current.state,
+      );
       return {
         scopeType: current.scope_type,
         scopeId: current.scope_id,
@@ -1036,12 +1050,6 @@ export const changeControlFence = async (
         changed: false,
       };
     }
-    const nextState: ControlState =
-      request.scopeType === "SYSTEM"
-        ? request.command === "PAUSE"
-          ? "PAUSED"
-          : "ACTIVE"
-        : "REVOKED";
     const updated = await client.query<ControlRow>(
       `UPDATE control_fences
        SET fence_version = fence_version + 1,
@@ -1053,8 +1061,8 @@ export const changeControlFence = async (
       [
         request.scopeType,
         request.scopeId,
-        nextState,
-        `${request.audit.eventId}:fence:${currentVersion + 1}`,
+        requestedState,
+        request.audit.eventId,
       ],
     );
     const next = updated.rows[0];
@@ -1075,6 +1083,7 @@ export const changeControlFence = async (
       request,
       Number(next.fence_version),
       next.state,
+      request.audit.eventId,
     );
     return {
       scopeType: next.scope_type,

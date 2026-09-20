@@ -148,8 +148,8 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-033 | response-loss false failure/release | PASS / ACCEPTED for Phase-2 local boundary | exact-byte broadcast, DB release/recovery fence and crash-resume orchestration |
 | TM-034 | receipt/cross-operation substitution | PASS / ACCEPTED for Phase-2 local boundary | P2-05C/P2-06 transaction, receipt, log, operation, reservation, fixture, auth and legacy-evidence mismatch coverage |
 | TM-035 | local-chain reset confusion | PASS / ACCEPTED for Phase-2 local boundary | genesis/fixture/deployment/code fingerprints plus P2-03/P2-06 fixture-bound evidence |
-| TM-036 | control after signing before send / alternate send gateway | PARTIAL LOCALLY / P3-02 | `0027` signed/no-attempt quarantine and STARTED-first preservation pass in DB; sole-`STARTED`-gateway proof remains P3-03 |
-| TM-037 | post-send control blocks recovery | PLANNED | P3-03/04 immutable-attempt reconciliation proof |
+| TM-036 | control after signing before send / alternate send gateway | PARTIAL LOCALLY / P3-02 | `0027` signed/no-attempt quarantine, all five attempt-status audit cases, and replay-resistant controls pass in DB; sole-`STARTED`-gateway proof remains P3-03 |
+| TM-037 | post-send control blocks recovery | PARTIAL LOCALLY / P3-02 | `0028` allows exact ACCEPTED-attempt reconciliation after a control invalidation; P3-03/04 still own STARTED crash recovery, full lease fencing, and concurrency proof |
 | TM-038 | signer/control lock inversion | PASS LOCALLY | P3-01 canonical-order two-winner PostgreSQL concurrency proof; chain freshness during the wait remains open under P3-F04A |
 | TM-039 | stale recovery worker/app-clock skew | PLANNED | P3-04 SQL DB-time lease/version resolution proof |
 
@@ -158,7 +158,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | Packet | Status | Required evidence before PASS |
 | --- | --- | --- |
 | P3-01 pre-sign authority transaction and binding | PASS / MAX REVIEW + EXACT-SHA CI/SECRET SCAN PASS | `0026`; candidate `404837db138ad1bd5c3aceaff6bae67652d5ed01`; CI run `35485643373`, Secret Scan `35485643343`; atomic fence-first path; shared Anvil mutation lease; final freshness sample after lease acquisition; check 21 repo + 361 package tests, DB 137/137, concurrency 18/18, invariants 7/7, signer/execution 52/52, contracts 10/10, chain 10/10, E2E 1/1, fault 160/160, adversarial 188/188; live checkpoint/restart proof |
-| P3-02 signed-unbroadcast lifecycle/control | IMPLEMENTED LOCALLY / EXACT-SHA REVIEW PENDING | `0027`; signed/no-attempt quarantine retains value and prevents send/release; existing attempts stay unchanged; duplicate control audit is idempotent; static check, DB 137/137 (execution evidence 45/45), concurrency 18/18 |
+| P3-02 signed-unbroadcast lifecycle/control | IMPLEMENTED LOCALLY / EXACT-SHA REVIEW PENDING | `0027`, `0028`; signed/no-attempt quarantine retains value and prevents send/release; exact accepted-attempt recovery after control, replay-resistant request IDs, and audit coverage for all attempt states; static check, DB 144/144 (execution evidence 52/52), concurrency 18/18 |
 | P3-03 send commit + UNKNOWN/recovery integration | PLANNED | control-before/after `STARTED`; crash/response-loss; one attempt; later fence change cannot block exact reconciliation |
 | P3-04 control/recovery concurrency fencing | PLANNED | DB-time lease expiry/takeover; signed-no-attempt exact release; concurrent retry/control/recovery; one economic effect |
 | P3-05 adversarial/fault matrix | PLANNED | P3-F01–P3-F19; owner/autonomous parity; replay/substitution/leakage/public-boundary refusal |
@@ -204,7 +204,7 @@ The inherited Vitest exit-135 event was not reproduced after integration. The tw
 | Scope | Current evidence |
 | --- | --- |
 | Broadcast | `adapters/local-anvil/test/broadcast-core.test.ts` — 12/12 focused local: canonical signed-byte hash binding, mutation/unrelated/malformed rejection before sender, matching acceptance, CONFLICT, UNKNOWN and conservative stale-nonce classification |
-| Reconciliation orchestration and broadcast-fence races | Historical P2-05 evidence: `tests/db/execution-evidence.test.ts` — 32/32 focused local. Current P3-02 suite: 45/45, including deterministic signed-control-before-STARTED and STARTED-first/control-waits cases; direct release/expiry after signed quarantine is rejected. |
+| Reconciliation orchestration and broadcast-fence races | Historical P2-05 evidence: `tests/db/execution-evidence.test.ts` — 32/32 focused local. P3-02 adds signed-control-before-STARTED, STARTED-first/control-waits, exact ACCEPTED-attempt reconciliation after control, persistent control request idempotency, and all five attempt-status audit cases. |
 | Migration | `0023_p205_broadcast_safety.sql` is additive and forward-only; prior migrations are unchanged. It adds CONFLICT, exact legacy-evidence binding, signed-lifecycle canonical authorization, and the send-attempt release fence |
 | Full local gates | PASS — `npm ci`; `npm run check` 21 repository + 292 Vitest; audit 0 vulnerabilities; Forge 10/10; DB 104/104; concurrency 18/18; invariants 7/7; chain 10/10 |
 | P2-06A compatibility | PASS on a disposable, unmerged compatibility branch — `npm run test:fault` 64/64, including deterministic forward-then-drop coverage |
