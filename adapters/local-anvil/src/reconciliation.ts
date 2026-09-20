@@ -133,6 +133,7 @@ const loadBroadcastBinding = async (
       "broadcast attempt does not match reconciliation authority",
     );
   if (
+    row.status !== "STARTED" &&
     row.status !== "ACCEPTED" &&
     row.status !== "UNKNOWN" &&
     row.status !== "CONFLICT"

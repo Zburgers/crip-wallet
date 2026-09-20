@@ -581,7 +581,7 @@ const markOperationSigned = async (operationId = "op_1"): Promise<void> => {
 const reconciliationFixture = async (
   receiptStatus: "success" | "reverted" = "success",
   hooks?: ReconciliationInput["barriers"],
-  attemptStatus: "ACCEPTED" | "UNKNOWN" | "CONFLICT" = "ACCEPTED",
+  attemptStatus: "STARTED" | "ACCEPTED" | "UNKNOWN" | "CONFLICT" = "ACCEPTED",
 ): Promise<ReconciliationInput> => {
   const envelopeHash = await prepareAuthorizedV2();
   const envelope = {
@@ -616,24 +616,25 @@ const reconciliationFixture = async (
        'approval_1:authorization', $2, $3)`,
     [envelopeHash, fixtureId, hash],
   );
-  await pool.query(
-    `UPDATE broadcast_attempts SET status = $1, response_transaction_hash = $2,
-      classification_reason = $3, completed_at = now()
-     WHERE attempt_id = 'attempt_1'`,
-    [
-      attemptStatus,
-      attemptStatus === "ACCEPTED"
-        ? hash
-        : attemptStatus === "CONFLICT"
-          ? `0x${"c".repeat(64)}`
-          : null,
-      attemptStatus === "ACCEPTED"
-        ? "MATCHING_RETURNED_TRANSACTION_HASH"
-        : attemptStatus === "CONFLICT"
-          ? "CONTRADICTORY_RETURNED_HASH"
-          : "TRANSPORT_OR_RESPONSE_UNCERTAIN",
-    ],
-  );
+  if (attemptStatus !== "STARTED")
+    await pool.query(
+      `UPDATE broadcast_attempts SET status = $1, response_transaction_hash = $2,
+        classification_reason = $3, completed_at = now()
+       WHERE attempt_id = 'attempt_1'`,
+      [
+        attemptStatus,
+        attemptStatus === "ACCEPTED"
+          ? hash
+          : attemptStatus === "CONFLICT"
+            ? `0x${"c".repeat(64)}`
+            : null,
+        attemptStatus === "ACCEPTED"
+          ? "MATCHING_RETURNED_TRANSACTION_HASH"
+          : attemptStatus === "CONFLICT"
+            ? "CONTRADICTORY_RETURNED_HASH"
+            : "TRANSPORT_OR_RESPONSE_UNCERTAIN",
+      ],
+    );
   const expectation: ChainEvidenceExpectation = {
     operationId: "op_1",
     reservationId: "res_1",
@@ -2766,6 +2767,60 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         {
           current_state: "RECONCILED",
           status: "FINALIZED",
+          invalidations: 1,
+          effects: 1,
+        },
+      ],
+    });
+  });
+
+  test("recovers exact mined evidence for a STARTED attempt after a crash", async () => {
+    const input = await reconciliationFixture("success", undefined, "STARTED");
+    await pool.query(
+      "UPDATE budget_accounts SET available = 80, reserved = 20 WHERE budget_id = 'budget_1'",
+    );
+    await changeControlFence(pool, {
+      scopeType: "SYSTEM",
+      scopeId: "system",
+      command: "PAUSE",
+      audit: audit("op_1", "control-after-started-attempt-crash"),
+    });
+
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "FINALIZED", finalizedSpendAtomic: "10" },
+    });
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "FINALIZED" },
+    });
+    await expect(
+      pool.query<{
+        current_state: string;
+        status: string;
+        attempt_status: string;
+        invalidations: number;
+        effects: number;
+      }>(
+        `SELECT o.current_state, r.status, a.status AS attempt_status,
+                (SELECT count(*)::int FROM authorization_invalidations ai
+                 WHERE ai.operation_id = o.operation_id) AS invalidations,
+                (SELECT count(*)::int FROM execution_economic_effects effect
+                 WHERE effect.operation_id = o.operation_id) AS effects
+         FROM operations o JOIN budget_reservations r USING (operation_id)
+         JOIN broadcast_attempts a USING (operation_id)
+         WHERE o.operation_id = 'op_1'`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          current_state: "RECONCILED",
+          status: "FINALIZED",
+          attempt_status: "STARTED",
           invalidations: 1,
           effects: 1,
         },
