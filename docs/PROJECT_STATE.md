@@ -105,7 +105,7 @@ audited lease renewal. DB-time claim/renew/final-resolution checks bind the
 active credential and lease generation; final resolution rolls back all
 state/account/audit writes if its live-lease update fails. Local validation
 passes: `npm run check` (21 repository + 363 package tests), `npm run test:db`
-(154/154 across six files), and `npm audit --audit-level=high` (no high or
+(155/155 across six files), and `npm audit --audit-level=high` (no high or
 critical findings; two moderate Vitest advisories remain). Exact-SHA MAX review
 and protected CI/Secret Scan are pending. P3-05 and P3-06 remain gated.
 

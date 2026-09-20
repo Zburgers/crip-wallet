@@ -1466,6 +1466,36 @@ export const replaceExecutionEnvelope = async (
       identity.agent_id,
       identity.policy_id,
     );
+    const evidenceBindings = await client.query<{
+      authorization_id: string;
+      policy_decision_id: string;
+    }>(
+      `SELECT authorization_id, policy_decision_id
+       FROM authorization_evidence
+       WHERE operation_id = $1
+       ORDER BY authorization_id`,
+      [request.operationId],
+    );
+    for (const binding of evidenceBindings.rows) {
+      const decision = await client.query(
+        `SELECT decision_id FROM policy_decisions
+         WHERE operation_id = $1 AND decision_id = $2 FOR UPDATE`,
+        [request.operationId, binding.policy_decision_id],
+      );
+      if (decision.rowCount !== 1)
+        throw new ApprovalError(
+          "AUTHORIZATION_STATE_INVALID",
+          "authorization policy decision is missing",
+        );
+    }
+    const evidenceResult = await client.query<{ approval_id: string }>(
+      `SELECT approval_id
+       FROM authorization_evidence
+       WHERE operation_id = $1
+       ORDER BY authorization_id
+       FOR UPDATE`,
+      [request.operationId],
+    );
     const operationResult = await client.query<{
       current_state: string;
       reservation_id: string;
@@ -1514,14 +1544,6 @@ export const replaceExecutionEnvelope = async (
        FOR UPDATE`,
       [request.operationId],
     );
-    const evidenceResult = await client.query<{ approval_id: string }>(
-      `SELECT approval_id
-       FROM authorization_evidence
-       WHERE operation_id = $1
-       FOR UPDATE`,
-      [request.operationId],
-    );
-
     if (operation.current_state === "AWAITING_APPROVAL") {
       if (
         activeResult.rowCount !== 1 ||

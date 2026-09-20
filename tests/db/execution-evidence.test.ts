@@ -19,8 +19,10 @@ import {
   changeControlFence,
   consumeApproval,
   createApprovalRequest,
+  replaceExecutionEnvelope,
 } from "@crip/approvals";
 import {
+  authorizeReservation,
   applyMigrations,
   claimRecoveryLease,
   expireReservation,
@@ -31,7 +33,7 @@ import {
   type AuditContext,
   type BroadcastEvidence,
 } from "@crip/budget-ledger";
-import { type ExecutionEnvelopeV2 } from "@crip/schemas";
+import { attachEnvelopeHash, type ExecutionEnvelopeV2 } from "@crip/schemas";
 import {
   hashExecutableCandidate,
   hashSimulationEvidence,
@@ -1506,6 +1508,125 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         "DROP FUNCTION IF EXISTS test_block_policy_revoke_lock_order()",
       );
       await Promise.all([controlPool.end(), recoveryPool.end()]);
+    }
+  });
+
+  test("authorized envelope replacement locks authorization before operation", async () => {
+    await prepareAuthorizedV2();
+    await pool.query(
+      "UPDATE budget_accounts SET available = 90, reserved = 10 WHERE budget_id = 'budget_1'",
+    );
+    const replacementApplicationName = "p3-replacement-auth-lock-order";
+    const authorizationApplicationName = "p3-authorization-auth-lock-order";
+    const replacementPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: replacementApplicationName,
+    });
+    const authorizationPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: authorizationApplicationName,
+    });
+    const blocker = await pool.connect();
+    const replacement = attachEnvelopeHash({
+      ...v2Envelope("op_1", "res_1"),
+      envelopeId: "env_op_1_2",
+      revision: 2,
+      supersedesEnvelopeId: "env_op_1_1",
+    });
+    let replacementResult:
+      | Promise<
+          | {
+              status: "fulfilled";
+              value: Awaited<ReturnType<typeof replaceExecutionEnvelope>>;
+            }
+          | { status: "rejected"; reason: unknown }
+        >
+      | undefined;
+    let authorizationResult:
+      | Promise<
+          | {
+              status: "fulfilled";
+              value: Awaited<ReturnType<typeof authorizeReservation>>;
+            }
+          | { status: "rejected"; reason: unknown }
+        >
+      | undefined;
+
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query(
+        "SELECT operation_id FROM operations WHERE operation_id = 'op_1' FOR UPDATE",
+      );
+      replacementResult = replaceExecutionEnvelope(replacementPool, {
+        operationId: "op_1",
+        envelope: replacement,
+        reason: "simulation changed calldata",
+        audit: audit("op_1", "authorized-replacement-lock-order"),
+      }).then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      );
+      expect(await waitForDatabaseBlock(replacementApplicationName)).toBe(true);
+
+      authorizationResult = authorizeReservation(authorizationPool, {
+        reservationId: "res_1",
+        audit: audit("op_1", "authorization-replacement-lock-order"),
+      }).then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      );
+      expect(await waitForDatabaseBlock(authorizationApplicationName)).toBe(
+        true,
+      );
+      await blocker.query("COMMIT");
+
+      const [replacementOutcome, authorizationOutcome] = await Promise.all([
+        replacementResult,
+        authorizationResult,
+      ]);
+      expect(replacementOutcome.status).toBe("fulfilled");
+      expect(authorizationOutcome).toMatchObject({
+        status: "rejected",
+        reason: { code: "INVALID_RESERVATION_TRANSITION" },
+      });
+      await expect(
+        pool.query<{
+          current_state: string;
+          reservation_status: string;
+          envelope_count: number;
+        }>(
+          `SELECT o.current_state, r.status AS reservation_status,
+                  (SELECT count(*)::int FROM execution_envelopes e
+                   WHERE e.operation_id = o.operation_id) AS envelope_count
+           FROM operations o JOIN budget_reservations r USING (operation_id)
+           WHERE o.operation_id = 'op_1'`,
+        ),
+      ).resolves.toMatchObject({
+        rows: [
+          {
+            current_state: "REVALIDATION_REQUIRED",
+            reservation_status: "RELEASED",
+            envelope_count: 2,
+          },
+        ],
+      });
+    } finally {
+      await blocker.query("ROLLBACK").catch(() => undefined);
+      await Promise.allSettled(
+        [replacementResult, authorizationResult].filter(Boolean),
+      );
+      blocker.release();
+      await Promise.all([replacementPool.end(), authorizationPool.end()]);
     }
   });
 
