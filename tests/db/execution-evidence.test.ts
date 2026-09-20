@@ -23,6 +23,7 @@ import {
 import {
   applyMigrations,
   claimRecoveryLease,
+  expireReservation,
   markReservationBroadcast,
   releaseReservation,
   resolveRecovery,
@@ -863,9 +864,9 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     const rows = await pool.query<{ filename: string }>(
       "SELECT filename FROM schema_migrations ORDER BY filename",
     );
-    expect(rows.rows).toHaveLength(29);
+    expect(rows.rows).toHaveLength(30);
     expect(rows.rows.at(-1)?.filename).toBe(
-      "0029_ws005_rejected_attempt_recovery_guard.sql",
+      "0030_ws005_invalidated_rejected_release_guard.sql",
     );
   });
 
@@ -2617,7 +2618,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     });
   });
 
-  test("rejected attempts cannot re-enter broadcast after control invalidation", async () => {
+  test("invalidated rejected attempts cannot advance or release", async () => {
     await broadcastStartFixture();
     const signed = await pool.query<{ envelope_hash: string }>(
       "SELECT envelope_hash FROM signed_transactions WHERE signed_transaction_id = 'signed_1'",
@@ -2636,12 +2637,21 @@ describe.sequential("WS-004 execution evidence persistence", () => {
        SET status = 'REJECTED', classification_reason = 'not transmitted', completed_at = now()
        WHERE attempt_id = 'attempt_rejected_control'`,
     );
+    await pool.query(
+      "UPDATE budget_accounts SET available = 80, reserved = 20 WHERE budget_id = 'budget_1'",
+    );
     await changeControlFence(pool, {
       scopeType: "SYSTEM",
       scopeId: "system",
       command: "PAUSE",
       audit: audit("op_1", "control-after-rejected-attempt"),
     });
+    const balanceBefore = await pool.query<{
+      available: string;
+      reserved: string;
+    }>(
+      "SELECT available::text, reserved::text FROM budget_accounts WHERE budget_id = 'budget_1'",
+    );
 
     const evidence: BroadcastEvidence = {
       transactionHash: broadcastHash,
@@ -2668,8 +2678,51 @@ describe.sequential("WS-004 execution evidence persistence", () => {
          WHERE reservation_id = 'res_1'`,
       ),
     ).rejects.toThrow(
-      "rejected broadcast attempt cannot be recovered after control",
+      "invalidated rejected broadcast attempt cannot be advanced or released",
     );
+    await expect(
+      releaseReservation(pool, {
+        reservationId: "res_1",
+        audit: audit("op_1", "release-rejected-attempt-after-control"),
+      }),
+    ).rejects.toThrow(
+      "invalidated rejected broadcast attempt cannot be advanced or released",
+    );
+    await pool.query(
+      "UPDATE budget_reservations SET expires_at = now() - interval '1 second' WHERE reservation_id = 'res_1'",
+    );
+    await expect(
+      expireReservation(pool, {
+        reservationId: "res_1",
+        now: new Date(),
+        audit: audit("op_1", "expire-rejected-attempt-after-control"),
+      }),
+    ).rejects.toThrow(
+      "invalidated rejected broadcast attempt cannot be advanced or released",
+    );
+    await expect(
+      pool.query(
+        `UPDATE budget_reservations SET status = 'RELEASED'
+         WHERE reservation_id = 'res_1'`,
+      ),
+    ).rejects.toThrow(
+      "invalidated rejected broadcast attempt cannot be advanced or released",
+    );
+    await expect(
+      pool.query(
+        `UPDATE budget_reservations SET status = 'EXPIRED'
+         WHERE reservation_id = 'res_1'`,
+      ),
+    ).rejects.toThrow(
+      "invalidated rejected broadcast attempt cannot be advanced or released",
+    );
+    const balanceAfter = await pool.query<{
+      available: string;
+      reserved: string;
+    }>(
+      "SELECT available::text, reserved::text FROM budget_accounts WHERE budget_id = 'budget_1'",
+    );
+    expect(balanceAfter.rows).toEqual(balanceBefore.rows);
     await expect(
       pool.query(
         `SELECT r.status, a.status AS attempt_status,

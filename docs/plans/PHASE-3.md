@@ -73,7 +73,8 @@ Accepted entry assumptions:
   forward-only migrations rather than changing its checksum. P3-02 adds
   `0027_ws005_signed_unbroadcast_control.sql` and follow-ups
   `0028_ws005_existing_attempt_recovery.sql` and
-  `0029_ws005_rejected_attempt_recovery_guard.sql`.
+  `0029_ws005_rejected_attempt_recovery_guard.sql` and
+  `0030_ws005_invalidated_rejected_release_guard.sql`.
 
 ## P3-00 actual failure and race model
 
@@ -275,6 +276,8 @@ Forward-only migrations:
   even after control changes.
 - `0029_ws005_rejected_attempt_recovery_guard.sql` — prevent a proven no-send
   `REJECTED` attempt from re-entering broadcast/finalization after control.
+- `0030_ws005_invalidated_rejected_release_guard.sql` — prevent direct release
+  and expiry of a control-invalidated `REJECTED` attempt.
 
 Required changes:
 
@@ -563,22 +566,24 @@ Acceptance:
 - DB tests prove all three invalidation-trigger branches: unsigned release,
   signed/no-attempt quarantine, and existing-attempt preservation.
 
-Local implementation uses additive migrations `0027` through `0029`. Control
+Local implementation uses additive migrations `0027` through `0030`. Control
 changes quarantine signed work with no attempt as `DISPUTED` while retaining
 its reservation. Existing attempts remain unchanged and receive linked
 invalidation audits; exact `ACCEPTED`/`UNKNOWN` chain evidence can reconcile
-after control, while a `REJECTED` no-send attempt cannot re-enter broadcast.
-The `STARTED` writer locks
+after control, while a `REJECTED` no-send attempt cannot re-enter broadcast or
+be directly released or expired. The `STARTED` writer locks
 the same fence prefix, rejects invalidated authority, and creates a
 reservation-row conflict with a serializable control snapshot. Generic
-`FAILED` recovery and direct release/expiry cannot release signed work without
-an attempt. Control request IDs remain idempotent across later state changes,
-and `CONFLICT` attempts remain auditable.
+`FAILED` recovery and direct release/expiry cannot release invalidated signed
+work without an attempt or with a `REJECTED` attempt. Control request IDs
+remain idempotent across later state changes, and `CONFLICT` attempts remain
+auditable.
 
-Local evidence: `npm run check:static`; `npm run test:db` 145/145 across six
-files, including `execution-evidence.test.ts` 53/53; and
-`npm run test:concurrency` 18/18. Exact-SHA MAX review and remote CI/Secret Scan
-remain pending for the revised P3-02 candidate.
+Local evidence: `npm run check` passed (21 repository tests and 361 package
+tests), `npm run test:db` passed 145/145 across six files including
+`execution-evidence.test.ts` 53/53, `npm run test:concurrency` passed 18/18,
+and `npm run test:invariants` passed 7/7. Exact-SHA MAX review and remote
+CI/Secret Scan remain pending for the revised P3-02 candidate.
 
 ### P3-03 - Send commit, broadcast uncertainty, and durable recovery integration
 
