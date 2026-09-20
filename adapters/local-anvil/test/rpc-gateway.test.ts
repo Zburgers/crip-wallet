@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { gzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -367,51 +368,136 @@ describe("Anvil RPC mutation gateway", () => {
     }
   });
 
-  it("poisons the gateway when a write cannot be snapshotted", async () => {
+  it("rejects a mutation admitted before a snapshot failure poisons the gateway", async () => {
     const directory = await mkdtemp(join(tmpdir(), "crip-rpc-gateway-"));
     const poisonPath = join(directory, "poisoned");
-    await writeFile(join(directory, "anvil.lock"), "", { mode: 0o600 });
-    let failSnapshot = false;
+    const lockPath = join(directory, "anvil.lock");
+    const originalPath = process.env.PATH;
+    const originalTestFlockLog = process.env.CW_TEST_FLOCK_LOG;
+    const originalTestFlockPath = process.env.CW_TEST_FLOCK_PATH;
+    const originalTestFlockRelease = process.env.CW_TEST_FLOCK_RELEASE;
+    const realFlockPath = originalPath
+      ?.split(delimiter)
+      .map((path) => join(path, "flock"))
+      .find((path) => existsSync(path));
+    if (!realFlockPath) throw new Error("flock executable not found on PATH");
+    const wrapperDirectory = join(directory, "bin");
+    const flockLogPath = join(directory, "flock-starts");
+    const flockReleasePath = join(directory, "release-second-flock");
+    await mkdir(wrapperDirectory);
+    // Hold the second lease request while the first request poisons the gateway.
+    await writeFile(
+      join(wrapperDirectory, "flock"),
+      '#!/bin/sh\nprintf x >> "$CW_TEST_FLOCK_LOG"\nif [ "$(wc -c < "$CW_TEST_FLOCK_LOG")" -eq 2 ]; then\n  while [ ! -f "$CW_TEST_FLOCK_RELEASE" ]; do sleep 0.01; done\nfi\nexec "$CW_TEST_FLOCK_PATH" "$@"\n',
+      { mode: 0o700 },
+    );
+    await writeFile(lockPath, "", { mode: 0o600 });
+    let signalSnapshotFailure!: () => void;
+    let releaseSnapshotFailure!: () => void;
+    const snapshotFailureStarted = new Promise<void>((resolve) => {
+      signalSnapshotFailure = resolve;
+    });
+    const snapshotFailureRelease = new Promise<void>((resolve) => {
+      releaseSnapshotFailure = resolve;
+    });
     let dumpCount = 0;
-    const upstream = await startFakeUpstream((method) => {
+    const upstream = await startFakeUpstream(async (method) => {
       if (method === "eth_chainId") return "0x7a69";
       if (method === "anvil_dumpState") {
-        dumpCount += 1;
-        if (failSnapshot && dumpCount > 1) throw new Error("snapshot failed");
+        if (++dumpCount === 2) {
+          signalSnapshotFailure();
+          await snapshotFailureRelease;
+          throw new Error("snapshot failed");
+        }
         return stateBlob;
       }
       return true;
     });
     const gateway = await startAnvilRpcGateway({
       upstreamUrl: upstream.url,
-      lockPath: join(directory, "anvil.lock"),
+      lockPath,
       snapshotPath: join(directory, "state.json"),
       poisonPath,
     });
+    let firstWrite: ReturnType<typeof rpc> | undefined;
+    let queuedWrite: ReturnType<typeof rpc> | undefined;
+
+    const waitForFlockStarts = async (expected: number) => {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        try {
+          if ((await readFile(flockLogPath, "utf8")).length >= expected) return;
+        } catch {
+          // The wrapped flock process has not logged its invocation yet.
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      throw new Error("timed out waiting for mutation lock requests");
+    };
 
     try {
-      failSnapshot = true;
-      await expect(
-        rpc(gateway.url, {
-          jsonrpc: "2.0",
-          id: 8,
-          method: "anvil_setBalance",
-          params: ["0x0000000000000000000000000000000000000001", "0x1"],
-        }),
-      ).resolves.toMatchObject({ body: { error: { code: -32000 } } });
+      process.env.PATH = `${wrapperDirectory}${delimiter}${originalPath ?? ""}`;
+      process.env.CW_TEST_FLOCK_LOG = flockLogPath;
+      process.env.CW_TEST_FLOCK_PATH = realFlockPath;
+      process.env.CW_TEST_FLOCK_RELEASE = flockReleasePath;
+      firstWrite = rpc(gateway.url, {
+        jsonrpc: "2.0",
+        id: 8,
+        method: "anvil_setBalance",
+        params: ["0x0000000000000000000000000000000000000001", "0x1"],
+      });
+      await snapshotFailureStarted;
+      queuedWrite = rpc(gateway.url, {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "anvil_setBalance",
+        params: ["0x0000000000000000000000000000000000000002", "0x1"],
+      });
+      await waitForFlockStarts(2);
+      releaseSnapshotFailure();
+      await expect(firstWrite).resolves.toMatchObject({
+        status: 503,
+        body: { error: { code: -32000 } },
+      });
+      await writeFile(flockReleasePath, "");
+      await expect(queuedWrite).resolves.toMatchObject({
+        status: 503,
+        body: { error: { code: -32000 } },
+      });
       await expect(readFile(poisonPath, "utf8")).resolves.toContain("snapshot");
-      const callsBeforeRead = [...upstream.calls];
+      expect(
+        upstream.calls.filter((method) => method === "anvil_setBalance"),
+      ).toHaveLength(1);
+      const callsAfterFailure = [...upstream.calls];
       expect((await fetch(`${gateway.url}/healthz`)).status).toBe(503);
       await expect(
         rpc(gateway.url, {
           jsonrpc: "2.0",
-          id: 9,
+          id: 10,
           method: "eth_chainId",
           params: [],
         }),
       ).resolves.toMatchObject({ status: 503 });
-      expect(upstream.calls).toEqual(callsBeforeRead);
+      expect(upstream.calls).toEqual(callsAfterFailure);
     } finally {
+      releaseSnapshotFailure();
+      await writeFile(flockReleasePath, "").catch(() => {});
+      await Promise.allSettled(
+        [firstWrite, queuedWrite].filter(
+          (request): request is ReturnType<typeof rpc> => request !== undefined,
+        ),
+      );
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+      if (originalTestFlockLog === undefined)
+        delete process.env.CW_TEST_FLOCK_LOG;
+      else process.env.CW_TEST_FLOCK_LOG = originalTestFlockLog;
+      if (originalTestFlockPath === undefined)
+        delete process.env.CW_TEST_FLOCK_PATH;
+      else process.env.CW_TEST_FLOCK_PATH = originalTestFlockPath;
+      if (originalTestFlockRelease === undefined)
+        delete process.env.CW_TEST_FLOCK_RELEASE;
+      else process.env.CW_TEST_FLOCK_RELEASE = originalTestFlockRelease;
       await gateway.close();
       await upstream.close();
       await rm(directory, { recursive: true, force: true });

@@ -352,6 +352,7 @@ export const startAnvilRpcGateway = async ({
       }
 
       const execute = async () => {
+        if (poisoned) throw new Error("local Anvil RPC is unavailable");
         try {
           const result = await forward({ ...body, params });
           if (isMutation) await persistState();
