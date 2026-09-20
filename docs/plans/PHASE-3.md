@@ -660,10 +660,13 @@ authorization and signed transaction, the matching control invalidation, and
 zero broadcast attempts/economic effects before atomically reconciling the
 operation, releasing the reservation, resolving the lease, and appending the
 recovery audits. Local gates pass: `npm run check` (21 repository tests and
-363 package tests) and `npm run test:db` (152/152 across six files), including
+363 package tests) and `npm run test:db` (154/154 across six files), including
 barrier-based duplicate recovery, lease-expiry rollback, renewal, takeover,
-and send-capable no-send rejection. Fresh exact-SHA MAX review and protected
-CI/Secret Scan remain pending; P3-05 has not started.
+send-capable no-send rejection, and control/recovery lock-order races. The
+transition path locks authorization before operation; recovery row reads use
+key-share on policy so policy revocation does not invert that order. Fresh
+exact-SHA MAX review and protected CI/Secret Scan remain pending; P3-05 has not
+started.
 
 ### P3-05 - Adversarial, replay, substitution, and fault matrix
 

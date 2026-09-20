@@ -431,7 +431,8 @@ const getReservationForUpdate = async (
      JOIN wallets w ON w.wallet_id = o.wallet_id
      JOIN policies p ON p.policy_id = o.policy_id
      WHERE r.reservation_id = $1
-     FOR UPDATE OF r, b, o, i, a, w, p`,
+     FOR UPDATE OF r, b, i, a, w
+     FOR KEY SHARE OF p`,
     [reservationId],
   );
   const row = result.rows[0];
@@ -471,6 +472,49 @@ const lockReservationOperation = async (
       `reservation not found: ${reservationId}`,
     );
   await lockOperationForRecovery(client, operationId);
+};
+
+const lockReservationAuthorization = async (
+  client: PoolClient,
+  reservationId: string,
+): Promise<void> => {
+  const bindings = await client.query<{
+    authorization_id: string;
+    operation_id: string;
+    policy_decision_id: string;
+  }>(
+    `SELECT authorization_id, operation_id, policy_decision_id
+     FROM authorization_evidence WHERE reservation_id = $1`,
+    [reservationId],
+  );
+  if (bindings.rows.length > 1)
+    throw new LedgerError(
+      "BUDGET_BINDING_MISMATCH",
+      "reservation has multiple canonical authorization bindings",
+    );
+  const binding = bindings.rows[0];
+  if (!binding) return;
+  const decision = await client.query(
+    `SELECT decision_id FROM policy_decisions
+     WHERE operation_id = $1 AND decision_id = $2 FOR SHARE`,
+    [binding.operation_id, binding.policy_decision_id],
+  );
+  if (decision.rowCount !== 1)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "canonical policy decision is missing",
+    );
+  const authorization = await client.query(
+    `SELECT authorization_id FROM authorization_evidence
+     WHERE authorization_id = $1 AND operation_id = $2 AND reservation_id = $3
+     FOR SHARE`,
+    [binding.authorization_id, binding.operation_id, reservationId],
+  );
+  if (authorization.rowCount !== 1)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "canonical authorization evidence is missing",
+    );
 };
 
 const getReservationBindingForReserve = async (
@@ -755,6 +799,7 @@ const transitionReservation = async (
   ) => Promise<ReservationSnapshot>,
 ): Promise<ReservationSnapshot> =>
   withSerializableTransaction(pool, async (client) => {
+    await lockReservationAuthorization(client, input.reservationId);
     await lockReservationOperation(client, input.reservationId);
     const binding = await getReservationForUpdate(client, input.reservationId);
     assertAuditCorrelation(input.audit, binding.correlation);

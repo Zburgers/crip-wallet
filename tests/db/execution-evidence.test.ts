@@ -800,7 +800,10 @@ const deferred = () => {
   return { promise, resolve };
 };
 
-const waitForDatabaseBlock = async (applicationName: string): Promise<void> => {
+const waitForDatabaseBlock = async (
+  applicationName: string,
+  isSettled?: () => boolean,
+): Promise<boolean> => {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
     const result = await pool.query<{ blocked: boolean }>(
@@ -811,9 +814,11 @@ const waitForDatabaseBlock = async (applicationName: string): Promise<void> => {
        ) AS blocked`,
       [applicationName],
     );
-    if (result.rows[0]?.blocked) return;
+    if (result.rows[0]?.blocked) return true;
+    if (isSettled?.()) return false;
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
+  if (isSettled?.()) return false;
   throw new Error(`database session did not block: ${applicationName}`);
 };
 
@@ -1255,6 +1260,252 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       finishSigning.resolve();
       await controlPool.end();
       await signerPool.end();
+    }
+  });
+
+  test("control and broadcast evidence serialize authorization before operation", async () => {
+    await broadcastStartFixture();
+    const blocker = await pool.connect();
+    const controlApplicationName = "p3-control-auth-lock-order";
+    const broadcastApplicationName = "p3-broadcast-auth-lock-order";
+    const controlPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: controlApplicationName,
+    });
+    const broadcastPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: broadcastApplicationName,
+    });
+    let control: ReturnType<typeof changeControlFence> | undefined;
+    let broadcast: ReturnType<typeof markReservationBroadcast> | undefined;
+
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query(
+        "SELECT authorization_id FROM authorization_evidence WHERE operation_id = 'op_1' FOR UPDATE",
+      );
+      control = changeControlFence(controlPool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "PAUSE",
+        audit: audit("op_1", "authorization-operation-lock-order"),
+      });
+      await waitForDatabaseBlock(controlApplicationName);
+
+      const evidence: BroadcastEvidence = {
+        transactionHash: broadcastHash,
+        nonce: "7",
+        receiptReference: "receipt:authorization-operation-lock-order",
+      };
+      broadcast = markReservationBroadcast(broadcastPool, {
+        reservationId: "res_1",
+        evidence,
+        audit: componentAudit(
+          "op_1",
+          "authorization-operation-lock-order",
+          signComponentAction(adapterCredential, "broadcast", {
+            reservationId: "res_1",
+            ...evidence,
+          }),
+        ),
+      });
+      await waitForDatabaseBlock(broadcastApplicationName);
+      await blocker.query("COMMIT");
+
+      const [controlResult, broadcastResult] = await Promise.allSettled([
+        control,
+        broadcast,
+      ]);
+      expect(controlResult.status).toBe("fulfilled");
+      if (broadcastResult.status === "rejected")
+        expect(broadcastResult.reason).toMatchObject({
+          code: "INVALID_RESERVATION_TRANSITION",
+        });
+      else expect(broadcastResult.value.status).toBe("BROADCAST");
+      await expect(
+        pool.query<{
+          current_state: string;
+          reservation_status: string;
+          evidence_count: number;
+        }>(
+          `SELECT o.current_state, r.status AS reservation_status,
+                  (SELECT count(*)::int FROM reservation_broadcast_evidence e
+                   WHERE e.reservation_id = r.reservation_id) AS evidence_count
+           FROM operations o JOIN budget_reservations r USING (operation_id)
+           WHERE o.operation_id = 'op_1'`,
+        ),
+      ).resolves.toMatchObject({
+        rows: [
+          {
+            current_state: "DISPUTED",
+            reservation_status: "DISPUTED",
+            evidence_count: broadcastResult.status === "fulfilled" ? 1 : 0,
+          },
+        ],
+      });
+    } finally {
+      await blocker.query("ROLLBACK").catch(() => undefined);
+      await Promise.allSettled([control, broadcast].filter(Boolean));
+      blocker.release();
+      await Promise.all([controlPool.end(), broadcastPool.end()]);
+    }
+  });
+
+  test("policy revocation does not deadlock with recovery lease claim", async () => {
+    await broadcastStartFixture();
+    const blocker = await pool.connect();
+    const controlApplicationName = "p3-control-policy-lock-order";
+    const recoveryApplicationName = "p3-recovery-policy-lock-order";
+    const controlPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: controlApplicationName,
+    });
+    const recoveryPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: recoveryApplicationName,
+    });
+    let controlResult:
+      | Promise<
+          | {
+              status: "fulfilled";
+              value: Awaited<ReturnType<typeof changeControlFence>>;
+            }
+          | { status: "rejected"; reason: unknown }
+        >
+      | undefined;
+    let recoveryResult:
+      | Promise<
+          | {
+              status: "fulfilled";
+              value: Awaited<ReturnType<typeof claimRecoveryLease>>;
+            }
+          | { status: "rejected"; reason: unknown }
+        >
+      | undefined;
+
+    try {
+      await pool.query(`
+        CREATE OR REPLACE FUNCTION test_block_policy_revoke_lock_order()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.status = 'revoked' AND OLD.status IS DISTINCT FROM NEW.status THEN
+            PERFORM pg_advisory_xact_lock(928771005::bigint);
+          END IF;
+          RETURN NEW;
+        END;
+        $$
+      `);
+      await pool.query(`
+        CREATE TRIGGER test_block_policy_revoke_lock_order
+        AFTER UPDATE OF status ON policies
+        FOR EACH ROW EXECUTE FUNCTION test_block_policy_revoke_lock_order()
+      `);
+      await blocker.query("BEGIN");
+      await blocker.query("SELECT pg_advisory_xact_lock(928771005::bigint)");
+      controlResult = changeControlFence(controlPool, {
+        scopeType: "POLICY",
+        scopeId: "policy_1",
+        command: "REVOKE",
+        audit: audit("op_1", "policy-recovery-lock-order"),
+      }).then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      );
+      await waitForDatabaseBlock(controlApplicationName);
+
+      let recoverySettled = false;
+      recoveryResult = claimRecoveryLease(recoveryPool, {
+        attemptId: "attempt_policy_recovery_lock_order",
+        operationId: "op_1",
+        reservationId: "res_1",
+        leaseDurationSeconds: 60,
+        audit: componentAudit(
+          "op_1",
+          "policy-recovery-lock-order",
+          signComponentAction(reconcilerCredential, "recovery.claim", {
+            attemptId: "attempt_policy_recovery_lock_order",
+            operationId: "op_1",
+            reservationId: "res_1",
+            leaseDurationSeconds: 60,
+          }),
+        ),
+      }).then(
+        (value) => {
+          recoverySettled = true;
+          return { status: "fulfilled" as const, value };
+        },
+        (reason: unknown) => {
+          recoverySettled = true;
+          return { status: "rejected" as const, reason };
+        },
+      );
+      const recoveryBlocked = await waitForDatabaseBlock(
+        recoveryApplicationName,
+        () => recoverySettled,
+      );
+      await blocker.query("COMMIT");
+
+      const [control, recovery] = await Promise.all([
+        controlResult,
+        recoveryResult,
+      ]);
+      expect(recoveryBlocked).toBe(false);
+      expect(control.status).toBe("fulfilled");
+      expect(recovery.status).toBe("fulfilled");
+      await expect(
+        pool.query<{
+          current_state: string;
+          reservation_status: string;
+          lease_state: string;
+        }>(
+          `SELECT o.current_state, r.status AS reservation_status,
+                  l.lease_state
+           FROM operations o
+           JOIN budget_reservations r USING (operation_id)
+           JOIN operation_recovery_leases l USING (operation_id)
+           WHERE o.operation_id = 'op_1'`,
+        ),
+      ).resolves.toMatchObject({
+        rows: [
+          {
+            current_state: "DISPUTED",
+            reservation_status: "DISPUTED",
+            lease_state: "ACTIVE",
+          },
+        ],
+      });
+    } finally {
+      await blocker.query("ROLLBACK").catch(() => undefined);
+      if (controlResult || recoveryResult)
+        await Promise.all([controlResult, recoveryResult].filter(Boolean));
+      blocker.release();
+      await pool.query(
+        "DROP TRIGGER IF EXISTS test_block_policy_revoke_lock_order ON policies",
+      );
+      await pool.query(
+        "DROP FUNCTION IF EXISTS test_block_policy_revoke_lock_order()",
+      );
+      await Promise.all([controlPool.end(), recoveryPool.end()]);
     }
   });
 

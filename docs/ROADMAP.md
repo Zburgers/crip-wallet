@@ -36,8 +36,9 @@ guard and canonical recovery for a mined transaction after process death. Its
 fresh exact-SHA GPT-5.6 Luna MAX review passed 9/10 (confidence 0.90, no
 findings); local check, DB 150/150, and Anvil E2E 1/1 pass. Protected exact-SHA
 CI `35498889238` and Secret Scan `35498889228` pass. P3-04 local gates pass
-(`npm run check`: 21 repository + 363 package tests; DB: 152/152). It adds
-DB-time lease renewal/fencing and exact controlled signed-no-attempt recovery.
-Exact-SHA MAX review and protected CI/Secret Scan are pending; P3-05 and P3-06,
-full acceptance, S3 readiness, and any wider network/custody boundary are not
+(`npm run check`: 21 repository + 363 package tests; DB: 154/154). It adds
+DB-time lease renewal/fencing, exact controlled signed-no-attempt recovery,
+and lock-order race coverage for control, broadcast, and recovery. Exact-SHA MAX
+review and protected CI/Secret Scan are pending; P3-05 and P3-06, full
+acceptance, S3 readiness, and any wider network/custody boundary are not
 claimed.
