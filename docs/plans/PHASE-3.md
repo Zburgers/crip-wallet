@@ -1,6 +1,6 @@
 # Phase 3 Plan - WS-005 Integrated Approval Controls
 
-Status: **IN PROGRESS — P3-01 IMPLEMENTED / MAX REVIEW + EXACT-SHA CI PASS; P3-02 IMPLEMENTED LOCALLY / REVIEW PENDING; P3-03–P3-06 NOT STARTED**
+Status: **IN PROGRESS — P3-01 IMPLEMENTED / MAX REVIEW + EXACT-SHA CI PASS; P3-02 PASS / MAX REVIEW 0.92 + EXACT-SHA CI/SECRET SCAN PASS; P3-03–P3-06 NOT STARTED**
 
 Planning branch: `phase-3/ws-005-integrated-controls`
 
@@ -545,7 +545,9 @@ mainnet, real funds, or production custody.
 
 Depends on P3-01.
 
-Status: **IMPLEMENTED LOCALLY / INDEPENDENT REVIEW PENDING**.
+Status: **PASS / FRESH INDEPENDENT MAX REVIEW 0.92 / EXACT-SHA CI + SECRET SCAN PASS** on
+`b95695c720fd68dd1085e371267a35113a05c816` (CI `35493551667`, Secret Scan
+`35493551719`).
 
 Scope:
 
@@ -582,8 +584,9 @@ auditable.
 Local evidence: `npm run check` passed (21 repository tests and 361 package
 tests), `npm run test:db` passed 145/145 across six files including
 `execution-evidence.test.ts` 53/53, `npm run test:concurrency` passed 18/18,
-and `npm run test:invariants` passed 7/7. Exact-SHA MAX review and remote
-CI/Secret Scan remain pending for the revised P3-02 candidate.
+and `npm run test:invariants` passed 7/7. Fresh exact-SHA MAX review and
+protected CI/Secret Scan passed for the reviewed candidate above. P3-03 is
+next; full Phase-3 acceptance is not claimed.
 
 ### P3-03 - Send commit, broadcast uncertainty, and durable recovery integration
 

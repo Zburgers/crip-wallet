@@ -7,7 +7,7 @@
   from protected `main` after the Phase-3 planning PR and ADR-0018 were
   accepted/merged.
 - Planning authority: `docs/plans/PHASE-3.md`
-- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 MAX REVIEW + EXACT-SHA CI PASS; P3-02 IMPLEMENTED LOCALLY / REVIEW PENDING** on
+- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 AND P3-02 MAX REVIEW + EXACT-SHA CI PASS; P3-03 NEXT** on
   `phase-3/ws-005-implementation`; P3-03–P3-06 remain gated.
 - Boundary: loopback Anvil `eip155:31337`, fake ERC-20, disposable local
   identities only. Public networks, real value, and production custody remain

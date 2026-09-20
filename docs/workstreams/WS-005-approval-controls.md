@@ -5,7 +5,7 @@
 Prove that owner approval, replay protection, revocation, pause and worker recovery cannot authorize stale work.
 
 **Phase-1 S1 slice: COMPLETE LOCALLY.**
-**Phase-3 integrated execution slice: IN PROGRESS; P3-01 MAX/CI/SECRET SCAN PASS; P3-02 IMPLEMENTED LOCALLY / EXACT-SHA REVIEW PENDING.**
+**Phase-3 integrated execution slice: IN PROGRESS; P3-01 and P3-02 MAX/CI/SECRET SCAN PASS; P3-03 NEXT.**
 
 ## S1 contract now implemented
 
@@ -54,9 +54,11 @@ lease held from final freshness sampling through signed-evidence commit. The
 gateway is loopback-published, Anvil remains on an internal network without a
 host port, and PostgreSQL is isolated on a separate bridge. P3-01 passed fresh
 MAX review and exact-SHA CI/Secret Scan. P3-02 uses migrations `0027` through
-`0029` for signed/no-attempt quarantine, exact ACCEPTED/UNKNOWN recovery after
-control, REJECTED no-send fencing, and replay-safe, fully auditable control
-requests. Static, DB 145/145, and
-concurrency 18/18 pass locally; the fresh exact-SHA review/CI are pending.
-P3-03 through P3-06 remain gated. Phase 3 remains local Anvil/fake-money only
-and is not fully accepted.
+`0030` for signed/no-attempt quarantine, exact ACCEPTED/UNKNOWN recovery after
+control, REJECTED no-send fencing, blocked direct release/expiry after
+invalidation, and replay-safe, fully auditable control requests. Local checks
+pass (`npm run check` 21 + 361, DB 145/145, concurrency 18/18, invariants 7/7).
+P3-02 passed fresh MAX review at 0.92 and exact-SHA CI/Secret Scan on
+`b95695c720fd68dd1085e371267a35113a05c816`. P3-03 is next; P3-04 through
+P3-06 remain gated. Phase 3 remains local Anvil/fake-money only and is not
+fully accepted.

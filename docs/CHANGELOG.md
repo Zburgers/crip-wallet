@@ -38,14 +38,18 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
   authenticated reconciliation can continue from an exact ACCEPTED/UNKNOWN
   attempt after control changes. Added forward-only migration
   `0029_ws005_rejected_attempt_recovery_guard.sql` so REJECTED no-send attempts
-  cannot re-enter broadcast after control invalidation. Control request IDs
-  remain idempotent across later state changes, and `CONFLICT` attempts can be
-  audited by control.
-- Generic failed recovery and direct release/expiry cannot clear signed work
-  with no attempt. Repeated control commands are audited once per distinct
-  event ID and exact request replay remains idempotent. Static, DB 145/145
-  (execution evidence 53/53), and concurrency 18/18 pass locally; exact-SHA
-  MAX review and remote CI/Secret Scan are pending.
+  cannot re-enter broadcast after control invalidation. Added forward-only
+  migration `0030_ws005_invalidated_rejected_release_guard.sql` to block direct
+  release and expiry for that invalidated attempt. Control request IDs remain
+  idempotent across later state changes, and `CONFLICT` attempts can be audited
+  by control.
+- Generic failed recovery and direct release/expiry cannot clear invalidated
+  signed work with no attempt or with a `REJECTED` attempt. Repeated control
+  commands are audited once per distinct event ID and exact request replay
+  remains idempotent. Local check 21 + 361, DB 145/145 (execution evidence
+  53/53), concurrency 18/18, and invariants 7/7 pass. Fresh MAX review
+  confidence 0.92 and exact-SHA CI/Secret Scan pass on `b95695c720fd68dd1085e371267a35113a05c816`
+  (runs `35493551667` and `35493551719`).
 
 ### Phase 3 planning
 

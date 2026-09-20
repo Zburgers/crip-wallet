@@ -9,7 +9,7 @@ Workstreams are bounded ownership contracts. Gate semantics come from `docs/PROD
 | WS-003 Atomic budget ledger | 1 | COMPLETE / S1 ACCEPTED | WS-002 |
 | WS-005 Approval/controls — S1 slice | 1 prerequisite | COMPLETE / S1 ACCEPTED | WS-002/003 |
 | WS-004 Transaction pipeline/local adapter | 2 | COMPLETE / S2 ACCEPTED / MERGED | Gate S1 — PASS |
-| WS-005 Approval/controls — integrated execution slice | 3 | IN PROGRESS / P3-01 MAX+CI PASS; P3-02 LOCAL / REVIEW PENDING | Stable WS-004 boundary |
+| WS-005 Approval/controls — integrated execution slice | 3 | IN PROGRESS / P3-01 + P3-02 MAX+CI PASS; P3-03 NEXT | Stable WS-004 boundary |
 | WS-006 Interfaces/dashboard | 4 | NOT OPENED | Stable application API |
 | WS-007 Observability/adversarial review | 5 | NOT OPENED | Integrated local product |
 
