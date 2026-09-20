@@ -84,6 +84,48 @@ export const createBroadcastStore = (
     withClient(pool, async (client) => {
       await client.query("BEGIN");
       try {
+        const authority = await client.query<{
+          operation_id: string;
+          reservation_id: string;
+          authorization_id: string;
+          owner_id: string;
+          agent_id: string;
+          policy_id: string;
+        }>(
+          `SELECT s.operation_id, s.reservation_id, s.authorization_id,
+                  w.owner_id, o.agent_id, o.policy_id
+           FROM signed_transactions s
+           JOIN operations o ON o.operation_id = s.operation_id
+           JOIN wallets w ON w.wallet_id = o.wallet_id
+           WHERE s.signed_transaction_id = $1`,
+          [signed.signedTransactionId],
+        );
+        const binding = authority.rows[0];
+        if (
+          !binding ||
+          binding.operation_id !== signed.operationId ||
+          binding.reservation_id !== signed.reservationId ||
+          binding.authorization_id !== signed.authorizationId
+        )
+          throw new Error(
+            "signed transaction does not match durable authority",
+          );
+
+        for (const [scopeType, scopeId] of [
+          ["SYSTEM", "system"],
+          ["OWNER", binding.owner_id],
+          ["AGENT", binding.agent_id],
+          ["POLICY", binding.policy_id],
+        ]) {
+          const fence = await client.query(
+            `SELECT 1 FROM control_fences
+             WHERE scope_type = $1 AND scope_id = $2 FOR UPDATE`,
+            [scopeType, scopeId],
+          );
+          if (fence.rowCount !== 1)
+            throw new Error("current control fence is missing");
+        }
+
         const reservation = await client.query<{ status: string }>(
           `SELECT status FROM budget_reservations
            WHERE reservation_id = $1 FOR UPDATE`,
@@ -104,6 +146,26 @@ export const createBroadcastStore = (
           await client.query("COMMIT");
           return attemptFromRow(existing.rows[0]);
         }
+        const invalidation = await client.query(
+          `SELECT 1 FROM authorization_invalidations
+           WHERE authorization_id = $1`,
+          [signed.authorizationId],
+        );
+        if (invalidation.rowCount !== 0)
+          throw new Error(
+            "broadcast attempt cannot start after authorization invalidation",
+          );
+
+        // Make STARTED and control's locked reservation row conflict so a
+        // serializable control snapshot taken before this commit must retry.
+        const touched = await client.query(
+          `UPDATE budget_reservations SET updated_at = now()
+           WHERE reservation_id = $1 AND status = 'AUTHORIZED'
+           RETURNING reservation_id`,
+          [signed.reservationId],
+        );
+        if (touched.rowCount !== 1)
+          throw new Error("broadcast attempt lost its authorized reservation");
         await client.query(
           `INSERT INTO broadcast_attempts
           (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,

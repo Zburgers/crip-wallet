@@ -71,7 +71,7 @@ The actual post-merge `main` candidate passed CI `34058182763` and Secret Scan `
 
 **Gate S2 is PASS / ACCEPTED, and Phase 2 / WS-004 is COMPLETE / ACCEPTED for the local boundary.**
 
-### Phase 3 — IN PROGRESS / P3-01 IMPLEMENTED LOCALLY; REVIEW PENDING
+### Phase 3 — IN PROGRESS / P3-01 CLEARED; P3-02 REVIEW PENDING
 
 Phase 3 / WS-005 is executing from protected `main`.
 `docs/plans/PHASE-3.md` maps the integrated authority-to-economic-finality
@@ -82,14 +82,19 @@ backstops. P3-01 was integrated at `91f649b` and advanced through integration
 evidence at `d48a503`. Its selected R-033 resolution adds a checkout-scoped
 lease shared by the loopback RPC gateway, lifecycle scripts, and signer. The
 signer samples chain freshness only after acquiring the lease and holds it
-through evidence commit, so RPC remains outside DB locks. The local packet
-gates pass; the independent MAX review is pending. P3-02 through P3-06 remain
-gated.
+through evidence commit, so RPC remains outside DB locks. P3-01 candidate
+`404837db138ad1bd5c3aceaff6bae67652d5ed01` passed fresh MAX review, exact-SHA
+CI, and Secret Scan. P3-02 implements signed/no-attempt quarantine in additive
+migration `0027`; local static, DB 137/137, and concurrency 18/18 gates pass.
+Its exact-SHA MAX review and remote CI/Secret Scan are pending; P3-03 through
+P3-06 remain gated.
 
 P3-00 found a real integration gap rather than an accepted implementation:
-current control invalidation does not cover signed/no-attempt work, the current
-broadcast writer does not revalidate control authority, signer/control lock
-ordering is inverted, and current-fence guards can obstruct post-send recovery.
+current control invalidation did not cover signed/no-attempt work, the
+broadcast writer needs full authority revalidation, and current-fence guards
+can obstruct post-send recovery. P3-01 fixes signer/control lock ordering;
+P3-02 quarantines signed/no-attempt work and blocks a new STARTED attempt after
+control invalidation.
 P3-01 follow-up gates pass locally: `npm run check` (21 repository + 361
 package tests), DB 137/137, concurrency 18/18, invariants 7/7,
 signer/execution 52/52, contracts 10/10, chain 10/10, E2E 1/1, fault 160/160,
@@ -99,9 +104,9 @@ The local Compose proof exercised a fake balance
 mutation through the gateway, verified its checkpoint after restart, reset the
 disposable chain through the same gateway, and verified the clean state after a
 second restart. The gateway had a loopback host binding, Anvil had no host port,
-and PostgreSQL did not share a network with the gateway. P3-01 remains open
-until all packet gates and independent review pass; full Phase-3 acceptance is
-not claimed.
+and PostgreSQL did not share a network with the gateway. P3-01 is cleared;
+P3-02 remains open until its exact-SHA review and remote gates pass. Full
+Phase-3 acceptance is not claimed.
 
 ## Dependency state
 
@@ -117,7 +122,7 @@ not claimed.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
 - WS-004 Phase-2 transaction pipeline/local adapter — P2-06D COMPLETE / ACCEPTED; Phase 2 / WS-004 COMPLETE / ACCEPTED / MERGED TO `main`.
-- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 local gates pass / independent review pending.
+- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 MAX/CI/Secret Scan pass; P3-02 local gates pass / exact-SHA review pending.
 - WS-006/007 — NOT OPENED.
 
 ## Safety boundary

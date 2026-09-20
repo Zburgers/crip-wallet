@@ -1334,7 +1334,8 @@ export const claimRecoveryLease = async (
 /**
  * Resolve an uncertain outcome under a live lease. AMBIGUOUS and CONFLICT
  * always retain the reservation. CONFIRMED finalizes only matching immutable
- * evidence; FAILED releases only pre-broadcast reservations.
+ * evidence; FAILED releases only unsigned pre-broadcast reservations until
+ * the controlled signed-no-attempt recovery path is available.
  */
 export const resolveRecovery = async (
   pool: Pool,
@@ -1420,6 +1421,24 @@ export const resolveRecovery = async (
         "RECOVERY_LEASE_STALE",
         "recovery lease is stale or not owned by this worker",
       );
+
+    if (input.outcome === "FAILED" && input.verifiedRevert !== true) {
+      const signedWithoutAttempt = await client.query(
+        `SELECT 1 FROM signed_transactions s
+         WHERE s.operation_id = $1 AND s.reservation_id = $2
+           AND NOT EXISTS (
+             SELECT 1 FROM broadcast_attempts a
+             WHERE a.signed_transaction_id = s.signed_transaction_id
+           )
+         LIMIT 1`,
+        [input.operationId, input.reservationId],
+      );
+      if (signedWithoutAttempt.rowCount !== 0)
+        throw new LedgerError(
+          "INVALID_RESERVATION_TRANSITION",
+          "signed work without a broadcast attempt requires exact proven-no-send recovery",
+        );
+    }
 
     let next = binding.reservation;
     if (input.outcome === "CONFIRMED") {

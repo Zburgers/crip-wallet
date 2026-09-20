@@ -3,12 +3,12 @@
 ## Canonical start
 
 - Repository: `Zburgers/crip-wallet`
-- Canonical implementation branch: create `phase-3/ws-005-implementation`
-  from current protected `main` only after the Phase-3 planning PR and
-  ADR-0018 are accepted/merged.
+- Canonical implementation branch: `phase-3/ws-005-implementation`, created
+  from protected `main` after the Phase-3 planning PR and ADR-0018 were
+  accepted/merged.
 - Planning authority: `docs/plans/PHASE-3.md`
-- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 IMPLEMENTED LOCALLY / INDEPENDENT REVIEW PENDING** on
-  `phase-3/ws-005-implementation`; P3-02–P3-06 remain gated.
+- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 MAX REVIEW + EXACT-SHA CI PASS; P3-02 IMPLEMENTED LOCALLY / REVIEW PENDING** on
+  `phase-3/ws-005-implementation`; P3-03–P3-06 remain gated.
 - Boundary: loopback Anvil `eip155:31337`, fake ERC-20, disposable local
   identities only. Public networks, real value, and production custody remain
   prohibited.
@@ -97,8 +97,8 @@ Stop the affected packet if ADR-0018 is unaccepted; authority/attempt identity
 cannot be proven; raw bytes must escape the child; a migration cannot fail
 closed; a send-capable result would need cancellation/re-sign/release; scope
 widens toward public networks/real funds/production custody; or any critical/
-high finding remains. Do not begin P3-02 until P3-01 local gates and its fresh
-independent MAX critic pass on the pushed candidate.
+high finding remains. Do not begin P3-03 until P3-02 local gates and its fresh
+independent MAX critic pass on the exact pushed candidate.
 
 ## Completion
 

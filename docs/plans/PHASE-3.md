@@ -1,6 +1,6 @@
 # Phase 3 Plan - WS-005 Integrated Approval Controls
 
-Status: **IN PROGRESS — P3-01 IMPLEMENTED LOCALLY / INDEPENDENT REVIEW PENDING; P3-02–P3-06 NOT STARTED**
+Status: **IN PROGRESS — P3-01 IMPLEMENTED / MAX REVIEW + EXACT-SHA CI PASS; P3-02 IMPLEMENTED LOCALLY / REVIEW PENDING; P3-03–P3-06 NOT STARTED**
 
 Planning branch: `phase-3/ws-005-integrated-controls`
 
@@ -67,8 +67,11 @@ Accepted entry assumptions:
   the isolated local execution child.
 - RPC, receipts, logs, adapter responses, and process clocks are evidence, not
   authorization authority.
-- Existing migrations are checksum-locked. Phase 3 uses forward migration
-  `0026_ws005_integrated_control_boundary.sql`.
+- Existing migrations are checksum-locked. P3-01 added
+  `0026_ws005_integrated_control_boundary.sql`; because that packet has already
+  been applied to the integration runtime, later packet schema changes use new
+  forward-only migrations rather than changing its checksum. P3-02 adds
+  `0027_ws005_signed_unbroadcast_control.sql`.
 
 ## P3-00 actual failure and race model
 
@@ -260,7 +263,11 @@ reconciliation, regardless of later control changes.
 
 ## Database and migration impact
 
-Forward-only migration: `0026_ws005_integrated_control_boundary.sql`.
+Forward-only migrations:
+
+- `0026_ws005_integrated_control_boundary.sql` — P3-01 uniqueness backstops.
+- `0027_ws005_signed_unbroadcast_control.sql` — P3-02 evidence-aware control
+  invalidation and signed-work release fencing.
 
 Required changes:
 
@@ -457,10 +464,11 @@ and scripts must be updated in the same packet.
 
 ### P3-01 - Pre-sign authority transaction and execution binding
 
-Status: **IMPLEMENTED LOCALLY / INDEPENDENT REVIEW PENDING**. The atomic
-database boundary, bounded database-time deadline, and selected R-033
-chain-mutation lease are implemented. P3-02 stays gated until P3-01 validation
-passes locally and the independent MAX critic passes on the pushed candidate.
+Status: **IMPLEMENTED / MAX REVIEW PASS / EXACT-SHA CI + SECRET SCAN PASS** on
+`404837db138ad1bd5c3aceaff6bae67652d5ed01` (runs `35485643373` and
+`35485643343`). The atomic database boundary, bounded database-time deadline,
+and selected R-033 chain-mutation lease are implemented. P3-02's dependency is
+cleared.
 
 Scope:
 
@@ -514,7 +522,8 @@ the durable checkpoint and survived `dev-down`/`dev-up`; `anvil_reset` through
 the gateway returned the account to `0x0`, and a later clean restart restored
 that state. One initial post-reset startup failed closed; a guarded retry and a
 subsequent no-mutation restart both passed. All local P3-01 gates pass; exact
-counts are recorded in `TEST_MATRIX.md`. The independent review is pending.
+counts are recorded in `TEST_MATRIX.md`. MAX review and exact-SHA CI/Secret Scan
+passed for the pushed candidate.
 
 This implementation resolves R-033 only for the supported checkout-local
 Compose runtime. A user with host Docker privileges can still bypass the RPC
@@ -525,6 +534,8 @@ mainnet, real funds, or production custody.
 ### P3-02 - Signed-unbroadcast lifecycle and control semantics
 
 Depends on P3-01.
+
+Status: **IMPLEMENTED LOCALLY / INDEPENDENT REVIEW PENDING**.
 
 Scope:
 
@@ -544,6 +555,21 @@ Acceptance:
 - Duplicate control events are idempotent and auditable.
 - DB tests prove all three invalidation-trigger branches: unsigned release,
   signed/no-attempt quarantine, and existing-attempt preservation.
+
+Local implementation uses additive migration
+`0027_ws005_signed_unbroadcast_control.sql`. Control changes quarantine signed
+work with no attempt as `DISPUTED` while retaining its reservation; an existing
+attempt remains unchanged and receives a linked invalidation audit. The
+`STARTED` writer locks the same fence prefix, rejects invalidated authority, and
+creates a reservation-row conflict with a serializable control snapshot.
+Generic `FAILED` recovery and direct release/expiry cannot release signed work
+without an attempt. A distinct duplicate control is audited without advancing
+the fence version; replaying the same audit event ID is idempotent.
+
+Local evidence: `npm run check:static`; `npm run test:db` 137/137 across six
+files, including `execution-evidence.test.ts` 45/45; and
+`npm run test:concurrency` 18/18. Exact-SHA MAX review and remote CI/Secret Scan
+remain pending for the pushed P3-02 candidate.
 
 ### P3-03 - Send commit, broadcast uncertainty, and durable recovery integration
 

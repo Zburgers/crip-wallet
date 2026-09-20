@@ -63,7 +63,7 @@ Secret Scan: `33189082181` — PASS.
 
 **Gate S1: PASS / ACCEPTED. S2-01: PASS. S2-02: PASS. S2-03: PASS. S2 requirement evidence: PASS. External S2 acceptance: PASS / ACCEPTED in review `5126373971`. Gate S2: PASS / ACCEPTED.**
 
-**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 implements the selected R-033 chain-mutation lease, passes its local gates, and awaits independent review; P3-02–P3-06 remain gated.**
+**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 passed MAX review and exact-SHA CI/Secret Scan; P3-02 passes local static, DB, and concurrency gates and awaits exact-SHA review/CI; P3-03–P3-06 remain gated.**
 
 ## Phase-3 planning checkpoint
 
@@ -148,7 +148,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-033 | response-loss false failure/release | PASS / ACCEPTED for Phase-2 local boundary | exact-byte broadcast, DB release/recovery fence and crash-resume orchestration |
 | TM-034 | receipt/cross-operation substitution | PASS / ACCEPTED for Phase-2 local boundary | P2-05C/P2-06 transaction, receipt, log, operation, reservation, fixture, auth and legacy-evidence mismatch coverage |
 | TM-035 | local-chain reset confusion | PASS / ACCEPTED for Phase-2 local boundary | genesis/fixture/deployment/code fingerprints plus P2-03/P2-06 fixture-bound evidence |
-| TM-036 | control after signing before send / alternate send gateway | PLANNED | P3-02/03 deterministic quarantine/no-send and sole-`STARTED`-gateway proof |
+| TM-036 | control after signing before send / alternate send gateway | PARTIAL LOCALLY / P3-02 | `0027` signed/no-attempt quarantine and STARTED-first preservation pass in DB; sole-`STARTED`-gateway proof remains P3-03 |
 | TM-037 | post-send control blocks recovery | PLANNED | P3-03/04 immutable-attempt reconciliation proof |
 | TM-038 | signer/control lock inversion | PASS LOCALLY | P3-01 canonical-order two-winner PostgreSQL concurrency proof; chain freshness during the wait remains open under P3-F04A |
 | TM-039 | stale recovery worker/app-clock skew | PLANNED | P3-04 SQL DB-time lease/version resolution proof |
@@ -157,8 +157,8 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 
 | Packet | Status | Required evidence before PASS |
 | --- | --- | --- |
-| P3-01 pre-sign authority transaction and binding | IMPLEMENTED LOCALLY / MAX REVIEW PENDING | `0026`; atomic fence-first path; shared Anvil mutation lease; final freshness sample after lease acquisition; check 21 repo + 361 package tests, DB 137/137, concurrency 18/18, invariants 7/7, signer/execution 52/52, contracts 10/10, chain 10/10, E2E 1/1, fault 160/160, adversarial 188/188; audit exits 0 at high threshold with two moderate Vitest advisories; live checkpoint/restart proof |
-| P3-02 signed-unbroadcast lifecycle/control | PLANNED | signed/no-attempt quarantine, retained reservation, zero attempt/RPC, authenticated no-send recovery prerequisites, idempotent control audits |
+| P3-01 pre-sign authority transaction and binding | PASS / MAX REVIEW + EXACT-SHA CI/SECRET SCAN PASS | `0026`; candidate `404837db138ad1bd5c3aceaff6bae67652d5ed01`; CI run `35485643373`, Secret Scan `35485643343`; atomic fence-first path; shared Anvil mutation lease; final freshness sample after lease acquisition; check 21 repo + 361 package tests, DB 137/137, concurrency 18/18, invariants 7/7, signer/execution 52/52, contracts 10/10, chain 10/10, E2E 1/1, fault 160/160, adversarial 188/188; live checkpoint/restart proof |
+| P3-02 signed-unbroadcast lifecycle/control | IMPLEMENTED LOCALLY / EXACT-SHA REVIEW PENDING | `0027`; signed/no-attempt quarantine retains value and prevents send/release; existing attempts stay unchanged; duplicate control audit is idempotent; static check, DB 137/137 (execution evidence 45/45), concurrency 18/18 |
 | P3-03 send commit + UNKNOWN/recovery integration | PLANNED | control-before/after `STARTED`; crash/response-loss; one attempt; later fence change cannot block exact reconciliation |
 | P3-04 control/recovery concurrency fencing | PLANNED | DB-time lease expiry/takeover; signed-no-attempt exact release; concurrent retry/control/recovery; one economic effect |
 | P3-05 adversarial/fault matrix | PLANNED | P3-F01–P3-F19; owner/autonomous parity; replay/substitution/leakage/public-boundary refusal |
@@ -204,7 +204,7 @@ The inherited Vitest exit-135 event was not reproduced after integration. The tw
 | Scope | Current evidence |
 | --- | --- |
 | Broadcast | `adapters/local-anvil/test/broadcast-core.test.ts` — 12/12 focused local: canonical signed-byte hash binding, mutation/unrelated/malformed rejection before sender, matching acceptance, CONFLICT, UNKNOWN and conservative stale-nonce classification |
-| Reconciliation orchestration and broadcast-fence races | `tests/db/execution-evidence.test.ts` — 32/32 focused local, including 4/4 deterministic real-store PostgreSQL cases for STARTED-first, RELEASED-first, EXPIRED-first and repeated STARTED idempotency; the suite retains exact reconciliation success/revert, mismatch/cross-binding/auth, duplicate/concurrent retry and post-resolution/post-effect crash recovery coverage |
+| Reconciliation orchestration and broadcast-fence races | Historical P2-05 evidence: `tests/db/execution-evidence.test.ts` — 32/32 focused local. Current P3-02 suite: 45/45, including deterministic signed-control-before-STARTED and STARTED-first/control-waits cases; direct release/expiry after signed quarantine is rejected. |
 | Migration | `0023_p205_broadcast_safety.sql` is additive and forward-only; prior migrations are unchanged. It adds CONFLICT, exact legacy-evidence binding, signed-lifecycle canonical authorization, and the send-attempt release fence |
 | Full local gates | PASS — `npm ci`; `npm run check` 21 repository + 292 Vitest; audit 0 vulnerabilities; Forge 10/10; DB 104/104; concurrency 18/18; invariants 7/7; chain 10/10 |
 | P2-06A compatibility | PASS on a disposable, unmerged compatibility branch — `npm run test:fault` 64/64, including deterministic forward-then-drop coverage |

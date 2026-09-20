@@ -23,8 +23,22 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
   in place. Local gates pass: check 21 + 361, DB 137, concurrency 18, invariants
   7, signer/execution 52, contracts 10, chain 10, E2E 1, fault 160, and
   adversarial 188. Audit exits 0 at the high-severity threshold with two
-  moderate Vitest advisories. Independent MAX review is pending; P3-01 is not
-  yet closed.
+  moderate Vitest advisories. MAX review and exact-SHA CI/Secret Scan passed on
+  `404837db138ad1bd5c3aceaff6bae67652d5ed01` (runs `35485643373` and
+  `35485643343`); P3-01 is cleared.
+
+### Phase 3 / P3-02 implementation
+
+- Added forward-only migration `0027_ws005_signed_unbroadcast_control.sql`.
+  Pause/revoke now quarantines signed work with no send attempt as `DISPUTED`,
+  retains its reservation, and records an authorization invalidation. A
+  committed attempt remains unchanged and auditable; new STARTED work is fenced
+  by current controls and invalidations.
+- Generic failed recovery and direct release/expiry cannot clear signed work
+  with no attempt. Repeated control commands are audited once per distinct
+  event ID and exact event replay remains idempotent.
+- Local gates pass: static, DB 137/137 (execution evidence 45/45), and
+  concurrency 18/18. Exact-SHA MAX review and remote CI/Secret Scan are pending.
 
 ### Phase 3 planning
 

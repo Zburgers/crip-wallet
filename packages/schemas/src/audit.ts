@@ -24,6 +24,7 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "budget.reservation.finalized",
   "budget.reservation.disputed",
   "operation.state.changed",
+  "authorization.invalidated",
   "approval.requested",
   "approval.approved",
   "approval.consumed",
@@ -122,6 +123,10 @@ export const auditDataSchema = z.strictObject({
     .optional(),
   authenticationMethod: z.literal("ed25519").optional(),
   attemptId: canonicalIdentifierSchema.optional(),
+  signedTransactionId: canonicalIdentifierSchema.optional(),
+  attemptStatus: z
+    .enum(["STARTED", "ACCEPTED", "REJECTED", "UNKNOWN"])
+    .optional(),
   leaseVersion: z.number().int().positive().safe().optional(),
   recoveryOutcome: z
     .enum(["CONFIRMED", "FAILED", "AMBIGUOUS", "CONFLICT"])
@@ -255,6 +260,15 @@ export const auditEventSchema = z
         "candidateHash",
       ],
       "policy.evaluated": ["policyDecisionId", "policyDecisionHash", "result"],
+      "authorization.invalidated": [
+        "authorizationId",
+        "authorizationInvalidationId",
+        "scopeType",
+        "scopeId",
+        "fenceVersion",
+        "controlState",
+        "reason",
+      ],
     };
     for (const field of requiredData[event.eventType] ?? []) {
       if ((event.data as Record<string, unknown>)[field] === undefined) {

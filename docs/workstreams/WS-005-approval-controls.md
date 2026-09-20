@@ -5,7 +5,7 @@
 Prove that owner approval, replay protection, revocation, pause and worker recovery cannot authorize stale work.
 
 **Phase-1 S1 slice: COMPLETE LOCALLY.**
-**Phase-3 integrated execution slice: IN PROGRESS; P3-01 IMPLEMENTED LOCALLY / INDEPENDENT REVIEW PENDING.**
+**Phase-3 integrated execution slice: IN PROGRESS; P3-01 MAX/CI/SECRET SCAN PASS; P3-02 IMPLEMENTED LOCALLY / EXACT-SHA REVIEW PENDING.**
 
 ## S1 contract now implemented
 
@@ -52,8 +52,9 @@ Accepted ADR-0018 governs the implementation. P3-01 implements the selected
 R-033 resolution with a checkout-scoped Anvil mutation gateway and shared
 lease held from final freshness sampling through signed-evidence commit. The
 gateway is loopback-published, Anvil remains on an internal network without a
-host port, and PostgreSQL is isolated on a separate bridge. Local restart,
-checkpoint, and packet-gate evidence is recorded in `docs/plans/PHASE-3.md` and
-`docs/TEST_MATRIX.md`; the packet remains open until its independent MAX critic
-passes. P3-02 through P3-06 remain gated. Phase 3 remains local Anvil/fake-money
-only and is not fully accepted.
+host port, and PostgreSQL is isolated on a separate bridge. P3-01 passed fresh
+MAX review and exact-SHA CI/Secret Scan. P3-02 adds signed/no-attempt quarantine
+in migration `0027`; static, DB 137/137, and concurrency 18/18 pass locally.
+Its pushed candidate still needs MAX review and remote CI/Secret Scan. P3-03
+through P3-06 remain gated. Phase 3 remains local Anvil/fake-money only and is
+not fully accepted.

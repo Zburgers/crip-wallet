@@ -20,6 +20,7 @@ export type AuditEventType =
   | "budget.reservation.expired"
   | "budget.reservation.finalized"
   | "budget.reservation.disputed"
+  | "authorization.invalidated"
   | "approval.requested"
   | "approval.approved"
   | "approval.consumed"

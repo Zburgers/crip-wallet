@@ -78,8 +78,9 @@ outcomes remain disputed until authenticated reconciliation.
 
 Phase 3 is in progress. Accepted ADR-0018 defines two linearization points
 between the accepted S1 fences and accepted S2 execution path. P3-01's DB
-transaction and selected R-033 chain-mutation lease are implemented locally;
-independent review is pending, and P3-02/P3-03 have not started:
+transaction and selected R-033 chain-mutation lease passed MAX review and
+exact-SHA CI/Secret Scan. P3-02 locally quarantines signed/no-attempt work;
+its exact-SHA review/CI remain pending. P3-03 has not started:
 
 1. bounded local signing and signed-evidence persistence occur atomically in one
    fence-first database transaction; the signer acquires the mutation lease
