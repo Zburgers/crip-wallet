@@ -365,6 +365,7 @@ export const createBroadcastStore = (
           envelope_revision: number;
           envelope_hash: string;
           authorization_id: string;
+          policy_decision_id: string;
           fixture_instance_id: string;
           expected_transaction_hash: string;
           simulation_id: string;
@@ -374,12 +375,15 @@ export const createBroadcastStore = (
         }>(
           `SELECT s.operation_id, s.reservation_id, s.envelope_id,
                   s.envelope_revision, s.envelope_hash, s.authorization_id,
-                  s.fixture_instance_id, s.expected_transaction_hash,
-                  s.simulation_id,
+                  ae.policy_decision_id, s.fixture_instance_id,
+                  s.expected_transaction_hash, s.simulation_id,
                   w.owner_id, o.agent_id, o.policy_id
            FROM signed_transactions s
            JOIN operations o ON o.operation_id = s.operation_id
            JOIN wallets w ON w.wallet_id = o.wallet_id
+           JOIN authorization_evidence ae
+             ON ae.operation_id = s.operation_id
+            AND ae.authorization_id = s.authorization_id
            WHERE s.signed_transaction_id = $1`,
           [signed.signedTransactionId],
         );
@@ -440,15 +444,31 @@ export const createBroadcastStore = (
           return { attempt, created: false };
         }
 
-        const lockedAuthorization = await client.query(
-          `SELECT ae.authorization_id
-           FROM authorization_evidence ae
-           JOIN policy_decisions pd
-             ON pd.operation_id = ae.operation_id
-            AND pd.decision_id = ae.policy_decision_id
-           WHERE ae.operation_id = $1 AND ae.authorization_id = $2
-           FOR UPDATE OF ae, pd`,
-          [signed.operationId, signed.authorizationId],
+        const decision = await client.query<{ decision_id: string }>(
+          `SELECT decision_id FROM policy_decisions
+           WHERE operation_id = $1 AND decision_id = $2 FOR UPDATE`,
+          [signed.operationId, binding.policy_decision_id],
+        );
+        if (decision.rowCount !== 1)
+          throw new Error("canonical authorization policy decision is missing");
+        const lockedAuthorization = await client.query<{
+          authorization_id: string;
+        }>(
+          `SELECT authorization_id FROM authorization_evidence
+           WHERE operation_id = $1 AND authorization_id = $2
+             AND reservation_id = $3 AND envelope_id = $4
+             AND envelope_revision = $5 AND envelope_hash = $6
+             AND policy_decision_id = $7
+           FOR UPDATE`,
+          [
+            signed.operationId,
+            signed.authorizationId,
+            signed.reservationId,
+            signed.envelopeId,
+            signed.envelopeRevision,
+            signed.envelopeHash,
+            binding.policy_decision_id,
+          ],
         );
         if (lockedAuthorization.rowCount !== 1)
           throw new Error("canonical authorization evidence is missing");

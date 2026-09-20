@@ -555,10 +555,11 @@ const assertCurrentSigningAuthority = async (
     reservation_id: string;
     envelope_id: string;
     envelope_revision: number;
+    policy_decision_id: string;
   }>(
     client,
     deadlineAt,
-    `SELECT reservation_id, envelope_id, envelope_revision
+    `SELECT reservation_id, envelope_id, envelope_revision, policy_decision_id
      FROM authorization_evidence
      WHERE operation_id = $1 AND authorization_id = $2`,
     [ids.operationId, ids.authorizationId],
@@ -566,18 +567,36 @@ const assertCurrentSigningAuthority = async (
   const bindingRow = binding.rows[0];
   if (!bindingRow) throw new Error("authorization evidence is missing");
 
-  await queryBeforeSigningDeadline(
+  const decision = await queryBeforeSigningDeadline<{ decision_id: string }>(
     client,
     deadlineAt,
-    `SELECT ae.authorization_id
-     FROM authorization_evidence ae
-     JOIN policy_decisions pd
-       ON pd.operation_id = ae.operation_id
-      AND pd.decision_id = ae.policy_decision_id
-     WHERE ae.operation_id = $1 AND ae.authorization_id = $2
-     FOR UPDATE OF ae, pd`,
-    [ids.operationId, ids.authorizationId],
+    `SELECT decision_id FROM policy_decisions
+     WHERE operation_id = $1 AND decision_id = $2 FOR UPDATE`,
+    [ids.operationId, bindingRow.policy_decision_id],
   );
+  if (decision.rowCount !== 1)
+    throw new Error("authorization policy decision is missing");
+  const authorization = await queryBeforeSigningDeadline<{
+    authorization_id: string;
+  }>(
+    client,
+    deadlineAt,
+    `SELECT authorization_id FROM authorization_evidence
+     WHERE operation_id = $1 AND authorization_id = $2
+       AND reservation_id = $3 AND envelope_id = $4
+       AND envelope_revision = $5 AND policy_decision_id = $6
+     FOR UPDATE`,
+    [
+      ids.operationId,
+      ids.authorizationId,
+      bindingRow.reservation_id,
+      bindingRow.envelope_id,
+      bindingRow.envelope_revision,
+      bindingRow.policy_decision_id,
+    ],
+  );
+  if (authorization.rowCount !== 1)
+    throw new Error("canonical authorization evidence changed");
   await queryBeforeSigningDeadline(
     client,
     deadlineAt,

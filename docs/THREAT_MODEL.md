@@ -157,8 +157,9 @@ lock inversion, and post-send current-fence recovery conflict. Accepted
 ADR-0018 and `docs/plans/PHASE-3.md` define the controls for T-036 through
 T-039. P3-04 local gates now prove DB-time lease renewal/fencing, exact signed-
 no-attempt recovery, and the tested authorization/operation and policy/recovery
-lock order, including autonomous retry and approval replay against reservation
-transition; the P3-04 database suite passes 158/158. Exact-SHA review and
+lock order, including autonomous authorization, approval replay, signer, and
+broadcaster paths against reservation transition; the P3-04 database suite
+passes 161/161. Exact-SHA review and
 protected CI/Secret Scan are pending. P3-05/06 still own the adversarial matrix
 and clean-room closeout. The
 Phase-3 threats remain open until all required packets pass; local packet

@@ -640,8 +640,8 @@ const loadCommonByIds = async (
     identity.agent_id,
     identity.policy_id,
   );
+  const bindings = await lockAuthorizationBindings(client, operationId);
   if (authorizationIdToLock) {
-    const bindings = await lockAuthorizationBindings(client, operationId);
     if (
       !bindings.some(
         (binding) =>

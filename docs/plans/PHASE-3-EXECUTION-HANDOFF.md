@@ -12,8 +12,8 @@
   `510763b3c9c217f9058b1c9d388ce02d84e6ae9e` passed fresh MAX review (9/10,
   confidence 0.90, no findings), CI `35498889238`, and Secret Scan
   `35498889228`. P3-04 local gates pass (check 21 repository + 363 package
-  tests; DB 158/158, including control/recovery/envelope-replacement,
-  autonomous-retry, and approval-replay lock-order race coverage).
+  tests; DB 161/161, including control/recovery/envelope replacement, approval
+  replay, autonomous authorization, signer, and broadcaster lock-order races).
   P3-04 exact-SHA review and protected CI/Secret Scan are pending; P3-05–P3-06
   remain gated.
 - Boundary: loopback Anvil `eip155:31337`, fake ERC-20, disposable local

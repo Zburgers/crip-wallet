@@ -2618,7 +2618,11 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     }
   });
 
-  test.each(["duplicate-create", "consume-replay"] as const)(
+  test.each([
+    "duplicate-create",
+    "consume-replay",
+    "autonomous-conflict",
+  ] as const)(
     "approval %s locks authorization before reservation transition",
     async (retryKind) => {
       const envelopeHash = await prepareAuthorizedV2();
@@ -2643,31 +2647,48 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         max: 1,
         application_name: transitionApplicationName,
       });
-      const startReplay = () =>
-        retryKind === "duplicate-create"
-          ? createApprovalRequest(retryPool, {
-              approvalId: "approval_1",
-              operationId: "op_1",
-              reservationId: "res_1",
-              envelopeId: "env_op_1_1",
-              envelopeRevision: 1,
-              envelopeHash,
-              policyDecisionId: "decision_1",
-              issuedAt: "2020-01-01T00:00:00Z",
-              expiresAt: "2099-01-01T00:50:00Z",
-              nonce: "approval-nonce-1",
-              audit: audit("op_1", "duplicate-approval-request"),
-            })
-          : consumeApproval(retryPool, {
-              approvalId: "approval_1",
-              operationId: "op_1",
-              envelopeId: "env_op_1_1",
-              envelopeRevision: 1,
-              envelopeHash,
-              consumerId: "evidence-test",
-              now: "2099-01-01T00:03:00Z",
-              audit: audit("op_1", "consume-replay"),
-            });
+      const startReplay = () => {
+        if (retryKind === "duplicate-create")
+          return createApprovalRequest(retryPool, {
+            approvalId: "approval_1",
+            operationId: "op_1",
+            reservationId: "res_1",
+            envelopeId: "env_op_1_1",
+            envelopeRevision: 1,
+            envelopeHash,
+            policyDecisionId: "decision_1",
+            issuedAt: "2020-01-01T00:00:00Z",
+            expiresAt: "2099-01-01T00:50:00Z",
+            nonce: "approval-nonce-1",
+            audit: audit("op_1", "duplicate-approval-request"),
+          });
+        if (retryKind === "consume-replay")
+          return consumeApproval(retryPool, {
+            approvalId: "approval_1",
+            operationId: "op_1",
+            envelopeId: "env_op_1_1",
+            envelopeRevision: 1,
+            envelopeHash,
+            consumerId: "evidence-test",
+            now: "2099-01-01T00:03:00Z",
+            audit: audit("op_1", "consume-replay"),
+          });
+        return authorizeAutonomous(
+          retryPool,
+          {
+            authorizationId: "autonomous-conflict",
+            operationId: "op_1",
+            reservationId: "res_1",
+            envelopeId: "env_op_1_1",
+            envelopeRevision: 1,
+            envelopeHash: envelopeHash as `0x${string}`,
+            policyDecisionId: "decision_1",
+            policyDecisionHash: hash as `0x${string}`,
+            idempotencyKey: "autonomous-conflict",
+          },
+          audit("op_1", "autonomous-conflict"),
+        );
+      };
       type ReplayOutcome =
         | {
             status: "fulfilled";
@@ -2724,10 +2745,15 @@ describe.sequential("WS-004 execution evidence persistence", () => {
             status: "fulfilled",
             value: { approvalId: "approval_1", status: "CONSUMED" },
           });
-        } else {
+        } else if (retryKind === "consume-replay") {
           expect(replay).toMatchObject({
             status: "rejected",
             reason: { code: "APPROVAL_REPLAYED" },
+          });
+        } else {
+          expect(replay).toMatchObject({
+            status: "rejected",
+            reason: { code: "AUTONOMOUS_CONFLICT" },
           });
         }
         await expect(
@@ -2759,6 +2785,142 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         );
         blocker.release();
         await Promise.all([retryPool.end(), transitionPool.end()]);
+      }
+    },
+  );
+
+  test.each(["signer", "broadcaster"] as const)(
+    "%s locks policy before authorization evidence",
+    async (writerKind) => {
+      const envelopeHash =
+        writerKind === "signer" ? await prepareAuthorizedV2() : undefined;
+      if (writerKind === "broadcaster") await broadcastStartFixture();
+      const evidenceBlocker = await pool.connect();
+      const writerApplicationName = `p3-${writerKind}-authorization-lock-order`;
+      const transitionApplicationName = `p3-transition-${writerKind}-authorization-lock-order`;
+      const writerPool = new Pool({
+        host: runtime.postgres.host,
+        port: runtime.postgres.port,
+        database: runtime.postgres.database,
+        user: runtime.postgres.user,
+        password: runtime.postgres.password,
+        max: 1,
+        application_name: writerApplicationName,
+      });
+      const transitionPool = new Pool({
+        host: runtime.postgres.host,
+        port: runtime.postgres.port,
+        database: runtime.postgres.database,
+        user: runtime.postgres.user,
+        password: runtime.postgres.password,
+        max: 1,
+        application_name: transitionApplicationName,
+      });
+      const startWriter = async () => {
+        if (writerKind === "signer")
+          return createSignerStore(writerPool).signAndPersistEvidence(
+            signingInput(envelopeHash!),
+            async () => ({ transactionHash: `0x${"c".repeat(64)}` }),
+            signingAudit("authorization-lock-order"),
+          );
+        const signed =
+          await createBroadcastStore(pool).findSignedTransaction("signed_1");
+        if (!signed) throw new Error("missing signed transaction fixture");
+        return createBroadcastStore(writerPool).startBroadcastAttempt(
+          signed,
+          "attempt_authorization_lock_order",
+          audit("op_1", "authorization-lock-order").traceId,
+        );
+      };
+      type WriterOutcome =
+        | {
+            status: "fulfilled";
+            value: Awaited<ReturnType<typeof startWriter>>;
+          }
+        | { status: "rejected"; reason: unknown };
+      let writerOutcome: Promise<WriterOutcome> | undefined;
+      let transitionOutcome:
+        | Promise<
+            | {
+                status: "fulfilled";
+                value: Awaited<ReturnType<typeof authorizeReservation>>;
+              }
+            | { status: "rejected"; reason: unknown }
+          >
+        | undefined;
+
+      try {
+        await evidenceBlocker.query("BEGIN");
+        await evidenceBlocker.query(
+          "SELECT authorization_id FROM authorization_evidence WHERE authorization_id = 'approval_1:authorization' FOR UPDATE",
+        );
+        writerOutcome = startWriter().then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason: unknown) => ({ status: "rejected" as const, reason }),
+        );
+        expect(await waitForDatabaseBlock(writerApplicationName)).toBe(true);
+
+        transitionOutcome = authorizeReservation(transitionPool, {
+          reservationId: "res_1",
+          audit: audit("op_1", `${writerKind}-lock-order-transition`),
+        }).then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason: unknown) => ({ status: "rejected" as const, reason }),
+        );
+        expect(await waitForDatabaseBlock(transitionApplicationName)).toBe(
+          true,
+        );
+        const transitionWait = await pool.query<{ query: string }>(
+          `SELECT query FROM pg_stat_activity
+           WHERE application_name = $1 AND cardinality(pg_blocking_pids(pid)) > 0`,
+          [transitionApplicationName],
+        );
+        expect(transitionWait.rows[0]?.query).toMatch(/policy_decisions/i);
+
+        await evidenceBlocker.query("COMMIT");
+        const [writer, transition] = await Promise.all([
+          writerOutcome,
+          transitionOutcome,
+        ]);
+        expect(writer.status).toBe("fulfilled");
+        expect(transition).toMatchObject({
+          status: "rejected",
+          reason: { code: "INVALID_RESERVATION_TRANSITION" },
+        });
+        if (writerKind === "broadcaster")
+          expect(writer).toMatchObject({
+            status: "fulfilled",
+            value: { created: true, attempt: { status: "STARTED" } },
+          });
+        await expect(
+          pool.query<{
+            current_state: string;
+            reservation_status: string;
+            authorization_count: number;
+          }>(
+            `SELECT o.current_state, r.status AS reservation_status,
+                    (SELECT count(*)::int FROM authorization_evidence e
+                     WHERE e.operation_id = o.operation_id) AS authorization_count
+             FROM operations o
+             JOIN budget_reservations r ON r.operation_id = o.operation_id
+             WHERE o.operation_id = 'op_1'`,
+          ),
+        ).resolves.toMatchObject({
+          rows: [
+            {
+              current_state: "SIGNED",
+              reservation_status: "AUTHORIZED",
+              authorization_count: 1,
+            },
+          ],
+        });
+      } finally {
+        await evidenceBlocker.query("ROLLBACK").catch(() => undefined);
+        await Promise.allSettled(
+          [writerOutcome, transitionOutcome].filter(Boolean),
+        );
+        evidenceBlocker.release();
+        await Promise.all([writerPool.end(), transitionPool.end()]);
       }
     },
   );
