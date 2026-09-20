@@ -51,6 +51,23 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
   confidence 0.92 and exact-SHA CI/Secret Scan pass on `b95695c720fd68dd1085e371267a35113a05c816`
   (runs `35493551667` and `35493551719`).
 
+### Phase 3 / P3-03 implementation
+
+- Added forward-only migration `0031_ws005_started_authority_guard.sql` and
+  fence-first authority revalidation for the durable `STARTED` send commit.
+  The restricted gateway remains the only raw sender, and an existing attempt
+  cannot be resent.
+- Wired exact local runtime status/recovery evidence to the durable attempt,
+  signed transaction, envelope, simulation, fixture, and expected hash. A
+  mined transaction on a still-`STARTED` row now reaches the existing
+  canonical evidence verifier and authenticated reconciliation path after a
+  process crash; control invalidation does not release committed work.
+- Candidate `510763b3c9c217f9058b1c9d388ce02d84e6ae9e` passes local check
+  (21 repository checks and 363 package tests), DB 150/150, and the P2-05D
+  Anvil journey 1/1. Fresh GPT-5.6 Luna MAX review: PASS, 9/10, confidence
+  0.90, no findings. Protected exact-SHA CI `35498889238` and Secret Scan
+  `35498889228` pass.
+
 ### Phase 3 planning
 
 - P3-01 implementation was integrated at `91f649b`: migration 0026,

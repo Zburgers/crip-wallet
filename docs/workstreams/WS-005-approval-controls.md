@@ -5,7 +5,7 @@
 Prove that owner approval, replay protection, revocation, pause and worker recovery cannot authorize stale work.
 
 **Phase-1 S1 slice: COMPLETE LOCALLY.**
-**Phase-3 integrated execution slice: IN PROGRESS; P3-01 and P3-02 MAX/CI/SECRET SCAN PASS; P3-03 NEXT.**
+**Phase-3 integrated execution slice: IN PROGRESS; P3-01 through P3-03 CLEARED; P3-04 NEXT.**
 
 ## S1 contract now implemented
 
@@ -59,6 +59,12 @@ control, REJECTED no-send fencing, blocked direct release/expiry after
 invalidation, and replay-safe, fully auditable control requests. Local checks
 pass (`npm run check` 21 + 361, DB 145/145, concurrency 18/18, invariants 7/7).
 P3-02 passed fresh MAX review at 0.92 and exact-SHA CI/Secret Scan on
-`b95695c720fd68dd1085e371267a35113a05c816`. P3-03 is next; P3-04 through
-P3-06 remain gated. Phase 3 remains local Anvil/fake-money only and is not
-fully accepted.
+`b95695c720fd68dd1085e371267a35113a05c816`. P3-03 candidate
+`510763b3c9c217f9058b1c9d388ce02d84e6ae9e` adds fence-first `STARTED`
+authority and exact local-chain recovery. Its crash-after-send regression
+reconciles a still-STARTED row once after control invalidation. Local gates
+pass: check 21 repository + 363 package tests, DB 150/150, and Anvil E2E 1/1;
+fresh GPT-5.6 Luna MAX review passed 9/10 (confidence 0.90, no findings).
+Protected CI `35498889238` and Secret Scan `35498889228` pass on this
+candidate. P3-04 through P3-06 remain gated. Phase 3 remains local
+Anvil/fake-money only and is not fully accepted.

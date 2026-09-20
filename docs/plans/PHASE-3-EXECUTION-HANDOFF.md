@@ -7,8 +7,11 @@
   from protected `main` after the Phase-3 planning PR and ADR-0018 were
   accepted/merged.
 - Planning authority: `docs/plans/PHASE-3.md`
-- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 AND P3-02 MAX REVIEW + EXACT-SHA CI PASS; P3-03 NEXT** on
-  `phase-3/ws-005-implementation`; P3-03–P3-06 remain gated.
+- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 THROUGH P3-03 CLEARED; P3-04 NEXT** on
+  `phase-3/ws-005-implementation`. P3-03 candidate
+  `510763b3c9c217f9058b1c9d388ce02d84e6ae9e` passed fresh MAX review (9/10,
+  confidence 0.90, no findings), CI `35498889238`, and Secret Scan
+  `35498889228`. P3-04–P3-06 remain gated.
 - Boundary: loopback Anvil `eip155:31337`, fake ERC-20, disposable local
   identities only. Public networks, real value, and production custody remain
   prohibited.
@@ -97,8 +100,8 @@ Stop the affected packet if ADR-0018 is unaccepted; authority/attempt identity
 cannot be proven; raw bytes must escape the child; a migration cannot fail
 closed; a send-capable result would need cancellation/re-sign/release; scope
 widens toward public networks/real funds/production custody; or any critical/
-high finding remains. Do not begin P3-03 until P3-02 local gates and its fresh
-independent MAX critic pass on the exact pushed candidate.
+high finding remains. Begin P3-04 only after P3-03 local gates, fresh
+exact-SHA review, and protected CI/Secret Scan pass.
 
 ## Completion
 

@@ -145,14 +145,16 @@ ADR-0017 addresses raw-byte leakage and the signed-evidence/pre-send crash gap b
 
 The implementation retains a narrow dependency on deterministic behavior of the locked transaction serializer/signature stack and a restricted child with loopback send capability. Golden signed vectors, dependency review, strict output scans, loopback/fixture checks and reuse of the accepted broadcaster are evidenced locally; the external S2 review accepts only this local boundary. Public-network Byzantine independence, production finality, and production telemetry remain unclaimed.
 
-## Phase-3 planned threat treatment
+## Phase-3 integrated threat treatment
 
-Phase 3 / WS-005 is IN PROGRESS. P3-01 passed MAX review and exact-SHA
-CI/Secret Scan. P3-02 locally quarantines signed/no-attempt work, continues
-exact ACCEPTED/UNKNOWN recovery after control, and blocks REJECTED no-send
-attempts from re-entering broadcast; its exact-SHA review/CI remain pending.
-P3-00 identified the signed/no-attempt control race,
-signer/control lock inversion, and post-send current-fence recovery conflict.
-Accepted ADR-0018 and `docs/plans/PHASE-3.md` define the controls for T-036
-through T-039. Those threats remain open until P3-01 through P3-06 pass on a
-protected exact SHA; local packet evidence is not Phase-3 acceptance.
+Phase 3 / WS-005 is IN PROGRESS. P3-01 and P3-02 passed their exact-SHA
+reviews and protected checks. P3-03 candidate
+`510763b3c9c217f9058b1c9d388ce02d84e6ae9e` adds fence-first `STARTED`
+authority and canonical recovery for a mined transaction after process death;
+its fresh MAX review passed 9/10 with no findings; protected CI `35498889238`
+and Secret Scan `35498889228` pass. P3-00 identified the signed/no-attempt control race, signer/control
+lock inversion, and post-send current-fence recovery conflict. Accepted
+ADR-0018 and `docs/plans/PHASE-3.md` define the controls for T-036 through
+T-039. P3-04 through P3-06 still own lease concurrency, the adversarial matrix,
+and clean-room closeout. The Phase-3 threats remain open until all required
+packets pass; local packet evidence is not full Phase-3 acceptance.

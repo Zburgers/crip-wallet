@@ -74,16 +74,23 @@ actor labels are not authority. Evidence snapshots retain the credential and
 signature hash. Recovery leases and attempt IDs are durable and fenced; unknown
 outcomes remain disputed until authenticated reconciliation.
 
-## Phase-3 planned integration boundary
+## Phase-3 integrated boundary
 
 Phase 3 is in progress. Accepted ADR-0018 defines two linearization points
 between the accepted S1 fences and accepted S2 execution path. P3-01's DB
 transaction and selected R-033 chain-mutation lease passed MAX review and
-exact-SHA CI/Secret Scan. P3-02 locally quarantines signed/no-attempt work,
-allows exact ACCEPTED/UNKNOWN reconciliation after control, and blocks
-REJECTED no-send attempts from re-entering broadcast; DB 145/145 and
-concurrency 18/18 pass. Its revised exact-SHA review/CI remain pending.
-P3-03 has not started:
+exact-SHA CI/Secret Scan. P3-02 quarantines signed/no-attempt work, allows
+exact ACCEPTED/UNKNOWN reconciliation after control, and blocks REJECTED
+no-send attempts from re-entering broadcast; its exact-SHA review and protected
+checks passed. P3-03 candidate
+`510763b3c9c217f9058b1c9d388ce02d84e6ae9e` implements the fence-first
+`STARTED` send commit, sole-gateway enforcement, and real local-chain status
+and recovery. A mined transaction tied to a still-STARTED attempt enters the
+same canonical verifier and authenticated reconciliation path as other
+recoverable attempts. Fresh exact-SHA review passed 9/10 (confidence 0.90,
+no findings); protected CI `35498889238` and Secret Scan `35498889228` pass.
+
+The integrated design is:
 
 1. bounded local signing and signed-evidence persistence occur atomically in one
    fence-first database transaction; the signer acquires the mutation lease

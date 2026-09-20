@@ -1,6 +1,6 @@
 # Phase 3 Plan - WS-005 Integrated Approval Controls
 
-Status: **IN PROGRESS — P3-01 IMPLEMENTED / MAX REVIEW + EXACT-SHA CI PASS; P3-02 PASS / MAX REVIEW 0.92 + EXACT-SHA CI/SECRET SCAN PASS; P3-03–P3-06 NOT STARTED**
+Status: **IN PROGRESS — P3-01 THROUGH P3-03 CLEARED; P3-04–P3-06 NOT STARTED**
 
 Planning branch: `phase-3/ws-005-integrated-controls`
 
@@ -74,7 +74,8 @@ Accepted entry assumptions:
   `0027_ws005_signed_unbroadcast_control.sql` and follow-ups
   `0028_ws005_existing_attempt_recovery.sql` and
   `0029_ws005_rejected_attempt_recovery_guard.sql` and
-  `0030_ws005_invalidated_rejected_release_guard.sql`.
+  `0030_ws005_invalidated_rejected_release_guard.sql`. P3-03 adds
+  `0031_ws005_started_authority_guard.sql` for fence-first send-start authority.
 
 ## P3-00 actual failure and race model
 
@@ -278,6 +279,8 @@ Forward-only migrations:
   `REJECTED` attempt from re-entering broadcast/finalization after control.
 - `0030_ws005_invalidated_rejected_release_guard.sql` — prevent direct release
   and expiry of a control-invalidated `REJECTED` attempt.
+- `0031_ws005_started_authority_guard.sql` — apply the same fence-first
+  authority locks and currentness checks to durable `STARTED` creation.
 
 Required changes:
 
@@ -581,12 +584,11 @@ work without an attempt or with a `REJECTED` attempt. Control request IDs
 remain idempotent across later state changes, and `CONFLICT` attempts remain
 auditable.
 
-Local evidence: `npm run check` passed (21 repository tests and 361 package
-tests), `npm run test:db` passed 145/145 across six files including
+P3-02 local evidence: `npm run check` passed (21 repository tests and 361
+package tests), `npm run test:db` passed 145/145 across six files including
 `execution-evidence.test.ts` 53/53, `npm run test:concurrency` passed 18/18,
-and `npm run test:invariants` passed 7/7. Fresh exact-SHA MAX review and
-protected CI/Secret Scan passed for the reviewed candidate above. P3-03 is
-next; full Phase-3 acceptance is not claimed.
+and `npm run test:invariants` passed 7/7. Fresh exact-SHA review and protected
+CI/Secret Scan passed for its recorded candidate above.
 
 ### P3-03 - Send commit, broadcast uncertainty, and durable recovery integration
 
@@ -612,6 +614,18 @@ Acceptance:
 - No second attempt exists under sequential or concurrent retry.
 - No exported/internal-alternate path can invoke a raw send without the exact
   committed `STARTED` row.
+
+P3-03 candidate `510763b3c9c217f9058b1c9d388ce02d84e6ae9e` adds durable
+fence-first `STARTED` authority and real local-chain recovery. Recovery accepts
+a still-`STARTED` attempt only into the existing canonical evidence verifier;
+the crash-after-send regression proves exact mined evidence reconciles once,
+even after a control fence changes. Local checks pass: `npm run check` (21
+repository checks and 363 package tests), `npm run test:db` (150/150 across
+six files, including execution evidence 58/58), and the P2-05D Anvil journey
+(1/1). Fresh GPT-5.6 Luna MAX review: **PASS, 9/10, confidence 0.90, no
+findings**. Protected exact-SHA CI `35498889238` and Secret Scan `35498889228`
+both pass on this candidate. P3-04 is next; full Phase-3 acceptance is not
+claimed.
 
 ### P3-04 - Pause/revoke/recovery concurrency and stale-worker fencing
 

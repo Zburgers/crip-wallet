@@ -63,18 +63,19 @@ Secret Scan: `33189082181` — PASS.
 
 **Gate S1: PASS / ACCEPTED. S2-01: PASS. S2-02: PASS. S2-03: PASS. S2 requirement evidence: PASS. External S2 acceptance: PASS / ACCEPTED in review `5126373971`. Gate S2: PASS / ACCEPTED.**
 
-**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 and P3-02 passed fresh MAX review and exact-SHA CI/Secret Scan; P3-03–P3-06 remain gated.**
+**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 through P3-03 are cleared; P3-04–P3-06 remain gated.**
 
 ## Phase-3 planning checkpoint
 
 Planning base: `main` at `769db481472aab60a07efdd4b2390058321402e4`.
 Planning branch: `phase-3/ws-005-integrated-controls`.
 
-P3-00 mapped the current signer/control lock inversion, signed/no-attempt
-control gap, pre-`STARTED` authority gap, post-`STARTED` recovery conflict, and
-app-clock lease-resolution gap. Accepted ADR-0018 and
-`docs/plans/PHASE-3.md` define the planned treatment. All Phase-3 rows remain
-`PLANNED`; documentation and a green planning PR are not implementation proof.
+P3-00 mapped the signer/control lock inversion, signed/no-attempt control gap,
+pre-`STARTED` authority gap, post-`STARTED` recovery conflict, and app-clock
+lease-resolution gap. Accepted ADR-0018 and `docs/plans/PHASE-3.md` define the
+treatment. The implementation matrix below records packet evidence; P3-01
+through P3-03 are cleared and P3-04 through P3-06 remain planned. Documentation
+and a green planning PR are not implementation proof.
 
 ADR-0015 is accepted architectural authority, not test evidence. It removes the previous P2-02 architecture blocker but no Phase-2 threat/product row becomes PASS until the named implementation test exists and protected current-head evidence is recorded.
 
@@ -148,8 +149,8 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | TM-033 | response-loss false failure/release | PASS / ACCEPTED for Phase-2 local boundary | exact-byte broadcast, DB release/recovery fence and crash-resume orchestration |
 | TM-034 | receipt/cross-operation substitution | PASS / ACCEPTED for Phase-2 local boundary | P2-05C/P2-06 transaction, receipt, log, operation, reservation, fixture, auth and legacy-evidence mismatch coverage |
 | TM-035 | local-chain reset confusion | PASS / ACCEPTED for Phase-2 local boundary | genesis/fixture/deployment/code fingerprints plus P2-03/P2-06 fixture-bound evidence |
-| TM-036 | control after signing before send / alternate send gateway | PARTIAL LOCALLY / P3-02 | `0027` signed/no-attempt quarantine, all five attempt-status audit cases, and replay-resistant controls pass in DB; sole-`STARTED`-gateway proof remains P3-03 |
-| TM-037 | post-send control blocks recovery | PARTIAL LOCALLY / P3-02 | `0028` allows exact ACCEPTED/UNKNOWN reconciliation after control; `0029` blocks REJECTED no-send attempts from re-entering broadcast; `0030` blocks their direct release/expiry; P3-03 adds dedicated UNKNOWN-after-control recovery coverage and owns STARTED crash recovery; P3-04 owns full lease fencing and concurrency proof |
+| TM-036 | control after signing before send / alternate send gateway | PASS LOCALLY / P3-03 | P3-02 `0027` signed/no-attempt quarantine and all five attempt-status audit cases; P3-03 `0031` fence-first STARTED authority and sole send gateway; exact-SHA review and protected checks recorded in the P3-03 row |
+| TM-037 | post-send control blocks recovery | PARTIAL LOCALLY / P3-03 | Exact ACCEPTED/UNKNOWN/CONFLICT attempts and mined STARTED crash recovery reconcile only after canonical evidence verification; invalidated REJECTED attempts remain blocked by `0029`/`0030`; P3-04 owns lease fencing and concurrency proof |
 | TM-038 | signer/control lock inversion | PASS LOCALLY | P3-01 canonical-order two-winner PostgreSQL concurrency proof; chain freshness during the wait remains open under P3-F04A |
 | TM-039 | stale recovery worker/app-clock skew | PLANNED | P3-04 SQL DB-time lease/version resolution proof |
 
@@ -159,7 +160,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | --- | --- | --- |
 | P3-01 pre-sign authority transaction and binding | PASS / MAX REVIEW + EXACT-SHA CI/SECRET SCAN PASS | `0026`; candidate `404837db138ad1bd5c3aceaff6bae67652d5ed01`; CI run `35485643373`, Secret Scan `35485643343`; atomic fence-first path; shared Anvil mutation lease; final freshness sample after lease acquisition; check 21 repo + 361 package tests, DB 137/137, concurrency 18/18, invariants 7/7, signer/execution 52/52, contracts 10/10, chain 10/10, E2E 1/1, fault 160/160, adversarial 188/188; live checkpoint/restart proof |
 | P3-02 signed-unbroadcast lifecycle/control | PASS / MAX REVIEW 0.92 + EXACT-SHA CI/SECRET SCAN PASS | Candidate `b95695c720fd68dd1085e371267a35113a05c816`; CI `35493551667`, Secret Scan `35493551719`; migrations `0027`–`0030`; invalidated REJECTED attempts cannot re-enter broadcast/finalization or be directly released/expired; `npm run check` 21 repo + 361 package tests, DB 145/145 (execution evidence 53/53), concurrency 18/18, invariants 7/7 |
-| P3-03 send commit + UNKNOWN/recovery integration | PLANNED | control-before/after `STARTED`; crash/response-loss; one attempt; later fence change cannot block exact reconciliation |
+| P3-03 send commit + UNKNOWN/recovery integration | PASS / fresh exact-SHA MAX review 9/10 + protected CI/Secret Scan | Candidate `510763b3c9c217f9058b1c9d388ce02d84e6ae9e`; migration `0031`; fresh GPT-5.6 Luna MAX review PASS, 9/10, confidence 0.90, no findings; CI `35498889238`, Secret Scan `35498889228`. Local: check 21 repo + 363 package tests, DB 150/150 (execution evidence 58/58), P2-05D Anvil journey 1/1; STARTED mined-evidence-after-crash regression proves one economic effect after control invalidation |
 | P3-04 control/recovery concurrency fencing | PLANNED | DB-time lease expiry/takeover; signed-no-attempt exact release; concurrent retry/control/recovery; one economic effect |
 | P3-05 adversarial/fault matrix | PLANNED | P3-F01–P3-F19; owner/autonomous parity; replay/substitution/leakage/public-boundary refusal |
 | P3-06 clean-room and independent closeout | PLANNED | fresh clone/runtime, full inherited + Phase-3 gates, protected exact-SHA CI/Secret Scan, independent review, clean teardown |
