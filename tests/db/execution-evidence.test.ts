@@ -2507,6 +2507,117 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     }
   });
 
+  test("autonomous retry locks authorization before reservation transition", async () => {
+    const envelopeHash = await prepareAuthorizedV2("AUTONOMOUS_POLICY");
+    const blocker = await pool.connect();
+    const retryApplicationName = "p3-autonomous-operation-lock-order";
+    const transitionApplicationName = "p3-transition-autonomous-lock-order";
+    const retryPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: retryApplicationName,
+    });
+    const transitionPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: transitionApplicationName,
+    });
+    const request = {
+      authorizationId: "approval_1:authorization",
+      operationId: "op_1",
+      reservationId: "res_1",
+      envelopeId: "env_op_1_1",
+      envelopeRevision: 1,
+      envelopeHash: envelopeHash as `0x${string}`,
+      policyDecisionId: "decision_1",
+      policyDecisionHash: hash as `0x${string}`,
+      idempotencyKey: "signer-store-autonomous",
+    };
+    let retryOutcome:
+      | Promise<
+          | {
+              status: "fulfilled";
+              value: Awaited<ReturnType<typeof authorizeAutonomous>>;
+            }
+          | { status: "rejected"; reason: unknown }
+        >
+      | undefined;
+    let transitionOutcome:
+      | Promise<
+          | {
+              status: "fulfilled";
+              value: Awaited<ReturnType<typeof authorizeReservation>>;
+            }
+          | { status: "rejected"; reason: unknown }
+        >
+      | undefined;
+
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query(
+        "SELECT operation_id FROM operations WHERE operation_id = 'op_1' FOR UPDATE",
+      );
+      retryOutcome = authorizeAutonomous(
+        retryPool,
+        request,
+        audit("op_1", "autonomous-operation-retry"),
+      ).then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      );
+      expect(await waitForDatabaseBlock(retryApplicationName)).toBe(true);
+
+      transitionOutcome = authorizeReservation(transitionPool, {
+        reservationId: "res_1",
+        audit: audit("op_1", "autonomous-operation-transition"),
+      }).then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      );
+      expect(await waitForDatabaseBlock(transitionApplicationName)).toBe(true);
+      const transitionWait = await pool.query<{ query: string }>(
+        `SELECT query FROM pg_stat_activity
+         WHERE application_name = $1 AND cardinality(pg_blocking_pids(pid)) > 0`,
+        [transitionApplicationName],
+      );
+      expect(transitionWait.rows[0]?.query).toMatch(/policy_decisions/i);
+
+      await blocker.query("COMMIT");
+      const [retry, transition] = await Promise.all([
+        retryOutcome,
+        transitionOutcome,
+      ]);
+      expect(retry.status).toBe("fulfilled");
+      expect(transition.status).toBe("fulfilled");
+      await expect(
+        pool.query<{ current_state: string; status: string; count: number }>(
+          `SELECT o.current_state, r.status,
+                  (SELECT count(*)::int FROM authorization_evidence e
+                   WHERE e.operation_id = o.operation_id) AS count
+           FROM operations o JOIN budget_reservations r USING (operation_id)
+           WHERE o.operation_id = 'op_1'`,
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ current_state: "AUTHORIZED", status: "AUTHORIZED", count: 1 }],
+      });
+    } finally {
+      await blocker.query("ROLLBACK").catch(() => undefined);
+      await Promise.allSettled(
+        [retryOutcome, transitionOutcome].filter(Boolean),
+      );
+      blocker.release();
+      await Promise.all([retryPool.end(), transitionPool.end()]);
+    }
+  });
+
   test("signer failure rolls back signing state, evidence, and start audit", async () => {
     const envelopeHash = await prepareAuthorizedV2();
     await expect(

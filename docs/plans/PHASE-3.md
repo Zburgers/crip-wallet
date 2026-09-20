@@ -660,11 +660,13 @@ authorization and signed transaction, the matching control invalidation, and
 zero broadcast attempts/economic effects before atomically reconciling the
 operation, releasing the reservation, resolving the lease, and appending the
 recovery audits. Local gates pass: `npm run check` (21 repository tests and
-363 package tests) and `npm run test:db` (155/155 across six files), including
+363 package tests) and `npm run test:db` (156/156 across six files), including
 barrier-based duplicate recovery, lease-expiry rollback, renewal, takeover,
 send-capable no-send rejection, and control/recovery/envelope-replacement lock-
-order races. Reservation transitions and authorized envelope replacement lock
-authorization before operation; recovery uses key-share on policy so policy
+order races, including autonomous retry against reservation transition.
+Reservation transitions, authorized envelope replacement, and existing
+autonomous retries lock policy decision then authorization before operation;
+recovery uses key-share on policy so policy
 revocation can proceed without a lock cycle. Fresh exact-SHA MAX review and
 protected CI/Secret Scan remain pending; P3-05 has not started.
 

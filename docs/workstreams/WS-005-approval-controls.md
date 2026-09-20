@@ -76,7 +76,7 @@ no-send transaction requires one bound authorization/signed row, a matching
 control invalidation, and zero attempts/economic effects; it commits one
 `FAILED` recovery row, `RECONCILED`/`RELEASED` state, resolved lease, and
 correlated audits together. `npm run check` passes (21 repository + 363 package
-tests) and `npm run test:db` passes 155/155, including concurrent duplicate
+tests) and `npm run test:db` passes 156/156, including concurrent duplicate
 recovery, forced final-lease expiry rollback, and control/recovery/envelope-
-replacement lock-order races. Exact-SHA MAX review and protected CI/Secret Scan
+replacement/autonomous-retry lock-order races. Exact-SHA MAX review and protected CI/Secret Scan
 are pending; P3-05 has not started.

@@ -559,6 +559,7 @@ const loadCommonByIds = async (
   envelopeId: string,
   policyDecisionId: string,
   reservationId: string,
+  authorizationIdToLock?: string,
 ): Promise<CommonRow> => {
   const initial = await client.query<CommonRow>(commonSelect, [
     operationId,
@@ -578,6 +579,30 @@ const loadCommonByIds = async (
     identity.agent_id,
     identity.policy_id,
   );
+  if (authorizationIdToLock) {
+    const decision = await client.query(
+      `SELECT decision_id FROM policy_decisions
+       WHERE operation_id = $1 AND decision_id = $2 FOR UPDATE`,
+      [operationId, policyDecisionId],
+    );
+    if (decision.rowCount !== 1)
+      throw new ApprovalError(
+        "AUTHORIZATION_STATE_INVALID",
+        "autonomous policy decision is missing during retry",
+      );
+    const authorization = await client.query(
+      `SELECT authorization_id FROM authorization_evidence
+       WHERE authorization_id = $1 AND operation_id = $2
+         AND reservation_id = $3 AND policy_decision_id = $4
+       FOR UPDATE`,
+      [authorizationIdToLock, operationId, reservationId, policyDecisionId],
+    );
+    if (authorization.rowCount !== 1)
+      throw new ApprovalError(
+        "AUTHORIZATION_STATE_INVALID",
+        "autonomous authorization evidence is missing during retry",
+      );
+  }
   const result = await client.query<CommonRow>(
     `${commonSelect} FOR UPDATE OF o, r, b, e, d`,
     [operationId, envelopeId, policyDecisionId, reservationId],
@@ -2129,6 +2154,7 @@ export const authorizeAutonomous = async (
         existing.envelope_id,
         existing.policy_decision_id,
         existing.reservation_id,
+        existing.authorization_id,
       );
       assertAutonomousBinding(row, request, now, "AUTHORIZED");
       const expectedNonce = `${request.idempotencyKey}:autonomous`;
