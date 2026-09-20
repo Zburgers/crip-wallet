@@ -39,7 +39,7 @@ const MUTATION_METHODS = new Set(
     anvil_impersonateAccount hardhat_impersonateAccount
     anvil_stopImpersonatingAccount hardhat_stopImpersonatingAccount
     anvil_autoImpersonateAccount hardhat_autoImpersonateAccount anvil_impersonateSignature
-    anvil_setAutomine evm_setAutomine anvil_setIntervalMining evm_setIntervalMining
+    anvil_setAutomine evm_setAutomine
     anvil_mine hardhat_mine evm_mine anvil_mine_detailed evm_mine_detailed
     anvil_setTime evm_setTime anvil_increaseTime evm_increaseTime
     anvil_setNextBlockTimestamp evm_setNextBlockTimestamp

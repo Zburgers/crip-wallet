@@ -292,7 +292,7 @@ describe("Anvil RPC mutation gateway", () => {
     }
   });
 
-  it("rejects batches, unknown methods, unsigned sends, and fork resets", async () => {
+  it("rejects interval mining, batches, and other unsupported RPCs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "crip-rpc-gateway-"));
     const lockPath = join(directory, "anvil.lock");
     await writeFile(lockPath, "", { mode: 0o600 });
@@ -313,6 +313,18 @@ describe("Anvil RPC mutation gateway", () => {
       for (const request of [
         [{ jsonrpc: "2.0", id: 3, method: "anvil_reset", params: [] }],
         { jsonrpc: "2.0", id: 4, method: "not_a_method", params: [] },
+        {
+          jsonrpc: "2.0",
+          id: 12,
+          method: "anvil_setIntervalMining",
+          params: [1],
+        },
+        {
+          jsonrpc: "2.0",
+          id: 13,
+          method: "evm_setIntervalMining",
+          params: [1],
+        },
         {
           jsonrpc: "2.0",
           id: 5,

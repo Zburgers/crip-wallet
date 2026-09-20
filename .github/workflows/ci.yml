@@ -42,6 +42,8 @@ jobs:
         run: docker compose config --quiet
         env:
           CRIP_POSTGRES_PASSWORD: ci-configuration-only
+          CRIP_LOCAL_UID: "1000"
+          CRIP_LOCAL_GID: "1000"
 
       - name: Start isolated local fake-money services
         run: npm run dev:up
