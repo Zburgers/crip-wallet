@@ -79,9 +79,10 @@ outcomes remain disputed until authenticated reconciliation.
 Phase 3 is in progress. Accepted ADR-0018 defines two linearization points
 between the accepted S1 fences and accepted S2 execution path. P3-01's DB
 transaction and selected R-033 chain-mutation lease passed MAX review and
-exact-SHA CI/Secret Scan. P3-02 locally quarantines signed/no-attempt work and
-allows exact accepted-attempt reconciliation after control changes; DB 144/144
-and concurrency 18/18 pass. Its revised exact-SHA review/CI remain pending.
+exact-SHA CI/Secret Scan. P3-02 locally quarantines signed/no-attempt work,
+allows exact ACCEPTED/UNKNOWN reconciliation after control, and blocks
+REJECTED no-send attempts from re-entering broadcast; DB 145/145 and
+concurrency 18/18 pass. Its revised exact-SHA review/CI remain pending.
 P3-03 has not started:
 
 1. bounded local signing and signed-evidence persistence occur atomically in one

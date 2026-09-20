@@ -806,7 +806,7 @@ const assertCanonicalAuthorizationEvidence = async (
              WHERE s.operation_id = ae.operation_id
                AND s.reservation_id = ae.reservation_id
                AND s.authorization_id = ae.authorization_id
-               AND a.status IN ('STARTED', 'ACCEPTED', 'REJECTED', 'UNKNOWN', 'CONFLICT')
+               AND a.status IN ('STARTED', 'ACCEPTED', 'UNKNOWN', 'CONFLICT')
            )
          )
        )

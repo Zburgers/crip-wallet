@@ -27,7 +27,7 @@ checkout-scoped chain-mutation lease: supported Anvil writers share a lock with
 the signer, which samples freshness only after acquiring it and holds it
 through signed-evidence commit. The RPC gateway is loopback-published, Anvil
 has no host port, and PostgreSQL is on a separate bridge. P3-01 passed MAX
-review and exact-SHA CI/Secret Scan. P3-02's static, DB 144/144, and concurrency
+review and exact-SHA CI/Secret Scan. P3-02's static, DB 145/145, and concurrency
 18/18 gates pass locally; its revised exact-SHA review/CI are pending. P3-03 through
 P3-06, full acceptance, S3 readiness, and any wider network/custody boundary
 are not claimed.

@@ -126,8 +126,9 @@ implementation/provenance checks and external review `5126373971` accepted the
 governing local boundary. S2 requirement evidence is PASS and Gate S2 is
 **PASS / ACCEPTED**. Phase 3 is now IN PROGRESS; P3-01 passed MAX review and
 exact-SHA CI/Secret Scan. P3-02 locally quarantines signed/no-attempt work,
-continues exact accepted-attempt reconciliation after control, and passes
-static, DB 144/144, and concurrency 18/18; its exact-SHA review/CI and the
+continues exact ACCEPTED/UNKNOWN reconciliation after control, blocks REJECTED
+no-send attempts from re-entering broadcast, and passes static, DB 145/145,
+and concurrency 18/18; its exact-SHA review/CI and the
 remaining Phase-3 evidence are still open.
 
 P2-03 provides local executable evidence for the canonical-block, loopback-only,
@@ -147,9 +148,10 @@ The implementation retains a narrow dependency on deterministic behavior of the 
 ## Phase-3 planned threat treatment
 
 Phase 3 / WS-005 is IN PROGRESS. P3-01 passed MAX review and exact-SHA
-CI/Secret Scan. P3-02 locally quarantines signed/no-attempt work and continues
-exact accepted-attempt recovery after control; its exact-SHA review/CI remain
-pending. P3-00 identified the signed/no-attempt control race,
+CI/Secret Scan. P3-02 locally quarantines signed/no-attempt work, continues
+exact ACCEPTED/UNKNOWN recovery after control, and blocks REJECTED no-send
+attempts from re-entering broadcast; its exact-SHA review/CI remain pending.
+P3-00 identified the signed/no-attempt control race,
 signer/control lock inversion, and post-send current-fence recovery conflict.
 Accepted ADR-0018 and `docs/plans/PHASE-3.md` define the controls for T-036
 through T-039. Those threats remain open until P3-01 through P3-06 pass on a

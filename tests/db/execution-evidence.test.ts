@@ -23,6 +23,7 @@ import {
 import {
   applyMigrations,
   claimRecoveryLease,
+  markReservationBroadcast,
   releaseReservation,
   resolveRecovery,
   type AuditContext,
@@ -862,9 +863,9 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     const rows = await pool.query<{ filename: string }>(
       "SELECT filename FROM schema_migrations ORDER BY filename",
     );
-    expect(rows.rows).toHaveLength(28);
+    expect(rows.rows).toHaveLength(29);
     expect(rows.rows.at(-1)?.filename).toBe(
-      "0028_ws005_existing_attempt_recovery.sql",
+      "0029_ws005_rejected_attempt_recovery_guard.sql",
     );
   });
 
@@ -2611,6 +2612,78 @@ describe.sequential("WS-004 execution evidence persistence", () => {
           status: "FINALIZED",
           invalidations: 1,
           effects: 1,
+        },
+      ],
+    });
+  });
+
+  test("rejected attempts cannot re-enter broadcast after control invalidation", async () => {
+    await broadcastStartFixture();
+    const signed = await pool.query<{ envelope_hash: string }>(
+      "SELECT envelope_hash FROM signed_transactions WHERE signed_transaction_id = 'signed_1'",
+    );
+    await pool.query(
+      `INSERT INTO broadcast_attempts
+        (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,
+         envelope_revision, envelope_hash, authorization_id, fixture_instance_id,
+         expected_transaction_hash)
+       VALUES ('attempt_rejected_control', 'signed_1', 'op_1', 'res_1', 'env_op_1_1',
+         1, $1, 'approval_1:authorization', $2, $3)`,
+      [signed.rows[0]!.envelope_hash, fixtureId, broadcastHash],
+    );
+    await pool.query(
+      `UPDATE broadcast_attempts
+       SET status = 'REJECTED', classification_reason = 'not transmitted', completed_at = now()
+       WHERE attempt_id = 'attempt_rejected_control'`,
+    );
+    await changeControlFence(pool, {
+      scopeType: "SYSTEM",
+      scopeId: "system",
+      command: "PAUSE",
+      audit: audit("op_1", "control-after-rejected-attempt"),
+    });
+
+    const evidence: BroadcastEvidence = {
+      transactionHash: broadcastHash,
+      nonce: "7",
+      receiptReference: "receipt:attempt_rejected_control",
+    };
+    await expect(
+      markReservationBroadcast(pool, {
+        reservationId: "res_1",
+        evidence,
+        audit: componentAudit(
+          "op_1",
+          "rejected-attempt-broadcast-after-control",
+          signComponentAction(adapterCredential, "broadcast", {
+            reservationId: "res_1",
+            ...evidence,
+          }),
+        ),
+      }),
+    ).rejects.toThrow("canonical authorization evidence is missing");
+    await expect(
+      pool.query(
+        `UPDATE budget_reservations SET status = 'BROADCAST'
+         WHERE reservation_id = 'res_1'`,
+      ),
+    ).rejects.toThrow(
+      "rejected broadcast attempt cannot be recovered after control",
+    );
+    await expect(
+      pool.query(
+        `SELECT r.status, a.status AS attempt_status,
+                (SELECT count(*)::int FROM authorization_invalidations ai
+                 WHERE ai.authorization_id = 'approval_1:authorization') AS invalidations
+         FROM budget_reservations r JOIN broadcast_attempts a USING (reservation_id)
+         WHERE r.reservation_id = 'res_1'`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          status: "AUTHORIZED",
+          attempt_status: "REJECTED",
+          invalidations: 1,
         },
       ],
     });

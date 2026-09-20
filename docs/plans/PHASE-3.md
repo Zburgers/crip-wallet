@@ -71,8 +71,9 @@ Accepted entry assumptions:
   `0026_ws005_integrated_control_boundary.sql`; because that packet has already
   been applied to the integration runtime, later packet schema changes use new
   forward-only migrations rather than changing its checksum. P3-02 adds
-  `0027_ws005_signed_unbroadcast_control.sql` and follow-up
-  `0028_ws005_existing_attempt_recovery.sql`.
+  `0027_ws005_signed_unbroadcast_control.sql` and follow-ups
+  `0028_ws005_existing_attempt_recovery.sql` and
+  `0029_ws005_rejected_attempt_recovery_guard.sql`.
 
 ## P3-00 actual failure and race model
 
@@ -272,6 +273,8 @@ Forward-only migrations:
 - `0028_ws005_existing_attempt_recovery.sql` — allow broadcast/finalization
   only through the exact immutable lineage of an already committed attempt,
   even after control changes.
+- `0029_ws005_rejected_attempt_recovery_guard.sql` — prevent a proven no-send
+  `REJECTED` attempt from re-entering broadcast/finalization after control.
 
 Required changes:
 
@@ -560,19 +563,20 @@ Acceptance:
 - DB tests prove all three invalidation-trigger branches: unsigned release,
   signed/no-attempt quarantine, and existing-attempt preservation.
 
-Local implementation uses additive migrations `0027` and `0028`. Control
+Local implementation uses additive migrations `0027` through `0029`. Control
 changes quarantine signed work with no attempt as `DISPUTED` while retaining
-its reservation. An existing attempt remains unchanged and receives a linked
-invalidation audit; authenticated reconciliation can continue through its exact
-signed/attempt/hash lineage after control changes. The `STARTED` writer locks
+its reservation. Existing attempts remain unchanged and receive linked
+invalidation audits; exact `ACCEPTED`/`UNKNOWN` chain evidence can reconcile
+after control, while a `REJECTED` no-send attempt cannot re-enter broadcast.
+The `STARTED` writer locks
 the same fence prefix, rejects invalidated authority, and creates a
 reservation-row conflict with a serializable control snapshot. Generic
 `FAILED` recovery and direct release/expiry cannot release signed work without
 an attempt. Control request IDs remain idempotent across later state changes,
 and `CONFLICT` attempts remain auditable.
 
-Local evidence: `npm run check:static`; `npm run test:db` 144/144 across six
-files, including `execution-evidence.test.ts` 52/52; and
+Local evidence: `npm run check:static`; `npm run test:db` 145/145 across six
+files, including `execution-evidence.test.ts` 53/53; and
 `npm run test:concurrency` 18/18. Exact-SHA MAX review and remote CI/Secret Scan
 remain pending for the revised P3-02 candidate.
 
