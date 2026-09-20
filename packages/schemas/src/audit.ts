@@ -51,6 +51,7 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "system.paused",
   "system.resumed",
   "execution.recovery.claimed",
+  "execution.recovery.lease_renewed",
   "execution.recovery.ambiguous",
   "execution.recovery.resolved",
   "execution.recovery.conflict",
@@ -134,6 +135,7 @@ export const auditDataSchema = z.strictObject({
     .enum(["STARTED", "ACCEPTED", "REJECTED", "UNKNOWN", "CONFLICT"])
     .optional(),
   leaseVersion: z.number().int().positive().safe().optional(),
+  leaseExpiresAt: utcMillisecondSchema.optional(),
   recoveryOutcome: z
     .enum(["CONFIRMED", "FAILED", "AMBIGUOUS", "CONFLICT"])
     .optional(),

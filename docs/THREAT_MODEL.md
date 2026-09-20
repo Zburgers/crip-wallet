@@ -155,6 +155,8 @@ its fresh MAX review passed 9/10 with no findings; protected CI `35498889238`
 and Secret Scan `35498889228` pass. P3-00 identified the signed/no-attempt control race, signer/control
 lock inversion, and post-send current-fence recovery conflict. Accepted
 ADR-0018 and `docs/plans/PHASE-3.md` define the controls for T-036 through
-T-039. P3-04 through P3-06 still own lease concurrency, the adversarial matrix,
-and clean-room closeout. The Phase-3 threats remain open until all required
-packets pass; local packet evidence is not full Phase-3 acceptance.
+T-039. P3-04 local gates now prove DB-time lease renewal/fencing and exact
+signed-no-attempt recovery; exact-SHA review and protected CI/Secret Scan are
+pending. P3-05/06 still own the adversarial matrix and clean-room closeout. The
+Phase-3 threats remain open until all required packets pass; local packet
+evidence is not full Phase-3 acceptance.

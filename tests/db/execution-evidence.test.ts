@@ -27,6 +27,7 @@ import {
   markReservationBroadcast,
   releaseReservation,
   resolveRecovery,
+  SIGNED_UNBROADCAST_CONTROLLED_NO_ATTEMPT_REASON,
   type AuditContext,
   type BroadcastEvidence,
 } from "@crip/budget-ledger";
@@ -875,13 +876,13 @@ describe.sequential("WS-004 execution evidence persistence", () => {
   });
   afterAll(async () => pool.end());
 
-  test("applies the broadcast-safety migration after the frozen Phase-1 migrations", async () => {
+  test("applies the P3-04 recovery migration after the frozen migrations", async () => {
     const rows = await pool.query<{ filename: string }>(
       "SELECT filename FROM schema_migrations ORDER BY filename",
     );
-    expect(rows.rows).toHaveLength(31);
+    expect(rows.rows).toHaveLength(33);
     expect(rows.rows.at(-1)?.filename).toBe(
-      "0031_ws005_started_authority_guard.sql",
+      "0033_ws005_recovery_lease_renewal.sql",
     );
   });
 
@@ -1403,7 +1404,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     },
   );
 
-  test("control quarantines signed work before STARTED and blocks generic release", async () => {
+  test("control quarantines signed work before STARTED and requires proven-no-send recovery", async () => {
     await broadcastStartFixture();
     await pool.query(
       "UPDATE budget_reservations SET status = 'RELEASED' WHERE reservation_id = 'res_2'",
@@ -1528,7 +1529,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         }),
       ),
     });
-    const resolution = {
+    const genericResolution = {
       attemptId: recoveryAttemptId,
       operationId: "op_1",
       reservationId: "res_1",
@@ -1539,12 +1540,12 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     };
     await expect(
       resolveRecovery(pool, {
-        ...resolution,
+        ...genericResolution,
         audit: componentAudit(
           "op_1",
-          "signed-no-send-resolution",
+          "signed-no-send-generic-resolution",
           signComponentAction(reconcilerCredential, "recovery.resolve", {
-            ...resolution,
+            ...genericResolution,
             proofReference: null,
             evidence: null,
           }),
@@ -1582,6 +1583,230 @@ describe.sequential("WS-004 execution evidence persistence", () => {
           attempt_count: 0,
           invalidation_count: 1,
           recovery_count: 0,
+          lease_state: "ACTIVE",
+        },
+      ],
+    });
+
+    const noSendResolution = {
+      attemptId: recoveryAttemptId,
+      operationId: "op_1",
+      reservationId: "res_1",
+      leaseVersion: lease.leaseVersion,
+      outcome: "FAILED" as const,
+      reason: SIGNED_UNBROADCAST_CONTROLLED_NO_ATTEMPT_REASON,
+    };
+    const noSendAudit = componentAudit(
+      "op_1",
+      "signed-no-send-resolution",
+      signComponentAction(reconcilerCredential, "recovery.resolve", {
+        ...noSendResolution,
+        actualSpendAtomic: null,
+        proofReference: null,
+        evidence: null,
+      }),
+    );
+    const blocker = await pool.connect();
+    const firstRecoveryPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: "p3-no-send-first",
+    });
+    const duplicateRecoveryPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: "p3-no-send-duplicate",
+    });
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query(
+        "SELECT authorization_id FROM authorization_evidence WHERE operation_id = 'op_1' FOR UPDATE",
+      );
+      const firstRecovery = resolveRecovery(firstRecoveryPool, {
+        ...noSendResolution,
+        audit: noSendAudit,
+      });
+      await waitForDatabaseBlock("p3-no-send-first");
+      const duplicateRecovery = resolveRecovery(duplicateRecoveryPool, {
+        ...noSendResolution,
+        audit: noSendAudit,
+      });
+      await waitForDatabaseBlock("p3-no-send-duplicate");
+      await blocker.query("COMMIT");
+      const concurrentResults = await Promise.all([
+        firstRecovery,
+        duplicateRecovery,
+      ]);
+      expect(concurrentResults.map((result) => result.status)).toEqual([
+        "RELEASED",
+        "RELEASED",
+      ]);
+    } finally {
+      await blocker.query("ROLLBACK").catch(() => undefined);
+      blocker.release();
+      await Promise.all([firstRecoveryPool.end(), duplicateRecoveryPool.end()]);
+    }
+    await expect(
+      resolveRecovery(pool, { ...noSendResolution, audit: noSendAudit }),
+    ).resolves.toMatchObject({ status: "RELEASED" });
+
+    await expect(
+      pool.query(
+        `SELECT o.current_state, r.status AS reservation_status,
+                b.available, b.reserved, b.finalized_spend,
+                (SELECT count(*)::int FROM signed_transactions s
+                 WHERE s.operation_id = o.operation_id) AS signed_count,
+                (SELECT count(*)::int FROM broadcast_attempts a
+                 WHERE a.operation_id = o.operation_id) AS attempt_count,
+                (SELECT count(*)::int FROM authorization_invalidations ai
+                 WHERE ai.operation_id = o.operation_id) AS invalidation_count,
+                (SELECT count(*)::int FROM recovery_attempts ra
+                 WHERE ra.operation_id = o.operation_id) AS recovery_count,
+                (SELECT reason FROM recovery_attempts ra
+                 WHERE ra.operation_id = o.operation_id) AS recovery_reason,
+                (SELECT lease_state FROM operation_recovery_leases l
+                 WHERE l.operation_id = o.operation_id) AS lease_state,
+                (SELECT count(*)::int FROM execution_economic_effects effect
+                 WHERE effect.operation_id = o.operation_id) AS effects
+         FROM operations o
+         JOIN budget_reservations r USING (operation_id)
+         JOIN budget_accounts b USING (budget_id)
+         WHERE o.operation_id = 'op_1'`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          current_state: "RECONCILED",
+          reservation_status: "RELEASED",
+          available: "100",
+          reserved: "0",
+          finalized_spend: "0",
+          signed_count: 1,
+          attempt_count: 0,
+          invalidation_count: 1,
+          recovery_count: 1,
+          recovery_reason: SIGNED_UNBROADCAST_CONTROLLED_NO_ATTEMPT_REASON,
+          lease_state: "RESOLVED",
+          effects: 0,
+        },
+      ],
+    });
+  });
+
+  test("rolls back proven-no-send release when the database lease expires before commit", async () => {
+    await broadcastStartFixture();
+    await pool.query(
+      "UPDATE budget_reservations SET status = 'RELEASED' WHERE reservation_id = 'res_2'",
+    );
+    await changeControlFence(pool, {
+      scopeType: "SYSTEM",
+      scopeId: "system",
+      command: "PAUSE",
+      audit: audit("op_1", "lease-expiry-control"),
+    });
+    const attemptId = "attempt_lease_expiry_no_send";
+    const lease = await claimRecoveryLease(pool, {
+      attemptId,
+      operationId: "op_1",
+      reservationId: "res_1",
+      leaseDurationSeconds: 60,
+      audit: componentAudit(
+        "op_1",
+        "lease-expiry-claim",
+        signComponentAction(reconcilerCredential, "recovery.claim", {
+          attemptId,
+          operationId: "op_1",
+          reservationId: "res_1",
+          leaseDurationSeconds: 60,
+        }),
+      ),
+    });
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION test_expire_lease_after_no_send_release()
+      RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        UPDATE operation_recovery_leases
+        SET lease_expires_at = clock_timestamp() - interval '1 second'
+        WHERE operation_id = NEW.operation_id;
+        RETURN NEW;
+      END;
+      $$
+    `);
+    await pool.query(`
+      CREATE TRIGGER test_expire_lease_after_no_send_release
+      AFTER UPDATE OF status ON budget_reservations
+      FOR EACH ROW
+      WHEN (OLD.status = 'DISPUTED' AND NEW.status = 'RELEASED')
+      EXECUTE FUNCTION test_expire_lease_after_no_send_release()
+    `);
+
+    const resolution = {
+      attemptId,
+      operationId: "op_1",
+      reservationId: "res_1",
+      leaseVersion: lease.leaseVersion,
+      outcome: "FAILED" as const,
+      reason: SIGNED_UNBROADCAST_CONTROLLED_NO_ATTEMPT_REASON,
+    };
+    const recoveryAuditContext = componentAudit(
+      "op_1",
+      "lease-expiry-resolution",
+      signComponentAction(reconcilerCredential, "recovery.resolve", {
+        ...resolution,
+        actualSpendAtomic: null,
+        proofReference: null,
+        evidence: null,
+      }),
+    );
+
+    try {
+      await expect(
+        resolveRecovery(pool, {
+          ...resolution,
+          audit: recoveryAuditContext,
+        }),
+      ).rejects.toMatchObject({ code: "RECOVERY_LEASE_STALE" });
+    } finally {
+      await pool.query(
+        "DROP TRIGGER IF EXISTS test_expire_lease_after_no_send_release ON budget_reservations",
+      );
+      await pool.query(
+        "DROP FUNCTION IF EXISTS test_expire_lease_after_no_send_release()",
+      );
+    }
+
+    await expect(
+      pool.query(
+        `SELECT o.current_state, r.status AS reservation_status,
+                b.available, b.reserved,
+                (SELECT count(*)::int FROM recovery_attempts ra
+                 WHERE ra.operation_id = o.operation_id) AS recovery_count,
+                (SELECT count(*)::int FROM execution_economic_effects effect
+                 WHERE effect.operation_id = o.operation_id) AS effects,
+                (SELECT lease_state FROM operation_recovery_leases l
+                 WHERE l.operation_id = o.operation_id) AS lease_state
+         FROM operations o
+         JOIN budget_reservations r USING (operation_id)
+         JOIN budget_accounts b USING (budget_id)
+         WHERE o.operation_id = 'op_1'`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          current_state: "DISPUTED",
+          reservation_status: "DISPUTED",
+          available: "90",
+          reserved: "10",
+          recovery_count: 0,
+          effects: 0,
           lease_state: "ACTIVE",
         },
       ],
@@ -3132,7 +3357,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     },
   );
 
-  test("a durable send-capable attempt fences direct and FAILED recovery release", async () => {
+  test("a durable send-capable attempt fences direct, FAILED, and no-send release", async () => {
     await reconciliationFixture();
     await expect(
       releaseReservation(pool, {
@@ -3185,6 +3410,38 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     ).rejects.toThrow(
       /send-capable broadcast attempt fences reservation release/i,
     );
+    await pool.query(
+      "UPDATE budget_reservations SET status = 'RELEASED' WHERE reservation_id = 'res_2'",
+    );
+    await changeControlFence(pool, {
+      scopeType: "SYSTEM",
+      scopeId: "system",
+      command: "PAUSE",
+      audit: audit("op_1", "send-capable-no-send-control"),
+    });
+    const noSendResolution = {
+      attemptId: recoveryAttemptId,
+      operationId: "op_1",
+      reservationId: "res_1",
+      leaseVersion: claim.leaseVersion,
+      outcome: "FAILED" as const,
+      reason: SIGNED_UNBROADCAST_CONTROLLED_NO_ATTEMPT_REASON,
+    };
+    await expect(
+      resolveRecovery(pool, {
+        ...noSendResolution,
+        audit: componentAudit(
+          "op_1",
+          "send-capable-no-send-resolution",
+          signComponentAction(reconcilerCredential, "recovery.resolve", {
+            ...noSendResolution,
+            actualSpendAtomic: null,
+            proofReference: null,
+            evidence: null,
+          }),
+        ),
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RESERVATION_TRANSITION" });
     const state = await pool.query(
       `SELECT r.status, b.available, b.reserved, b.finalized_spend
        FROM budget_reservations r JOIN budget_accounts b USING (budget_id)
@@ -3196,6 +3453,11 @@ describe.sequential("WS-004 execution evidence persistence", () => {
       reserved: "10",
       finalized_spend: "0",
     });
+    await expect(
+      pool.query(
+        "SELECT count(*)::int AS count FROM recovery_attempts WHERE operation_id = 'op_1'",
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: 0 }] });
   });
 
   test.each([

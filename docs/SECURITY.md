@@ -47,7 +47,7 @@ claims. Database queries are parameterized and transactions use one client.
 | S0 repository safety | Secret scanning/push protection, locked dependencies, CODEOWNERS, active main ruleset `20791659`, vulnerability reporting, MIT licensing, and no-real-wallet/local-runtime controls were accepted in Phase 0/PR #1 | **PASS** |
 | S1 core invariant proof | Protected Phase-1 evidence proves strict schemas/hashing, atomic ledger/idempotency, approval replay protection, authenticated local-owner approval, four-scope pause/revocation fences, authenticated recovery leases, DB/concurrency/property invariants, and current-head CI/Secret Scan | **PASS / ACCEPTED** |
 | S2 local E2E | Phase 2 implementation and P2-06D evidence package are complete; S2 requirement evidence is PASS. P2-06A/B/C/D are integrated and accepted under the ADR-0015 boundary; external S2 acceptance review `5126373971` accepted the local boundary. | **PASS / ACCEPTED** |
-| Phase-3 integrated controls | ADR-0018 is accepted; P3-01 and P3-02 passed exact-SHA review and CI/Secret Scan. P3-03 candidate `510763b3c9c217f9058b1c9d388ce02d84e6ae9e` adds fence-first `STARTED` creation and canonical recovery for a mined STARTED attempt after process death/control invalidation. Local check passes (21 repo + 363 package tests), DB 150/150, Anvil E2E 1/1; fresh exact-SHA review passed 9/10 with no findings, CI `35498889238`, and Secret Scan `35498889228`. P3-04–P3-06 remain gated. | **IN PROGRESS / P3-03 PASS; P3-04 NEXT** |
+| Phase-3 integrated controls | ADR-0018 is accepted; P3-01 through P3-03 passed exact-SHA review and protected CI/Secret Scan. P3-04 local candidate adds DB-time lease renewal/fencing and exact signed-no-attempt recovery; `npm run check` passes (21 repo + 363 package tests), DB passes 152/152. P3-04 exact-SHA review and protected CI/Secret Scan are pending; P3-05/06 remain gated. | **IN PROGRESS / P3-04 LOCAL GATES PASS** |
 | S3 testnet readiness | Out of MVP; requires stronger adapter/auth and review | NOT STARTED |
 | S4 real-value canary | Prohibited without explicit owner approval | OUT OF SCOPE |
 
@@ -152,8 +152,10 @@ The gateway is loopback-published, Anvil is internal and unpublished, and
 PostgreSQL is isolated on a separate bridge. This keeps RPC outside DB locks.
 P3-01 and P3-02 passed their independent MAX reviews and exact-SHA CI/Secret
 Scans. P3-03 passed its fresh exact-SHA GPT-5.6 Luna MAX review (9/10,
-confidence 0.90, no findings), CI, and Secret Scan. P3-04 through P3-06 remain
-gated and no Phase-3 acceptance is claimed.
+confidence 0.90, no findings), CI, and Secret Scan. P3-04 local checks pass
+with migration `0032` exact no-send proof and `0033` authenticated lease-renewal
+audit; its exact-SHA review and protected CI/Secret Scan are pending. P3-05/06
+remain gated and no Phase-3 acceptance is claimed.
 
 Phase 3 does not weaken signer locality, current envelope/fence binding,
 persist-before-send uncertainty, authenticated recovery, or the local-only

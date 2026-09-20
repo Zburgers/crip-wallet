@@ -18,7 +18,7 @@ Update rule: at every meaningful integration point; keep this as the current res
 - Phase-1 Secret Scan: run `31919254475` — PASS
 - Phase-2 post-merge `main` CI: run `34058182763` — PASS
 - Phase-2 post-merge `main` Secret Scan: run `34058183008` — PASS
-- Phase-3 canonical branch: `phase-3/ws-005-implementation`; P3-03 implementation candidate `510763b3c9c217f9058b1c9d388ce02d84e6ae9e`
+- Phase-3 canonical branch: `phase-3/ws-005-implementation`; P3-03 implementation candidate `510763b3c9c217f9058b1c9d388ce02d84e6ae9e`; P3-04 local implementation complete, exact-SHA review/CI pending
 - ADR-0018: **ACCEPTED — 2026-09-17 by product owner**
 
 ## Gate status
@@ -71,7 +71,7 @@ The actual post-merge `main` candidate passed CI `34058182763` and Secret Scan `
 
 **Gate S2 is PASS / ACCEPTED, and Phase 2 / WS-004 is COMPLETE / ACCEPTED for the local boundary.**
 
-### Phase 3 — IN PROGRESS / P3-01 THROUGH P3-03 CLEARED; P3-04 NEXT
+### Phase 3 — IN PROGRESS / P3-01 THROUGH P3-03 CLEARED; P3-04 LOCAL IMPLEMENTATION COMPLETE
 
 Phase 3 / WS-005 is executing from protected `main`.
 `docs/plans/PHASE-3.md` maps the integrated authority-to-economic-finality
@@ -100,7 +100,14 @@ proves one economic effect after a control invalidation. Local gates pass:
 (150/150 across six files), and the P2-05D Anvil journey (1/1). Fresh GPT-5.6
 Luna MAX review is PASS, 9/10, confidence 0.90, with no findings. Protected
 CI `35498889238` and Secret Scan `35498889228` pass on this exact candidate.
-P3-04 is next; P3-05 and P3-06 remain gated.
+P3-04 adds migrations `0032`–`0033` for exact signed-no-attempt recovery and
+audited lease renewal. DB-time claim/renew/final-resolution checks bind the
+active credential and lease generation; final resolution rolls back all
+state/account/audit writes if its live-lease update fails. Local validation
+passes: `npm run check` (21 repository + 363 package tests), `npm run test:db`
+(152/152 across six files), and `npm audit --audit-level=high` (no high or
+critical findings; two moderate Vitest advisories remain). Exact-SHA MAX review
+and protected CI/Secret Scan are pending. P3-05 and P3-06 remain gated.
 
 P3-00 found a real integration gap rather than an accepted implementation:
 current control invalidation did not cover signed/no-attempt work, the
@@ -135,7 +142,7 @@ acceptance is not claimed.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
 - WS-004 Phase-2 transaction pipeline/local adapter — P2-06D COMPLETE / ACCEPTED; Phase 2 / WS-004 COMPLETE / ACCEPTED / MERGED TO `main`.
-- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 through P3-03 cleared; P3-04 next.
+- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 through P3-03 cleared; P3-04 local implementation complete, exact-SHA review/CI pending.
 - WS-006/007 — NOT OPENED.
 
 ## Safety boundary

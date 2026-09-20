@@ -1,6 +1,6 @@
 # Phase 3 Plan - WS-005 Integrated Approval Controls
 
-Status: **IN PROGRESS — P3-01 THROUGH P3-03 CLEARED; P3-04–P3-06 NOT STARTED**
+Status: **IN PROGRESS — P3-01 THROUGH P3-03 CLEARED; P3-04 LOCAL IMPLEMENTATION COMPLETE, EXACT-SHA REVIEW/CI PENDING; P3-05–P3-06 NOT STARTED**
 
 Planning branch: `phase-3/ws-005-integrated-controls`
 
@@ -624,7 +624,8 @@ repository checks and 363 package tests), `npm run test:db` (150/150 across
 six files, including execution evidence 58/58), and the P2-05D Anvil journey
 (1/1). Fresh GPT-5.6 Luna MAX review: **PASS, 9/10, confidence 0.90, no
 findings**. Protected exact-SHA CI `35498889238` and Secret Scan `35498889228`
-both pass on this candidate. P3-04 is next; full Phase-3 acceptance is not
+both pass on this candidate. P3-04 is locally implemented; its exact-SHA review
+and protected CI/Secret Scan are pending. Full Phase-3 acceptance is not
 claimed.
 
 ### P3-04 - Pause/revoke/recovery concurrency and stale-worker fencing
@@ -649,6 +650,20 @@ Acceptance:
   chain economic-effect rows.
 - Send-capable ambiguity can never use that release path.
 - Concurrent workers create one recovery result and at most one economic effect.
+
+P3-04 local implementation evidence: migrations `0032` and `0033` add the
+exact signed-no-attempt release backstop and the authenticated lease-renewal
+audit type. Claim, renewal, and final resolution compare the exact credential
+and lease generation using PostgreSQL time; the final resolution conditionally
+resolves only a still-live lease. The signed-no-attempt path verifies one exact
+authorization and signed transaction, the matching control invalidation, and
+zero broadcast attempts/economic effects before atomically reconciling the
+operation, releasing the reservation, resolving the lease, and appending the
+recovery audits. Local gates pass: `npm run check` (21 repository tests and
+363 package tests) and `npm run test:db` (152/152 across six files), including
+barrier-based duplicate recovery, lease-expiry rollback, renewal, takeover,
+and send-capable no-send rejection. Fresh exact-SHA MAX review and protected
+CI/Secret Scan remain pending; P3-05 has not started.
 
 ### P3-05 - Adversarial, replay, substitution, and fault matrix
 

@@ -5,7 +5,7 @@
 Prove that owner approval, replay protection, revocation, pause and worker recovery cannot authorize stale work.
 
 **Phase-1 S1 slice: COMPLETE LOCALLY.**
-**Phase-3 integrated execution slice: IN PROGRESS; P3-01 through P3-03 CLEARED; P3-04 NEXT.**
+**Phase-3 integrated execution slice: IN PROGRESS; P3-01 through P3-03 CLEARED; P3-04 locally implemented, exact-SHA review/CI pending.**
 
 ## S1 contract now implemented
 
@@ -68,3 +68,14 @@ fresh GPT-5.6 Luna MAX review passed 9/10 (confidence 0.90, no findings).
 Protected CI `35498889238` and Secret Scan `35498889228` pass on this
 candidate. P3-04 through P3-06 remain gated. Phase 3 remains local
 Anvil/fake-money only and is not fully accepted.
+
+P3-04 adds migrations `0032` and `0033` for exact signed-no-attempt release
+proof and authenticated lease-renewal audit. Recovery claim, renewal, takeover,
+and final resolution use DB time and exact lease generations. The controlled
+no-send transaction requires one bound authorization/signed row, a matching
+control invalidation, and zero attempts/economic effects; it commits one
+`FAILED` recovery row, `RECONCILED`/`RELEASED` state, resolved lease, and
+correlated audits together. `npm run check` passes (21 repository + 363 package
+tests) and `npm run test:db` passes 152/152, including concurrent duplicate
+recovery and forced final-lease expiry rollback. Exact-SHA MAX review and
+protected CI/Secret Scan are pending; P3-05 has not started.
