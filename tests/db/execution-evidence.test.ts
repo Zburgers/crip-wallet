@@ -42,14 +42,15 @@ import {
   type UntrustedChainEvidence,
 } from "@crip/transaction-pipeline";
 import {
-  broadcastSignedTransaction,
-  createBroadcastStore,
-  createSignerStore,
-  createFaultProxy,
   reconcileLocalChainEvidence,
-  signAuthorizedTransferCore,
-  type ReconciliationInput,
+  createLocalAnvilSignerHandler,
 } from "@crip/local-anvil-adapter";
+import { broadcastSignedTransaction } from "../../adapters/local-anvil/src/broadcast-core.js";
+import { createBroadcastStore } from "../../adapters/local-anvil/src/broadcast-store.js";
+import { createFaultProxy } from "../../adapters/local-anvil/src/fault-proxy.js";
+import { createSignerStore } from "../../adapters/local-anvil/src/signer-store.js";
+import { signAuthorizedTransferCore } from "../../adapters/local-anvil/src/signer-core.js";
+import type { ReconciliationInput } from "../../adapters/local-anvil/src/reconciliation.js";
 import {
   generateComponentCredential,
   signComponentAction,
@@ -566,9 +567,21 @@ const componentAudit = (
   componentAuth,
 });
 
+const markOperationSigned = async (operationId = "op_1"): Promise<void> => {
+  await pool.query(
+    "UPDATE operations SET current_state = 'SIGNING', version = version + 1 WHERE operation_id = $1",
+    [operationId],
+  );
+  await pool.query(
+    "UPDATE operations SET current_state = 'SIGNED', version = version + 1 WHERE operation_id = $1",
+    [operationId],
+  );
+};
+
 const reconciliationFixture = async (
   receiptStatus: "success" | "reverted" = "success",
   hooks?: ReconciliationInput["barriers"],
+  attemptStatus: "ACCEPTED" | "UNKNOWN" | "CONFLICT" = "ACCEPTED",
 ): Promise<ReconciliationInput> => {
   const envelopeHash = await prepareAuthorizedV2();
   const envelope = {
@@ -593,6 +606,7 @@ const reconciliationFixture = async (
       adapterCredential.componentId,
     ],
   );
+  await markOperationSigned();
   await pool.query(
     `INSERT INTO broadcast_attempts
       (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,
@@ -603,18 +617,23 @@ const reconciliationFixture = async (
     [envelopeHash, fixtureId, hash],
   );
   await pool.query(
-    `UPDATE broadcast_attempts SET status = 'ACCEPTED', response_transaction_hash = $1,
-      classification_reason = 'MATCHING_RETURNED_TRANSACTION_HASH', completed_at = now()
+    `UPDATE broadcast_attempts SET status = $1, response_transaction_hash = $2,
+      classification_reason = $3, completed_at = now()
      WHERE attempt_id = 'attempt_1'`,
-    [hash],
+    [
+      attemptStatus,
+      attemptStatus === "ACCEPTED"
+        ? hash
+        : attemptStatus === "CONFLICT"
+          ? `0x${"c".repeat(64)}`
+          : null,
+      attemptStatus === "ACCEPTED"
+        ? "MATCHING_RETURNED_TRANSACTION_HASH"
+        : attemptStatus === "CONFLICT"
+          ? "CONTRADICTORY_RETURNED_HASH"
+          : "TRANSPORT_OR_RESPONSE_UNCERTAIN",
+    ],
   );
-  await pool.query(
-    "UPDATE operations SET current_state = 'SIGNING', version = version + 1 WHERE operation_id = 'op_1'",
-  );
-  await pool.query(
-    "UPDATE operations SET current_state = 'SIGNED', version = version + 1 WHERE operation_id = 'op_1'",
-  );
-
   const expectation: ChainEvidenceExpectation = {
     operationId: "op_1",
     reservationId: "res_1",
@@ -768,12 +787,7 @@ const broadcastStartFixture = async (): Promise<void> => {
       adapterCredential.componentId,
     ],
   );
-  await pool.query(
-    "UPDATE operations SET current_state = 'SIGNING', version = version + 1 WHERE operation_id = 'op_1'",
-  );
-  await pool.query(
-    "UPDATE operations SET current_state = 'SIGNED', version = version + 1 WHERE operation_id = 'op_1'",
-  );
+  await markOperationSigned();
 };
 
 const deferred = () => {
@@ -864,9 +878,9 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     const rows = await pool.query<{ filename: string }>(
       "SELECT filename FROM schema_migrations ORDER BY filename",
     );
-    expect(rows.rows).toHaveLength(30);
+    expect(rows.rows).toHaveLength(31);
     expect(rows.rows.at(-1)?.filename).toBe(
-      "0030_ws005_invalidated_rejected_release_guard.sql",
+      "0031_ws005_started_authority_guard.sql",
     );
   });
 
@@ -1476,7 +1490,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
           rawTransaction: broadcastRawTransaction,
         },
       ),
-    ).rejects.toThrow(/execution-valid AUTHORIZED reservation/i);
+    ).rejects.toThrow(/canonical signing authority is stale or invalid/i);
     expect(sends).toBe(0);
 
     await expect(
@@ -2027,14 +2041,21 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     if (!signed) throw new Error("missing signed transaction fixture");
     const store = createBroadcastStore(pool);
 
-    const first = await store.startBroadcastAttempt(signed, "attempt_repeat");
+    const first = await store.startBroadcastAttempt(
+      signed,
+      "attempt_repeat",
+      audit("op_1", "repeat-start").traceId,
+    );
     const repeated = await store.startBroadcastAttempt(
       signed,
       "attempt_repeat_other_id",
+      audit("op_1", "repeat-start-repeat").traceId,
     );
 
-    expect(first.status).toBe("STARTED");
-    expect(repeated.attemptId).toBe(first.attemptId);
+    expect(first.attempt.status).toBe("STARTED");
+    expect(first.created).toBe(true);
+    expect(repeated.attempt.attemptId).toBe(first.attempt.attemptId);
+    expect(repeated.created).toBe(false);
     expect(
       (
         await pool.query(
@@ -2042,6 +2063,114 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         )
       ).rows[0]?.count,
     ).toBe(1);
+  });
+
+  test("blocks STARTED after a control change at both the store and database gates", async () => {
+    await broadcastStartFixture();
+    await changeControlFence(pool, {
+      scopeType: "SYSTEM",
+      scopeId: "system",
+      command: "PAUSE",
+      audit: audit("op_1", "control-before-started"),
+    });
+    const signed =
+      await createBroadcastStore(pool).findSignedTransaction("signed_1");
+    if (!signed) throw new Error("missing signed transaction fixture");
+    let sends = 0;
+    await expect(
+      broadcastSignedTransaction(
+        createBroadcastStore(pool),
+        {
+          sendRawTransaction: async () => {
+            sends += 1;
+            return broadcastHash;
+          },
+        },
+        {
+          request: {
+            operationId: "op_1",
+            authorizationId: "approval_1:authorization",
+            adapterRequestId: "control-before-started",
+          },
+          signedTransactionId: "signed_1",
+          attemptId: "attempt_control_before_start",
+          rawTransaction: broadcastRawTransaction,
+        },
+      ),
+    ).rejects.toThrow(/authority|canonical|current/i);
+    expect(sends).toBe(0);
+    await expect(
+      pool.query(
+        `INSERT INTO broadcast_attempts
+          (attempt_id, signed_transaction_id, operation_id, reservation_id,
+           envelope_id, envelope_revision, envelope_hash, authorization_id,
+           fixture_instance_id, expected_transaction_hash)
+         VALUES ('attempt_direct_after_control', $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          signed.signedTransactionId,
+          signed.operationId,
+          signed.reservationId,
+          signed.envelopeId,
+          signed.envelopeRevision,
+          signed.envelopeHash,
+          signed.authorizationId,
+          signed.fixtureInstanceId,
+          signed.expectedTransactionHash,
+        ],
+      ),
+    ).rejects.toThrow(/canonical authority|current canonical|authorization/i);
+    await expect(
+      pool.query(
+        "SELECT count(*)::int count FROM broadcast_attempts WHERE operation_id = 'op_1'",
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: 0 }] });
+  });
+
+  test("reports authenticated no-attempt state and keeps STARTED uncertainty after control", async () => {
+    await broadcastStartFixture();
+    const handler = createLocalAnvilSignerHandler({
+      root: process.cwd(),
+      pool,
+    });
+    const request = {
+      operationId: "op_1",
+      adapterRequestId: "p303-status",
+    };
+    await expect(handler.getStatus(request)).resolves.toEqual({
+      ...request,
+      state: "PENDING",
+      evidence: "AUTHENTICATED",
+    });
+    await expect(handler.recoverTransaction(request)).resolves.toEqual({
+      ...request,
+      outcome: "NOT_FOUND",
+      evidence: "AUTHENTICATED",
+    });
+
+    const signed =
+      await createBroadcastStore(pool).findSignedTransaction("signed_1");
+    if (!signed) throw new Error("missing signed transaction fixture");
+    await createBroadcastStore(pool).startBroadcastAttempt(
+      signed,
+      "attempt_unknown_after_control",
+      audit("op_1", "unknown-after-control-start").traceId,
+    );
+    await changeControlFence(pool, {
+      scopeType: "SYSTEM",
+      scopeId: "system",
+      command: "PAUSE",
+      audit: audit("op_1", "unknown-after-control-pause"),
+    });
+    await expect(handler.getStatus(request)).resolves.toEqual({
+      ...request,
+      state: "UNKNOWN",
+      evidence: "UNTRUSTED",
+    });
+    await expect(handler.recoverTransaction(request)).resolves.toEqual({
+      ...request,
+      outcome: "UNKNOWN",
+      evidence: "UNTRUSTED",
+    });
   });
 
   test("durably records STARTED before an unavailable sender and retains the reservation", async () => {
@@ -2090,6 +2219,29 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         attempt_rows: 1,
       });
       expect(Number(state.rows[0]?.audit_rows)).toBeGreaterThan(0);
+      const attemptAudits = await pool.query<{
+        event_type: string;
+        data: Record<string, unknown>;
+      }>(
+        `SELECT event_type, data FROM audit_events
+         WHERE operation_id = 'op_1'
+           AND event_type IN (
+             'transaction.broadcast.attempted',
+             'transaction.broadcast.unknown'
+           )
+         ORDER BY sequence_no`,
+      );
+      expect(attemptAudits.rows.map((row) => row.event_type)).toEqual([
+        "transaction.broadcast.attempted",
+        "transaction.broadcast.unknown",
+      ]);
+      expect(attemptAudits.rows.map((row) => row.data.attemptStatus)).toEqual([
+        "STARTED",
+        "UNKNOWN",
+      ]);
+      expect(JSON.stringify(attemptAudits.rows)).not.toContain(
+        broadcastRawTransaction,
+      );
     } finally {
       await proxy.close();
       await new Promise<void>((resolve, reject) =>
@@ -2320,6 +2472,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         adapterCredential.componentId,
       ],
     );
+    await markOperationSigned();
     await pool.query(
       `INSERT INTO broadcast_attempts
         (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,
@@ -2371,6 +2524,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         adapterCredential.componentId,
       ],
     );
+    await markOperationSigned();
     await pool.query(
       `INSERT INTO broadcast_attempts
         (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,
@@ -2408,6 +2562,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         adapterCredential.componentId,
       ],
     );
+    await markOperationSigned();
     await pool.query(
       `INSERT INTO broadcast_attempts
         (attempt_id, signed_transaction_id, operation_id, reservation_id, envelope_id,
@@ -2616,6 +2771,92 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         },
       ],
     });
+  });
+
+  test("reconciles a CONFLICT attempt only when exact canonical evidence verifies", async () => {
+    const input = await reconciliationFixture("success", undefined, "CONFLICT");
+    await pool.query(
+      "UPDATE budget_accounts SET available = 80, reserved = 20 WHERE budget_id = 'budget_1'",
+    );
+    await changeControlFence(pool, {
+      scopeType: "SYSTEM",
+      scopeId: "system",
+      command: "PAUSE",
+      audit: audit("op_1", "control-after-conflict-attempt"),
+    });
+
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "FINALIZED", finalizedSpendAtomic: "10" },
+    });
+    await expect(
+      reconcileLocalChainEvidence(pool, input),
+    ).resolves.toMatchObject({
+      ok: true,
+      reservation: { status: "FINALIZED" },
+    });
+    await expect(
+      pool.query<{ effects: number; attempts: number }>(
+        `SELECT count(DISTINCT a.attempt_id)::int AS attempts,
+                count(DISTINCT effect.effect_id)::int AS effects
+         FROM broadcast_attempts a
+         LEFT JOIN execution_economic_effects effect
+           ON effect.operation_id = a.operation_id
+         WHERE a.operation_id = 'op_1'`,
+      ),
+    ).resolves.toMatchObject({ rows: [{ attempts: 1, effects: 1 }] });
+  });
+
+  test("keeps mismatched evidence for a CONFLICT attempt disputed", async () => {
+    const input = await reconciliationFixture("success", undefined, "CONFLICT");
+    const evidence = {
+      ...input.evidence,
+      transaction: {
+        ...(input.evidence.transaction as Record<string, unknown>),
+        hash: `0x${"c".repeat(64)}`,
+      },
+    };
+    const verification = verifyUntrustedChainEvidence(
+      input.expectation,
+      evidence,
+    );
+    expect(verification.ok).toBe(false);
+    if (verification.ok) throw new Error("expected conflict evidence mismatch");
+    const reason = `chain evidence mismatch: ${verification.mismatches
+      .map((item) => item.code)
+      .join(",")}`;
+    const resolve = componentAudit(
+      "op_1",
+      "conflict-attempt-mismatch-resolve",
+      signComponentAction(reconcilerCredential, "recovery.resolve", {
+        attemptId: "attempt_1",
+        operationId: "op_1",
+        reservationId: "res_1",
+        leaseVersion: "1",
+        outcome: "CONFLICT",
+        reason,
+        actualSpendAtomic: null,
+        proofReference: null,
+        evidence: null,
+      }),
+    );
+    await expect(
+      reconcileLocalChainEvidence(pool, {
+        ...input,
+        evidence,
+        audits: { ...input.audits, resolve },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reservation: { status: "DISPUTED" },
+    });
+    await expect(
+      pool.query(
+        "SELECT count(*)::int count FROM execution_economic_effects WHERE operation_id = 'op_1'",
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: 0 }] });
   });
 
   test("invalidated rejected attempts cannot advance or release", async () => {

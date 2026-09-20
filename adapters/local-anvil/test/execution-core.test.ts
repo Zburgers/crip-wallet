@@ -381,12 +381,17 @@ const makeBroadcastStore = (store: MemorySignerStore): BroadcastStore => ({
     };
     store.attempts.set(attemptId, attempt);
     store.phases.push("STARTED");
-    return attempt;
+    return { attempt, created: true };
   },
   finishBroadcastAttempt: async (input) => {
     const existing = store.attempts.get(input.attemptId);
     if (!existing) throw new Error("missing attempt");
-    const complete = { ...existing, ...input };
+    const complete = {
+      ...existing,
+      status: input.status,
+      responseTransactionHash: input.responseTransactionHash,
+      classificationReason: input.classificationReason,
+    };
     store.attempts.set(input.attemptId, complete);
     return complete;
   },

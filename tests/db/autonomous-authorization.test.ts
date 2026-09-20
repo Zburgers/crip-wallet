@@ -611,11 +611,11 @@ describe.sequential("P2-05D-PRE-A autonomous authorization", () => {
           (left, right) => Number(left.slice(0, 4)) - Number(right.slice(0, 4)),
         );
       expect(migrationFiles.slice(-5).map((file) => file.slice(0, 4))).toEqual([
-        "0026",
         "0027",
         "0028",
         "0029",
         "0030",
+        "0031",
       ]);
       for (const filename of migrationFiles.filter(
         (file) => Number(file.slice(0, 4)) <= 23,

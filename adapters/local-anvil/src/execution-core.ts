@@ -197,7 +197,8 @@ export const executeAuthorizedTransferCore = async (
           const started = await deps.broadcastStore.startBroadcastAttempt(
             ...args,
           );
-          if (started.status === "STARTED") deps.onPhase?.("broadcast-started");
+          if (started.created && started.attempt.status === "STARTED")
+            deps.onPhase?.("broadcast-started");
           return started;
         },
       },

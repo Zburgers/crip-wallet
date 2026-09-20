@@ -132,7 +132,11 @@ const loadBroadcastBinding = async (
     throw new Error(
       "broadcast attempt does not match reconciliation authority",
     );
-  if (row.status !== "ACCEPTED" && row.status !== "UNKNOWN")
+  if (
+    row.status !== "ACCEPTED" &&
+    row.status !== "UNKNOWN" &&
+    row.status !== "CONFLICT"
+  )
     throw new Error(`broadcast attempt is not recoverable: ${row.status}`);
   return row;
 };

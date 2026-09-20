@@ -13,6 +13,7 @@ import {
   createLocalAnvilReferenceAdapter,
   localAnvilCapabilityManifest,
 } from "../src/index.js";
+import * as localAnvilPublicApi from "../src/index.js";
 
 const ids = {
   operationId: "operation_local_01",
@@ -116,6 +117,24 @@ describe("provider-neutral adapter contracts", () => {
 });
 
 describe("local Anvil reference capability", () => {
+  it("keeps raw sender, direct signer, and persistence helpers off the public root", () => {
+    const internalExports = [
+      "broadcastSignedTransaction",
+      "createBroadcastStore",
+      "createLocalSignerDeps",
+      "createSignerStore",
+      "executeAuthorizedTransferCore",
+      "RawTransactionSender",
+      "signAuthorizedTransferCore",
+      "spawnExecutionProcess",
+    ];
+    expect(
+      Object.keys(localAnvilPublicApi).filter((name) =>
+        internalExports.includes(name),
+      ),
+    ).toEqual([]);
+  });
+
   it("exposes only the local IDs-only transfer operation and truthful manifest", async () => {
     const received: unknown[] = [];
     const adapter = createLocalAnvilReferenceAdapter({
