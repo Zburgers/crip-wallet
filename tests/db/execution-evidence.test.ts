@@ -2618,6 +2618,151 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     }
   });
 
+  test.each(["duplicate-create", "consume-replay"] as const)(
+    "approval %s locks authorization before reservation transition",
+    async (retryKind) => {
+      const envelopeHash = await prepareAuthorizedV2();
+      const blocker = await pool.connect();
+      const retryApplicationName = `p3-approval-${retryKind}`;
+      const transitionApplicationName = `p3-transition-${retryKind}`;
+      const retryPool = new Pool({
+        host: runtime.postgres.host,
+        port: runtime.postgres.port,
+        database: runtime.postgres.database,
+        user: runtime.postgres.user,
+        password: runtime.postgres.password,
+        max: 1,
+        application_name: retryApplicationName,
+      });
+      const transitionPool = new Pool({
+        host: runtime.postgres.host,
+        port: runtime.postgres.port,
+        database: runtime.postgres.database,
+        user: runtime.postgres.user,
+        password: runtime.postgres.password,
+        max: 1,
+        application_name: transitionApplicationName,
+      });
+      const startReplay = () =>
+        retryKind === "duplicate-create"
+          ? createApprovalRequest(retryPool, {
+              approvalId: "approval_1",
+              operationId: "op_1",
+              reservationId: "res_1",
+              envelopeId: "env_op_1_1",
+              envelopeRevision: 1,
+              envelopeHash,
+              policyDecisionId: "decision_1",
+              issuedAt: "2020-01-01T00:00:00Z",
+              expiresAt: "2099-01-01T00:50:00Z",
+              nonce: "approval-nonce-1",
+              audit: audit("op_1", "duplicate-approval-request"),
+            })
+          : consumeApproval(retryPool, {
+              approvalId: "approval_1",
+              operationId: "op_1",
+              envelopeId: "env_op_1_1",
+              envelopeRevision: 1,
+              envelopeHash,
+              consumerId: "evidence-test",
+              now: "2099-01-01T00:03:00Z",
+              audit: audit("op_1", "consume-replay"),
+            });
+      type ReplayOutcome =
+        | {
+            status: "fulfilled";
+            value: Awaited<ReturnType<typeof startReplay>>;
+          }
+        | { status: "rejected"; reason: unknown };
+      let replayOutcome: Promise<ReplayOutcome> | undefined;
+      let transitionOutcome:
+        | Promise<
+            | {
+                status: "fulfilled";
+                value: Awaited<ReturnType<typeof authorizeReservation>>;
+              }
+            | { status: "rejected"; reason: unknown }
+          >
+        | undefined;
+
+      try {
+        await blocker.query("BEGIN");
+        await blocker.query(
+          "SELECT operation_id FROM operations WHERE operation_id = 'op_1' FOR UPDATE",
+        );
+        replayOutcome = startReplay().then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason: unknown) => ({ status: "rejected" as const, reason }),
+        );
+        expect(await waitForDatabaseBlock(retryApplicationName)).toBe(true);
+
+        transitionOutcome = authorizeReservation(transitionPool, {
+          reservationId: "res_1",
+          audit: audit("op_1", `${retryKind}-reservation-transition`),
+        }).then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason: unknown) => ({ status: "rejected" as const, reason }),
+        );
+        expect(await waitForDatabaseBlock(transitionApplicationName)).toBe(
+          true,
+        );
+        const transitionWait = await pool.query<{ query: string }>(
+          `SELECT query FROM pg_stat_activity
+           WHERE application_name = $1 AND cardinality(pg_blocking_pids(pid)) > 0`,
+          [transitionApplicationName],
+        );
+        expect(transitionWait.rows[0]?.query).toMatch(/policy_decisions/i);
+
+        await blocker.query("COMMIT");
+        const [replay, transition] = await Promise.all([
+          replayOutcome,
+          transitionOutcome,
+        ]);
+        expect(transition.status).toBe("fulfilled");
+        if (retryKind === "duplicate-create") {
+          expect(replay).toMatchObject({
+            status: "fulfilled",
+            value: { approvalId: "approval_1", status: "CONSUMED" },
+          });
+        } else {
+          expect(replay).toMatchObject({
+            status: "rejected",
+            reason: { code: "APPROVAL_REPLAYED" },
+          });
+        }
+        await expect(
+          pool.query<{
+            current_state: string;
+            reservation_status: string;
+            authorization_count: number;
+          }>(
+            `SELECT o.current_state, r.status AS reservation_status,
+                    (SELECT count(*)::int FROM authorization_evidence e
+                     WHERE e.operation_id = o.operation_id) AS authorization_count
+             FROM operations o
+             JOIN budget_reservations r ON r.operation_id = o.operation_id
+             WHERE o.operation_id = 'op_1'`,
+          ),
+        ).resolves.toMatchObject({
+          rows: [
+            {
+              current_state: "AUTHORIZED",
+              reservation_status: "AUTHORIZED",
+              authorization_count: 1,
+            },
+          ],
+        });
+      } finally {
+        await blocker.query("ROLLBACK").catch(() => undefined);
+        await Promise.allSettled(
+          [replayOutcome, transitionOutcome].filter(Boolean),
+        );
+        blocker.release();
+        await Promise.all([retryPool.end(), transitionPool.end()]);
+      }
+    },
+  );
+
   test("signer failure rolls back signing state, evidence, and start audit", async () => {
     const envelopeHash = await prepareAuthorizedV2();
     await expect(

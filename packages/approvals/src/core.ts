@@ -477,6 +477,93 @@ const approvalSelect = `
   JOIN policies p ON p.policy_id = o.policy_id
   WHERE a.approval_id = $1`;
 
+type AuthorizationLockBinding = {
+  authorization_id: string;
+  approval_id: string;
+  reservation_id: string;
+  policy_decision_id: string;
+};
+
+const lockAuthorizationBindings = async (
+  client: PoolClient,
+  operationId: string,
+): Promise<AuthorizationLockBinding[]> => {
+  const bindings = await client.query<AuthorizationLockBinding>(
+    `SELECT authorization_id, approval_id, reservation_id, policy_decision_id
+     FROM authorization_evidence
+     WHERE operation_id = $1
+     ORDER BY policy_decision_id, authorization_id`,
+    [operationId],
+  );
+  const decisionIds = [
+    ...new Set(bindings.rows.map((binding) => binding.policy_decision_id)),
+  ];
+  const decisions = await client.query<{ decision_id: string }>(
+    `SELECT decision_id FROM policy_decisions
+     WHERE operation_id = $1 AND decision_id = ANY($2::text[])
+     ORDER BY decision_id FOR UPDATE`,
+    [operationId, decisionIds],
+  );
+  if (decisions.rowCount !== decisionIds.length)
+    throw new ApprovalError(
+      "AUTHORIZATION_STATE_INVALID",
+      "authorization policy decision is missing",
+    );
+  const evidence = await client.query<{ authorization_id: string }>(
+    `SELECT authorization_id FROM authorization_evidence
+     WHERE operation_id = $1
+     ORDER BY policy_decision_id, authorization_id
+     FOR UPDATE`,
+    [operationId],
+  );
+  if (
+    evidence.rowCount !== bindings.rowCount ||
+    evidence.rows.some(
+      (row, index) =>
+        row.authorization_id !== bindings.rows[index]?.authorization_id,
+    )
+  )
+    throw new ApprovalError(
+      "AUTHORIZATION_STATE_INVALID",
+      "authorization evidence changed while acquiring canonical locks",
+    );
+  return bindings.rows;
+};
+
+const lockApprovalRow = async (
+  client: PoolClient,
+  identity: ApprovalRow,
+): Promise<ApprovalRow> => {
+  const currentFences = await lockControlFences(
+    client,
+    identity.owner_id,
+    identity.agent_id,
+    identity.policy_id,
+  );
+  await lockAuthorizationBindings(client, identity.operation_id);
+  const result = await client.query<ApprovalRow>(
+    `${approvalSelect} FOR UPDATE OF a, o, r, b, e, d`,
+    [identity.approval_id],
+  );
+  const row = result.rows[0];
+  if (!row)
+    throw new ApprovalError(
+      "APPROVAL_NOT_FOUND",
+      `approval not found: ${identity.approval_id}`,
+    );
+  return {
+    ...row,
+    current_system_fence_version: currentFences.systemFenceVersion,
+    current_system_state: currentFences.systemState,
+    current_owner_fence_version: currentFences.ownerFenceVersion,
+    current_owner_state: currentFences.ownerState,
+    current_agent_fence_version: currentFences.agentFenceVersion,
+    current_agent_state: currentFences.agentState,
+    current_policy_fence_version: currentFences.policyFenceVersion,
+    current_policy_state: currentFences.policyState,
+  };
+};
+
 const commonSelect = `
   SELECT o.operation_id, r.reservation_id, e.envelope_id, e.revision AS envelope_revision,
          e.envelope_hash, d.decision_id AS policy_decision_id,
@@ -524,33 +611,7 @@ const loadApproval = async (
       "APPROVAL_NOT_FOUND",
       `approval not found: ${approvalId}`,
     );
-  const currentFences = await lockControlFences(
-    client,
-    identity.owner_id,
-    identity.agent_id,
-    identity.policy_id,
-  );
-  const result = await client.query<ApprovalRow>(
-    `${approvalSelect} FOR UPDATE OF a, o, r, b, e, d`,
-    [approvalId],
-  );
-  const row = result.rows[0];
-  if (!row)
-    throw new ApprovalError(
-      "APPROVAL_NOT_FOUND",
-      `approval not found: ${approvalId}`,
-    );
-  return {
-    ...row,
-    current_system_fence_version: currentFences.systemFenceVersion,
-    current_system_state: currentFences.systemState,
-    current_owner_fence_version: currentFences.ownerFenceVersion,
-    current_owner_state: currentFences.ownerState,
-    current_agent_fence_version: currentFences.agentFenceVersion,
-    current_agent_state: currentFences.agentState,
-    current_policy_fence_version: currentFences.policyFenceVersion,
-    current_policy_state: currentFences.policyState,
-  };
+  return lockApprovalRow(client, identity);
 };
 
 const loadCommonByIds = async (
@@ -580,24 +641,15 @@ const loadCommonByIds = async (
     identity.policy_id,
   );
   if (authorizationIdToLock) {
-    const decision = await client.query(
-      `SELECT decision_id FROM policy_decisions
-       WHERE operation_id = $1 AND decision_id = $2 FOR UPDATE`,
-      [operationId, policyDecisionId],
-    );
-    if (decision.rowCount !== 1)
-      throw new ApprovalError(
-        "AUTHORIZATION_STATE_INVALID",
-        "autonomous policy decision is missing during retry",
-      );
-    const authorization = await client.query(
-      `SELECT authorization_id FROM authorization_evidence
-       WHERE authorization_id = $1 AND operation_id = $2
-         AND reservation_id = $3 AND policy_decision_id = $4
-       FOR UPDATE`,
-      [authorizationIdToLock, operationId, reservationId, policyDecisionId],
-    );
-    if (authorization.rowCount !== 1)
+    const bindings = await lockAuthorizationBindings(client, operationId);
+    if (
+      !bindings.some(
+        (binding) =>
+          binding.authorization_id === authorizationIdToLock &&
+          binding.reservation_id === reservationId &&
+          binding.policy_decision_id === policyDecisionId,
+      )
+    )
       throw new ApprovalError(
         "AUTHORIZATION_STATE_INVALID",
         "autonomous authorization evidence is missing during retry",
@@ -1045,12 +1097,11 @@ export const createApprovalRequest = async (
     );
 
   return withSerializableTransaction(pool, async (client) => {
-    const existing = await client.query<ApprovalRow>(
-      `${approvalSelect} FOR UPDATE OF a, o, r, b, e, d`,
-      [request.approvalId],
-    );
+    const existing = await client.query<ApprovalRow>(approvalSelect, [
+      request.approvalId,
+    ]);
     if (existing.rowCount) {
-      const row = existing.rows[0]!;
+      const row = await lockApprovalRow(client, existing.rows[0]!);
       ensureApprovalRequestMatches(mapApproval(row), request);
       assertCommonBinding(row);
       ensureLatestEnvelope(row);
@@ -1491,35 +1542,9 @@ export const replaceExecutionEnvelope = async (
       identity.agent_id,
       identity.policy_id,
     );
-    const evidenceBindings = await client.query<{
-      authorization_id: string;
-      policy_decision_id: string;
-    }>(
-      `SELECT authorization_id, policy_decision_id
-       FROM authorization_evidence
-       WHERE operation_id = $1
-       ORDER BY authorization_id`,
-      [request.operationId],
-    );
-    for (const binding of evidenceBindings.rows) {
-      const decision = await client.query(
-        `SELECT decision_id FROM policy_decisions
-         WHERE operation_id = $1 AND decision_id = $2 FOR UPDATE`,
-        [request.operationId, binding.policy_decision_id],
-      );
-      if (decision.rowCount !== 1)
-        throw new ApprovalError(
-          "AUTHORIZATION_STATE_INVALID",
-          "authorization policy decision is missing",
-        );
-    }
-    const evidenceResult = await client.query<{ approval_id: string }>(
-      `SELECT approval_id
-       FROM authorization_evidence
-       WHERE operation_id = $1
-       ORDER BY authorization_id
-       FOR UPDATE`,
-      [request.operationId],
+    const evidenceBindings = await lockAuthorizationBindings(
+      client,
+      request.operationId,
     );
     const operationResult = await client.query<{
       current_state: string;
@@ -1573,7 +1598,7 @@ export const replaceExecutionEnvelope = async (
       if (
         activeResult.rowCount !== 1 ||
         operation.reservation_status !== "HELD" ||
-        evidenceResult.rowCount !== 0
+        evidenceBindings.length !== 0
       )
         throw new ApprovalError(
           "AUTHORIZATION_STATE_INVALID",
@@ -1662,7 +1687,7 @@ export const replaceExecutionEnvelope = async (
       );
     } else if (operation.current_state === "AUTHORIZED") {
       if (
-        evidenceResult.rowCount !== 1 ||
+        evidenceBindings.length !== 1 ||
         operation.reservation_status !== "AUTHORIZED" ||
         activeResult.rowCount !== 0
       )
@@ -1670,10 +1695,7 @@ export const replaceExecutionEnvelope = async (
           "AUTHORIZATION_STATE_INVALID",
           "authorized replacement state is ambiguous",
         );
-      const row = await loadApproval(
-        client,
-        evidenceResult.rows[0]!.approval_id,
-      );
+      const row = await loadApproval(client, evidenceBindings[0]!.approval_id);
       assertCommonBinding(row);
       ensureLatestEnvelope(row);
       await updateOperation(
