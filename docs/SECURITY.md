@@ -47,7 +47,7 @@ claims. Database queries are parameterized and transactions use one client.
 | S0 repository safety | Secret scanning/push protection, locked dependencies, CODEOWNERS, active main ruleset `20791659`, vulnerability reporting, MIT licensing, and no-real-wallet/local-runtime controls were accepted in Phase 0/PR #1 | **PASS** |
 | S1 core invariant proof | Protected Phase-1 evidence proves strict schemas/hashing, atomic ledger/idempotency, approval replay protection, authenticated local-owner approval, four-scope pause/revocation fences, authenticated recovery leases, DB/concurrency/property invariants, and current-head CI/Secret Scan | **PASS / ACCEPTED** |
 | S2 local E2E | Phase 2 implementation and P2-06D evidence package are complete; S2 requirement evidence is PASS. P2-06A/B/C/D are integrated and accepted under the ADR-0015 boundary; external S2 acceptance review `5126373971` accepted the local boundary. | **PASS / ACCEPTED** |
-| Phase-3 integrated controls | ADR-0018 is accepted; P3-01 DB-time/lock/rollback gates pass locally, but chain drift during the DB lock wait is not detected under the accepted no-RPC-under-lock rule. P3-02–P3-06 are gated pending product-owner resolution. | **IN PROGRESS / P3-01 BLOCKED** |
+| Phase-3 integrated controls | ADR-0018 is accepted; P3-01 implements a checkout-scoped lease shared by the loopback RPC gateway, lifecycle scripts, and signer. Local restart/checkpoint and packet gates pass; independent review remains pending. P3-02–P3-06 are gated. | **IN PROGRESS / P3-01 REVIEW PENDING** |
 | S3 testnet readiness | Out of MVP; requires stronger adapter/auth and review | NOT STARTED |
 | S4 real-value canary | Prohibited without explicit owner approval | OUT OF SCOPE |
 
@@ -139,16 +139,19 @@ Public RPC, testnet/mainnet, real assets, production custody, real-wallet
 material, arbitrary signing, and provider integrations remain prohibited by the
 current Phase-2 boundary.
 
-## Phase-3 planned security boundary
+## Phase-3 security boundary
 
 Accepted ADR-0018 requires fence-first atomic local signing, full authority
 revalidation before durable `STARTED`, signed/no-attempt quarantine, immutable
 attempt-based post-send recovery, DB-time lease fencing, and unconditional DB
 uniqueness for signed/attempt lineage. The plan is
-`docs/plans/PHASE-3.md`. P3-01 revalidation is blocked by R-033: a DB-time
-deadline cannot detect an Anvil state change during the fence-lock wait, while
-ADR-0018 prohibits RPC under those locks. Until that product decision is
-resolved, P3-02 through P3-06 remain gated and no Phase-3 acceptance is claimed.
+`docs/plans/PHASE-3.md`. P3-01 implements the selected R-033 resolution: the
+signer acquires the same exclusive lease as every supported local Anvil
+mutation before its final freshness RPC, then holds it through evidence commit.
+The gateway is loopback-published, Anvil is internal and unpublished, and
+PostgreSQL is isolated on a separate bridge. This keeps RPC outside DB locks.
+P3-01 remains open until its independent review passes;
+P3-02 through P3-06 remain gated and no Phase-3 acceptance is claimed.
 
 Phase 3 does not weaken signer locality, current envelope/fence binding,
 persist-before-send uncertainty, authenticated recovery, or the local-only

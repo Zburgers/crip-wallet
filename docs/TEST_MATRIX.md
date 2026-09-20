@@ -63,7 +63,7 @@ Secret Scan: `33189082181` — PASS.
 
 **Gate S1: PASS / ACCEPTED. S2-01: PASS. S2-02: PASS. S2-03: PASS. S2 requirement evidence: PASS. External S2 acceptance: PASS / ACCEPTED in review `5126373971`. Gate S2: PASS / ACCEPTED.**
 
-**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 revalidation is blocked by the documented chain-freshness conflict; P3-02–P3-06 remain gated.**
+**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 implements the selected R-033 chain-mutation lease, passes its local gates, and awaits independent review; P3-02–P3-06 remain gated.**
 
 ## Phase-3 planning checkpoint
 
@@ -157,7 +157,7 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 
 | Packet | Status | Required evidence before PASS |
 | --- | --- | --- |
-| P3-01 pre-sign authority transaction and binding | PARTIAL / BLOCKED | `0026`; atomic fence-first path; follow-up local gates on the candidate tree: check 21 repository + 346 package tests, DB 137/137, concurrency 18/18, invariants 7/7, focused signer/execution 45/45, contracts 10/10, chain 10/10, E2E 1/1, fault 145/145, adversarial 181/181; P3-F04A chain advance during lock wait is not detected by the DB-time deadline; see PHASE-3 blocker |
+| P3-01 pre-sign authority transaction and binding | IMPLEMENTED LOCALLY / MAX REVIEW PENDING | `0026`; atomic fence-first path; shared Anvil mutation lease; final freshness sample after lease acquisition; check 21 repo + 361 package tests, DB 137/137, concurrency 18/18, invariants 7/7, signer/execution 52/52, contracts 10/10, chain 10/10, E2E 1/1, fault 160/160, adversarial 188/188; audit exits 0 at high threshold with two moderate Vitest advisories; live checkpoint/restart proof |
 | P3-02 signed-unbroadcast lifecycle/control | PLANNED | signed/no-attempt quarantine, retained reservation, zero attempt/RPC, authenticated no-send recovery prerequisites, idempotent control audits |
 | P3-03 send commit + UNKNOWN/recovery integration | PLANNED | control-before/after `STARTED`; crash/response-loss; one attempt; later fence change cannot block exact reconciliation |
 | P3-04 control/recovery concurrency fencing | PLANNED | DB-time lease expiry/takeover; signed-no-attempt exact release; concurrent retry/control/recovery; one economic effect |

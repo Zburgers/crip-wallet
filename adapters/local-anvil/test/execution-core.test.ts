@@ -404,6 +404,7 @@ const makeSignerDeps = (
     role: "ADAPTER",
   },
   rpcUrl,
+  withChainMutationLease: async (work) => work(),
   loadDisposableAccount: () => ({ address: wallet as Address }),
   makeRpc: () => rpc,
   signTransaction: async (fields: ExactTransactionFields) => {

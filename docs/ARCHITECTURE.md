@@ -24,6 +24,9 @@ PostgreSQL state + audit          approval / autonomous fence
                                  local Anvil adapter process
                                            |
                                            v
+                               loopback RPC gateway
+                                  | shared lease
+                                  v
                               Anvil 31337 + mock ERC-20
 
 Cross-cutting: OpenTelemetry, structured redacted logs, pause/revocation fences,
@@ -41,7 +44,8 @@ authenticated local component credentials, and durable recovery leases
 | Transaction pipeline | Construct, decode, verify, simulate, finalize candidates                                                                    | Accept raw calldata for MVP transfers       |
 | Approval/controls    | Envelope-bound one-time approval, versioned pause/revocation fence, stale-authority invalidation                            | Claim post-broadcast cancellation           |
 | Adapter SDK          | Normalize capabilities, signing authorization, broadcast, receipts                                                          | Define core policy or overstate enforcement |
-| Local Anvil adapter  | Isolate disposable local signer and local RPC                                                                               | Serve production/public networks            |
+| Local Anvil adapter  | Isolate disposable local signer and serialize final chain freshness with mutations                                            | Serve production/public networks            |
+| Local RPC gateway    | Allowlist local RPC and checkpoint each mutation under the shared lease                                                      | Expose Anvil directly or accept arbitrary RPC methods |
 | Audit/telemetry      | Correlate durable events and operational evidence                                                                           | Become authorization input or log secrets   |
 | Recovery worker      | Idempotently resume leased lifecycle work                                                                                   | Recreate authorization on retry             |
 
@@ -74,12 +78,12 @@ outcomes remain disputed until authenticated reconciliation.
 
 Phase 3 is in progress. Accepted ADR-0018 defines two linearization points
 between the accepted S1 fences and accepted S2 execution path. P3-01's DB
-transaction implements the first, but its live-chain freshness acceptance is
-blocked by R-033; P3-02/P3-03 have not started:
+transaction and selected R-033 chain-mutation lease are implemented locally;
+independent review is pending, and P3-02/P3-03 have not started:
 
 1. bounded local signing and signed-evidence persistence occur atomically in one
-   fence-first database transaction (P3-01 DB path locally implemented; chain
-   freshness remains blocked); and
+   fence-first database transaction; the signer acquires the mutation lease
+   before its final freshness RPC and holds it through commit; and
 2. a second fence-first transaction revalidates the exact authority before its
    `STARTED` commit becomes the send-commit point.
 
@@ -92,11 +96,14 @@ four fence versions, authorization ID, attempt identity, and recovery
 
 ## Deployment topology
 
-MVP is a single developer-machine topology: loopback application processes,
-loopback-published PostgreSQL, and loopback-published Anvil containers on one
-private Compose network. Each checkout derives a distinct Compose project and
-database volume identity from its canonical path; host-port conflicts fail
-instead of sharing another checkout's services. `.local/` holds generated
+MVP is a single developer-machine topology. PostgreSQL uses the `local-only`
+bridge and a loopback-published host port. Anvil has no host port and runs only
+on the internal `anvil-private` network. The RPC gateway connects to Anvil on
+that network and uses a dedicated `gateway-host` bridge for its dynamically
+assigned loopback host port; PostgreSQL cannot reach the gateway over a shared
+container network. Supported mutations and Anvil lifecycle restarts share the
+checkout-scoped lease. Each checkout derives a distinct Compose project and
+database volume identity from its canonical path. `.local/` holds generated
 disposable state and is never versioned. No public RPC, cloud service, testnet,
 or mainnet exists in scope.
 

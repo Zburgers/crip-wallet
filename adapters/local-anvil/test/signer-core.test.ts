@@ -417,6 +417,7 @@ const buildDeps = (
     role: "ADAPTER",
   },
   rpcUrl,
+  withChainMutationLease: async (work) => work(),
   loadDisposableAccount: () => ({ address: wallet as Address }),
   makeRpc: () => rpc,
   signTransaction: async (fields: ExactTransactionFields) => {
@@ -551,6 +552,107 @@ describe("restricted local signer core", () => {
       maxPriorityFeePerGas: "2",
     });
     expect(store.refusals).toHaveLength(0);
+  });
+
+  it("waits for the chain lease, samples afterward, and holds it through evidence commit", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    const rpc = new FakeRpc();
+    let leaseHeld = false;
+    let leaseCalls = 0;
+    let releaseLease!: () => void;
+    let signalLeaseWait!: () => void;
+    const leaseReleased = new Promise<void>((resolve) => {
+      releaseLease = resolve;
+    });
+    const leaseWaiting = new Promise<void>((resolve) => {
+      signalLeaseWait = resolve;
+    });
+    let headReads = 0;
+    const getBlockNumber = rpc.getBlockNumber.bind(rpc);
+    rpc.getBlockNumber = async () => {
+      headReads += 1;
+      return getBlockNumber();
+    };
+    const deps = buildDeps(store, rpc, {
+      makeRpc: () => {
+        expect(leaseHeld).toBe(true);
+        return rpc;
+      },
+      signTransaction: async () => {
+        expect(leaseHeld).toBe(true);
+        return { transactionHash: `0x${"ee".repeat(32)}` };
+      },
+    });
+    const persist = store.signAndPersistEvidence.bind(store);
+    store.signAndPersistEvidence = async (...args) => {
+      expect(leaseHeld).toBe(true);
+      return persist(...args);
+    };
+    Object.assign(deps, {
+      withChainMutationLease: async <T>(work: () => Promise<T>): Promise<T> => {
+        leaseCalls += 1;
+        signalLeaseWait();
+        await leaseReleased;
+        leaseHeld = true;
+        try {
+          return await work();
+        } finally {
+          leaseHeld = false;
+        }
+      },
+    });
+
+    const outcomePromise = signAuthorizedTransferCore(deps, ids);
+    await leaseWaiting;
+    expect(headReads).toBe(0);
+    rpc.currentBlockNumber = 101n;
+    rpc.blocks.set(101n, {
+      number: 101n,
+      hash: `0x${"cd".repeat(32)}`,
+      baseFeePerGas: 10n,
+    });
+    releaseLease();
+    const outcome = await outcomePromise;
+
+    expect(outcome.ok).toBe(true);
+    expect(leaseCalls).toBe(1);
+    expect(headReads).toBeGreaterThan(0);
+    expect(store.persisted[0]?.freshnessObservation.headNumber).toBe("101");
+    expect(leaseHeld).toBe(false);
+  });
+
+  it("does not sample or sign when the chain mutation lease cannot be acquired", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    let sampled = false;
+    let signed = false;
+    const deps = buildDeps(store, new FakeRpc(), {
+      makeRpc: () => {
+        sampled = true;
+        return new FakeRpc();
+      },
+      signTransaction: async () => {
+        signed = true;
+        return { transactionHash: `0x${"ee".repeat(32)}` };
+      },
+    });
+    Object.assign(deps, {
+      withChainMutationLease: async () => {
+        throw Object.assign(new Error("lease unavailable"), {
+          code: "ANVIL_MUTATION_LEASE_UNAVAILABLE",
+        });
+      },
+    });
+
+    await expect(signAuthorizedTransferCore(deps, ids)).resolves.toEqual({
+      ok: false,
+      code: "INTERNAL",
+    });
+    expect(sampled).toBe(false);
+    expect(signed).toBe(false);
+    expect(store.beginCalls).toBe(0);
+    expect(store.refusals).toEqual(["INTERNAL"]);
   });
 
   it("rejects caller-supplied raw transaction fields and malformed requests", async () => {

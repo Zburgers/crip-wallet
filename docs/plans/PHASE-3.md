@@ -1,6 +1,6 @@
 # Phase 3 Plan - WS-005 Integrated Approval Controls
 
-Status: **IN PROGRESS — P3-01 REVALIDATION BLOCKED; P3-02–P3-06 NOT STARTED**
+Status: **IN PROGRESS — P3-01 IMPLEMENTED LOCALLY / INDEPENDENT REVIEW PENDING; P3-02–P3-06 NOT STARTED**
 
 Planning branch: `phase-3/ws-005-integrated-controls`
 
@@ -457,10 +457,10 @@ and scripts must be updated in the same packet.
 
 ### P3-01 - Pre-sign authority transaction and execution binding
 
-Status: **PARTIAL / BLOCKED**. The atomic database boundary and bounded
-database-time deadline have local evidence, but the required chain-advance
-barrier is not satisfied. Do not start P3-02 until the accepted-design conflict
-below is resolved.
+Status: **IMPLEMENTED LOCALLY / INDEPENDENT REVIEW PENDING**. The atomic
+database boundary, bounded database-time deadline, and selected R-033
+chain-mutation lease are implemented. P3-02 stays gated until P3-01 validation
+passes locally and the independent MAX critic passes on the pushed candidate.
 
 Scope:
 
@@ -482,44 +482,45 @@ Acceptance:
 - Exactly one signed row exists for one operation/authorization.
 - Existing Phase-1 approval/autonomous and Phase-2 signer suites remain green.
 
-#### P3-01 chain-freshness design blocker
+#### P3-01 R-033 resolution: checkout-scoped chain-mutation lease
 
-Revalidation on the working tree based on `d48a503fe67475fe59fcfa2e99dcfaf884a1c8e2`
-found an unresolved requirement conflict in ADR-0018. `checkSimulationFreshness`
-reads Anvil before the signing transaction and now returns a sample containing
-the head number, simulation block identity, pending nonce, balances, and fee
-facts; the signed audit event records those facts with the sample/deadline
-timestamps. The store then checks PostgreSQL authority and time while holding
-the fence locks, but does not re-read Anvil after acquiring them. A chain
-mutation inside the still-valid deadline is therefore not observable to that
-transaction. The two-second database deadline bounds elapsed time; it is not a
-chain-state lease.
+The selected resolution enforces one exclusive lease across every supported
+local Anvil writer. The gateway is the only RPC endpoint published to the host;
+it binds on a dynamically assigned loopback port. Anvil has no published host
+port and stays on the internal `anvil-private` network. The gateway is attached
+to that network and a dedicated `gateway-host` bridge; PostgreSQL remains on
+`local-only` and cannot reach the gateway over a shared container network.
 
-This matters for P3-F04A: a pending nonce, balance, fee, canonical head, or
-fixture assumption can change while signing waits for a fence lock, yet the
-store may still call the signer and commit. The execution advisory lock is
-per-operation, and fixture tooling can mutate Anvil directly. The accepted
-boundary also treats Anvil as untrusted. No database-only comparison detects a
-post-sample change at that endpoint.
+The gateway rejects batches and methods outside explicit read/mutation
+allowlists. It holds `.local/coordination/anvil.lock` across each state-changing
+RPC and its atomic durable-state checkpoint. A checkpoint failure poisons the
+gateway and blocks later calls. `dev-up` and `dev-down` hold the same lease
+across Anvil startup and shutdown. Runtime clients use the loopback gateway URL,
+so fixture tooling and application mutations share the same boundary.
 
-The same ADR requires stale chain facts to cause rollback/resampling after a
-lock wait and prohibits RPC or other unbounded network calls while database
-locks are held. Under the current independently mutable Anvil boundary, those
-requirements cannot both be guaranteed by the implemented database-time check.
-No architecture change is selected here; the accepted ADR is left unchanged.
-The product owner must choose a revised consistency boundary before P3-01 can
-close. Options are: permit a bounded live RPC recheck after lock acquisition;
-provide and enforce a chain-mutation lease/proxy that covers every Anvil writer;
-or revise the acceptance criterion so stale samples are prevented from
-broadcasting at P3-03, while explicitly accepting that signing may occur first.
-Each choice changes the accepted guarantee or boundary and requires explicit
-product-owner direction.
+The signer takes the lease **before** its final Anvil freshness sample and
+holds it through local signing and signed-evidence commit. A mutation already
+in progress completes before that sample; later writers wait until the signer
+commits or rolls back. The freshness RPC therefore remains outside the
+PostgreSQL fence transaction, preserving ADR-0018's no-RPC-under-DB-lock rule.
+The bounded database-time deadline still limits lock wait and transaction
+duration.
 
-The follow-up local evidence is recorded in `docs/TEST_MATRIX.md`. The
-wall-clock deadline, credential lock, signer rollback, owner/autonomous parity,
-and deterministic database lock-order cases pass locally; the actual
-chain-advance-during-lock-wait case remains unproven and is a blocking High
-finding. P3-02 through P3-06 remain gated by the strict packet order.
+Local runtime evidence: the gateway reported `healthz` 200 on a `127.0.0.1`
+ephemeral host port while Anvil had no host port; network inspection showed
+PostgreSQL only on `local-only` and the gateway only on `gateway-host` plus
+`anvil-private`. A fake account balance mutation through the gateway changed
+the durable checkpoint and survived `dev-down`/`dev-up`; `anvil_reset` through
+the gateway returned the account to `0x0`, and a later clean restart restored
+that state. One initial post-reset startup failed closed; a guarded retry and a
+subsequent no-mutation restart both passed. All local P3-01 gates pass; exact
+counts are recorded in `TEST_MATRIX.md`. The independent review is pending.
+
+This implementation resolves R-033 only for the supported checkout-local
+Compose runtime. A user with host Docker privileges can still bypass the RPC
+gateway by directly controlling containers; that host is inside the existing
+local trust boundary. It does not widen the scope to public RPC, testnets,
+mainnet, real funds, or production custody.
 
 ### P3-02 - Signed-unbroadcast lifecycle and control semantics
 

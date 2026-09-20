@@ -1299,6 +1299,7 @@ describe.sequential("WS-004 execution evidence persistence", () => {
         store: createSignerStore(pool),
         credential: signerCredential,
         rpcUrl: rpc.rpcUrl,
+        withChainMutationLease: async (work) => work(),
         loadDisposableAccount: () => ({
           address: address("10") as `0x${string}`,
         }),

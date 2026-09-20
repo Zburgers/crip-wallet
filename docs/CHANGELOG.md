@@ -5,19 +5,26 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ## Unreleased
 
-### Phase 3 revalidation
+### Phase 3 / P3-01 implementation
 
-- P3-01 revalidation added database-time bounds through lock acquisition,
-  signing, evidence persistence, and commit; locks the active signer
-  credential; records the sampled simulation block, nonce, balance, fee, and
-  freshness timestamps in the signed audit event; and proves lock-order
-  winners and rollback locally. The audit append refreshes the DB deadline
-  between its lock read and insert. Local inherited gates pass: check 21 + 346,
-  DB 137, concurrency 18, invariants 7, contracts 10, chain 10, E2E 1, fault
-  145, adversarial 181. The chain-advance-during-lock-wait requirement remains
-  BLOCKED: a time deadline cannot observe changed Anvil facts, and ADR-0018
-  prohibits RPC under the held DB locks. See R-033 and the P3-01 blocker in
-  `docs/plans/PHASE-3.md`.
+- Resolved R-033 within the local boundary using one checkout-scoped Anvil
+  mutation lease shared by the RPC gateway, lifecycle scripts, and signer.
+  The signer acquires the lease before its final freshness RPC and holds it
+  through signed-evidence commit, keeping RPC outside DB locks. Anvil has no
+  published host port; the allowlisted gateway uses an ephemeral loopback port
+  and a dedicated bridge separate from PostgreSQL. Each accepted mutation is
+  checkpointed atomically; an unverifiable checkpoint poisons the gateway.
+- Live Compose proof mutated a disposable account through the gateway, verified
+  the saved state after restart, reset the test chain through the gateway, and
+  verified the clean state after another restart. One initial post-reset
+  startup failed closed; a guarded retry and a subsequent no-mutation restart
+  passed. The chain fixture reset check no longer assumes a fee-dependent
+  transaction hash stays fixed; contract address/code and on-chain checks stay
+  in place. Local gates pass: check 21 + 361, DB 137, concurrency 18, invariants
+  7, signer/execution 52, contracts 10, chain 10, E2E 1, fault 160, and
+  adversarial 188. Audit exits 0 at the high-severity threshold with two
+  moderate Vitest advisories. Independent MAX review is pending; P3-01 is not
+  yet closed.
 
 ### Phase 3 planning
 

@@ -7,8 +7,8 @@
   from current protected `main` only after the Phase-3 planning PR and
   ADR-0018 are accepted/merged.
 - Planning authority: `docs/plans/PHASE-3.md`
-- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 REVALIDATION BLOCKED by R-033** on
-  `phase-3/ws-005-implementation`; P3-02–P3-06 remain open.
+- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 IMPLEMENTED LOCALLY / INDEPENDENT REVIEW PENDING** on
+  `phase-3/ws-005-implementation`; P3-02–P3-06 remain gated.
 - Boundary: loopback Anvil `eip155:31337`, fake ERC-20, disposable local
   identities only. Public networks, real value, and production custody remain
   prohibited.
@@ -45,6 +45,18 @@
 - Reuse existing lifecycle states and tables except the minimum forward-only
   migration/constraints defined by the plan.
 
+## P3-01 R-033 implementation
+
+The selected local consistency boundary is a checkout-scoped exclusive
+Anvil-mutation lease. Host RPC uses the loopback-published gateway; Anvil is
+unpublished on the internal network. Every supported mutator and the signer
+share `.local/coordination/anvil.lock`. The signer acquires it before the final
+freshness RPC and holds it through signing/evidence commit, so no chain RPC
+runs under PostgreSQL locks. The gateway checkpoints each mutation and fails
+closed if durable state cannot be verified. `dev-up`/`dev-down` serialize
+container lifecycle with the same lease. See `docs/plans/PHASE-3.md` for the
+implementation and live runtime evidence.
+
 ## Packet order
 
 ```text
@@ -72,7 +84,12 @@ and chain/audit/adversarial. Integrate them sequentially. P3-06 is sequential.
   require protected CI and Secret Scan on the exact candidate SHA.
 - Record runtime/container/fixture ownership and prove cleanup. Preserve any
   unrelated dirty work and never stop unproven shared resources.
-- Obtain a fresh independent Luna High or Extra High review before closeout.
+- After every completed packet push, run a fresh GPT-5.6 Luna MAX critic against
+  the exact SHA. Remediate real findings, push the fix, and repeat with a fresh
+  critic before advancing to the next sequential packet.
+- After P3-05 and before P3-06, freeze a candidate and run two fresh MAX
+  critics: one for security/races/economic integrity and one for product and
+  implementation quality.
 
 ## Stop/escalate
 
@@ -80,12 +97,8 @@ Stop the affected packet if ADR-0018 is unaccepted; authority/attempt identity
 cannot be proven; raw bytes must escape the child; a migration cannot fail
 closed; a send-capable result would need cancellation/re-sign/release; scope
 widens toward public networks/real funds/production custody; or any critical/
-high finding remains. P3-01 currently has a blocking conflict: the accepted
-chain-advance-during-lock-wait guarantee requires observing live Anvil state
-after a lock wait, while ADR-0018 forbids RPC under the DB locks and Anvil has no
-database-backed mutation lease. Do not begin P3-02 until product-owner
-direction resolves R-033. Continue independent work that does not rely on the
-blocked decision.
+high finding remains. Do not begin P3-02 until P3-01 local gates and its fresh
+independent MAX critic pass on the pushed candidate.
 
 ## Completion
 

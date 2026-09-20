@@ -71,7 +71,7 @@ The actual post-merge `main` candidate passed CI `34058182763` and Secret Scan `
 
 **Gate S2 is PASS / ACCEPTED, and Phase 2 / WS-004 is COMPLETE / ACCEPTED for the local boundary.**
 
-### Phase 3 — IN PROGRESS / P3-01 REVALIDATION BLOCKED
+### Phase 3 — IN PROGRESS / P3-01 IMPLEMENTED LOCALLY; REVIEW PENDING
 
 Phase 3 / WS-005 is executing from protected `main`.
 `docs/plans/PHASE-3.md` maps the integrated authority-to-economic-finality
@@ -79,23 +79,29 @@ boundary and packets P3-01 through P3-06. Accepted ADR-0018 defines the planned
 signing and send-commit linearization points, signed-unbroadcast quarantine,
 post-send recovery authority, canonical lock order, and minimum migration
 backstops. P3-01 was integrated at `91f649b` and advanced through integration
-evidence at `d48a503`; revalidation of the chain-freshness acceptance is blocked
-by an unresolved conflict between detecting Anvil changes during a DB lock wait
-and the accepted no-RPC-under-lock rule. P3-02 through P3-06 remain gated.
+evidence at `d48a503`. Its selected R-033 resolution adds a checkout-scoped
+lease shared by the loopback RPC gateway, lifecycle scripts, and signer. The
+signer samples chain freshness only after acquiring the lease and holds it
+through evidence commit, so RPC remains outside DB locks. The local packet
+gates pass; the independent MAX review is pending. P3-02 through P3-06 remain
+gated.
 
 P3-00 found a real integration gap rather than an accepted implementation:
 current control invalidation does not cover signed/no-attempt work, the current
 broadcast writer does not revalidate control authority, signer/control lock
 ordering is inverted, and current-fence guards can obstruct post-send recovery.
-P3-01 follow-up evidence on the candidate tree based at `d48a503`:
-`npm run check` (21 repository tests and 346 package tests), `npm run test:db`
-(137 tests), `npm run test:concurrency` (18 tests), `npm run test:invariants`
-(7 tests), contracts (10/10), chain (10/10), E2E (1/1), fault (145/145),
-adversarial (181/181), and focused signer/execution (45 tests). The dependency
-audit exits 0 at the high-severity threshold; two moderate Vitest advisories
-remain. These gates do not cover an Anvil chain advance during the DB lock wait.
-The two-second DB deadline does not observe changed live chain facts; P3-01 is
-not closed and full Phase-3 acceptance is not claimed.
+P3-01 follow-up gates pass locally: `npm run check` (21 repository + 361
+package tests), DB 137/137, concurrency 18/18, invariants 7/7,
+signer/execution 52/52, contracts 10/10, chain 10/10, E2E 1/1, fault 160/160,
+and adversarial 188/188. `npm audit --audit-level=high` exits 0; two moderate
+Vitest advisories remain. The evidence is recorded in `docs/TEST_MATRIX.md`.
+The local Compose proof exercised a fake balance
+mutation through the gateway, verified its checkpoint after restart, reset the
+disposable chain through the same gateway, and verified the clean state after a
+second restart. The gateway had a loopback host binding, Anvil had no host port,
+and PostgreSQL did not share a network with the gateway. P3-01 remains open
+until all packet gates and independent review pass; full Phase-3 acceptance is
+not claimed.
 
 ## Dependency state
 
@@ -111,7 +117,7 @@ not closed and full Phase-3 acceptance is not claimed.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
 - WS-004 Phase-2 transaction pipeline/local adapter — P2-06D COMPLETE / ACCEPTED; Phase 2 / WS-004 COMPLETE / ACCEPTED / MERGED TO `main`.
-- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 revalidation BLOCKED by R-033.
+- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 local gates pass / independent review pending.
 - WS-006/007 — NOT OPENED.
 
 ## Safety boundary
@@ -129,4 +135,4 @@ Phase 2 remains strictly local and fake-money only: Anvil chain `31337` / `0x7a6
   handoff. Phase-2 acceptance and Phase-3 planning do not widen the local-only
   safety boundary.
 
-Last updated: 2026-09-17 for Phase-3 / WS-005 architecture planning.
+Last updated: 2026-09-20 for the P3-01 local implementation checkpoint.

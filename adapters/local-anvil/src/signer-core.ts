@@ -262,6 +262,8 @@ export interface SignerDeps {
   credential: SignerCredentialIdentity;
   /** Loopback Anvil RPC URL for the current runtime. */
   rpcUrl: string;
+  /** Excludes Anvil mutations from the final freshness sample through commit. */
+  withChainMutationLease<T>(work: () => Promise<T>): Promise<T>;
   /** Loads the disposable local Anvil account; the key never leaves the signer. */
   loadDisposableAccount(): { address: Address };
   /** Bound to the current runtime RPC and the supplied fixture instance. */
@@ -588,11 +590,12 @@ export const signAuthorizedTransferCore = async (
     return auditRefusal(refuse("AUTHORIZATION_EXPIRED"));
   if (Date.parse(envelope.expiresAt) <= now.getTime())
     return auditRefusal(refuse("ENVELOPE_EXPIRED"));
+  const reservation = context.reservation;
   if (
-    !context.reservation ||
-    context.reservation.status !== "AUTHORIZED" ||
-    (context.reservation.expiresAt !== null &&
-      Date.parse(context.reservation.expiresAt) <= now.getTime())
+    !reservation ||
+    reservation.status !== "AUTHORIZED" ||
+    (reservation.expiresAt !== null &&
+      Date.parse(reservation.expiresAt) <= now.getTime())
   )
     return auditRefusal(refuse("RESERVATION_INVALID"));
   if (
@@ -704,190 +707,202 @@ export const signAuthorizedTransferCore = async (
   if (disposable.address !== envelope.from)
     return auditRefusal(refuse("SENDER_INVALID"));
 
-  const freshnessSampledAt = deps.now();
-  const freshness = await checkSimulationFreshness({
-    verifiedCore,
-    executable,
-    simulation: simulation as SuccessfulFreshSimulation,
-    rpc: deps.makeRpc(fixtureInstanceId),
-    fixture: {
-      fixtureInstanceId,
-      chainId: "eip155:31337",
-      walletAddress: asAddress(envelope.from),
-      tokenAddress: asAddress(envelope.to),
-      rpcUrl: deps.rpcUrl,
-    },
-    constraints,
-    maxBlockAge: deps.maxBlockAge ?? SIGNER_DEFAULT_MAX_BLOCK_AGE,
-  });
-  if (!freshness.ok)
-    return auditRefusal(refuse("SIMULATION_STALE", freshness.code));
-
-  const freshnessDeadlineMs = Math.min(
-    freshnessSampledAt.getTime() + SIGNER_FRESHNESS_WINDOW_MS,
-    Date.parse(envelope.expiresAt),
-    ...(authorization.expiresAt === null
-      ? []
-      : [Date.parse(authorization.expiresAt)]),
-    ...(context.reservation.expiresAt === null
-      ? []
-      : [Date.parse(context.reservation.expiresAt)]),
-  );
-  if (
-    !Number.isFinite(freshnessDeadlineMs) ||
-    freshnessDeadlineMs <= deps.now().getTime()
-  )
-    return auditRefusal(refuse("SIMULATION_STALE"));
-  const freshnessDeadlineAt = new Date(freshnessDeadlineMs).toISOString();
-
-  if (existing && !options.rematerializeExistingEvidence)
-    return {
-      ok: true,
-      transactionHash: existing.transactionHash,
-      fromDurableEvidence: true,
-      authorization: deps.authorizeResult(
-        resultPayload(ids, existing.transactionHash),
-      ),
-    };
-
-  const signFields: ExactTransactionFields = {
-    chainId: 31337,
-    from: asAddress(envelope.from),
-    to: asAddress(envelope.to),
-    value: 0n,
-    nonce: BigInt(envelope.nonce),
-    gas: BigInt(envelope.gasLimit),
-    maxFeePerGas: BigInt(envelope.maximumFeeConstraints.maxFeePerGas),
-    maxPriorityFeePerGas: BigInt(envelope.maxPriorityFeePerGas),
-    accessList: [],
-    data: envelope.calldata,
-  };
-
-  const signedTransactionId = `signed:${ids.operationId}:${envelope.revision}`;
-  if (existing) {
-    let rematerialized: SignedTransactionMaterial;
-    try {
-      rematerialized = await deps.signTransaction(signFields);
-    } catch {
-      return auditRefusal(refuse("INTERNAL"));
-    }
-    if (
-      !HASH_PATTERN.test(rematerialized.transactionHash) ||
-      rematerialized.transactionHash !== existing.transactionHash
-    )
-      return auditRefusal(refuse("INTERNAL"));
-    options.onSignedMaterial?.({
-      signedTransactionId,
-      expectedTransactionHash: existing.transactionHash,
-      ...(rematerialized.rawTransaction === undefined
-        ? {}
-        : { rawTransaction: rematerialized.rawTransaction }),
-      fromDurableEvidence: true,
-    });
-    return {
-      ok: true,
-      transactionHash: existing.transactionHash,
-      fromDurableEvidence: true,
-      authorization: deps.authorizeResult(
-        resultPayload(ids, existing.transactionHash),
-      ),
-    };
-  }
-
-  let signerFailed = false;
-  let attemptedHash: Hash | undefined;
-  let signature: SignedTransactionMaterial;
   try {
-    signature = await deps.store.signAndPersistEvidence(
-      {
-        signedTransactionId,
-        ids,
-        reservationId: envelope.budgetReservationId,
-        envelopeId: envelope.envelopeId,
-        envelopeRevision: envelope.revision,
-        envelopeHash: envelope.envelopeHash,
-        simulationId: candidate.simulationId,
-        fixtureInstanceId,
-        freshnessSampledAt: freshnessSampledAt.toISOString(),
-        freshnessDeadlineAt,
-        freshnessObservation: freshness.observation,
-        signerCredentialId: deps.credential.credentialId,
-      },
-      async () => {
-        let result: SignedTransactionMaterial;
+    return await deps.withChainMutationLease(async () => {
+      const freshnessSampledAt = deps.now();
+      const freshness = await checkSimulationFreshness({
+        verifiedCore,
+        executable,
+        simulation: simulation as SuccessfulFreshSimulation,
+        rpc: deps.makeRpc(fixtureInstanceId),
+        fixture: {
+          fixtureInstanceId,
+          chainId: "eip155:31337",
+          walletAddress: asAddress(envelope.from),
+          tokenAddress: asAddress(envelope.to),
+          rpcUrl: deps.rpcUrl,
+        },
+        constraints,
+        maxBlockAge: deps.maxBlockAge ?? SIGNER_DEFAULT_MAX_BLOCK_AGE,
+      });
+      if (!freshness.ok)
+        return auditRefusal(refuse("SIMULATION_STALE", freshness.code));
+
+      const freshnessDeadlineMs = Math.min(
+        freshnessSampledAt.getTime() + SIGNER_FRESHNESS_WINDOW_MS,
+        Date.parse(envelope.expiresAt),
+        ...(authorization.expiresAt === null
+          ? []
+          : [Date.parse(authorization.expiresAt)]),
+        ...(reservation.expiresAt === null
+          ? []
+          : [Date.parse(reservation.expiresAt)]),
+      );
+      if (
+        !Number.isFinite(freshnessDeadlineMs) ||
+        freshnessDeadlineMs <= deps.now().getTime()
+      )
+        return auditRefusal(refuse("SIMULATION_STALE"));
+      const freshnessDeadlineAt = new Date(freshnessDeadlineMs).toISOString();
+
+      if (existing && !options.rematerializeExistingEvidence)
+        return {
+          ok: true,
+          transactionHash: existing.transactionHash,
+          fromDurableEvidence: true,
+          authorization: deps.authorizeResult(
+            resultPayload(ids, existing.transactionHash),
+          ),
+        };
+
+      const signFields: ExactTransactionFields = {
+        chainId: 31337,
+        from: asAddress(envelope.from),
+        to: asAddress(envelope.to),
+        value: 0n,
+        nonce: BigInt(envelope.nonce),
+        gas: BigInt(envelope.gasLimit),
+        maxFeePerGas: BigInt(envelope.maximumFeeConstraints.maxFeePerGas),
+        maxPriorityFeePerGas: BigInt(envelope.maxPriorityFeePerGas),
+        accessList: [],
+        data: envelope.calldata,
+      };
+
+      const signedTransactionId = `signed:${ids.operationId}:${envelope.revision}`;
+      if (existing) {
+        let rematerialized: SignedTransactionMaterial;
         try {
-          result = await deps.signTransaction(signFields);
-        } catch (error) {
-          signerFailed = true;
-          throw error;
+          rematerialized = await deps.signTransaction(signFields);
+        } catch {
+          return auditRefusal(refuse("INTERNAL"));
         }
-        if (!HASH_PATTERN.test(result.transactionHash))
-          throw new Error("signer returned an invalid transaction hash");
-        attemptedHash = result.transactionHash;
-        return result;
-      },
-      audit,
-      () => deps.onPhase?.("signing-started"),
-    );
-  } catch (error) {
-    // A concurrent signer may have persisted the same evidence first.
-    let raced: DurableSignedEvidence | null = null;
-    try {
-      raced = await deps.store.findDurableSignedEvidence(ids);
-    } catch {
-      // The durable outcome is unknown; preserve the sanitized refusal below.
-    }
-    if (
-      raced &&
-      attemptedHash !== undefined &&
-      raced.transactionHash === attemptedHash
-    )
+        if (
+          !HASH_PATTERN.test(rematerialized.transactionHash) ||
+          rematerialized.transactionHash !== existing.transactionHash
+        )
+          return auditRefusal(refuse("INTERNAL"));
+        options.onSignedMaterial?.({
+          signedTransactionId,
+          expectedTransactionHash: existing.transactionHash,
+          ...(rematerialized.rawTransaction === undefined
+            ? {}
+            : { rawTransaction: rematerialized.rawTransaction }),
+          fromDurableEvidence: true,
+        });
+        return {
+          ok: true,
+          transactionHash: existing.transactionHash,
+          fromDurableEvidence: true,
+          authorization: deps.authorizeResult(
+            resultPayload(ids, existing.transactionHash),
+          ),
+        };
+      }
+
+      let signerFailed = false;
+      let attemptedHash: Hash | undefined;
+      let signature: SignedTransactionMaterial;
+      try {
+        signature = await deps.store.signAndPersistEvidence(
+          {
+            signedTransactionId,
+            ids,
+            reservationId: envelope.budgetReservationId,
+            envelopeId: envelope.envelopeId,
+            envelopeRevision: envelope.revision,
+            envelopeHash: envelope.envelopeHash,
+            simulationId: candidate.simulationId,
+            fixtureInstanceId,
+            freshnessSampledAt: freshnessSampledAt.toISOString(),
+            freshnessDeadlineAt,
+            freshnessObservation: freshness.observation,
+            signerCredentialId: deps.credential.credentialId,
+          },
+          async () => {
+            let result: SignedTransactionMaterial;
+            try {
+              result = await deps.signTransaction(signFields);
+            } catch (error) {
+              signerFailed = true;
+              throw error;
+            }
+            if (!HASH_PATTERN.test(result.transactionHash))
+              throw new Error("signer returned an invalid transaction hash");
+            attemptedHash = result.transactionHash;
+            return result;
+          },
+          audit,
+          () => deps.onPhase?.("signing-started"),
+        );
+      } catch (error) {
+        // A concurrent signer may have persisted the same evidence first.
+        let raced: DurableSignedEvidence | null = null;
+        try {
+          raced = await deps.store.findDurableSignedEvidence(ids);
+        } catch {
+          // The durable outcome is unknown; preserve the sanitized refusal below.
+        }
+        if (
+          raced &&
+          attemptedHash !== undefined &&
+          raced.transactionHash === attemptedHash
+        )
+          return {
+            ok: true,
+            transactionHash: raced.transactionHash,
+            fromDurableEvidence: true,
+            authorization: deps.authorizeResult(
+              resultPayload(ids, raced.transactionHash),
+            ),
+          };
+        const authorityFailure =
+          error instanceof Error &&
+          /canonical signing authority|canonical control fence|operation left AUTHORIZED|operation is missing|authorization evidence is missing/.test(
+            error.message,
+          );
+        const freshnessDeadlineFailure =
+          error instanceof Error &&
+          /freshness deadline expired/i.test(error.message);
+        return auditRefusal(
+          refuse(
+            freshnessDeadlineFailure
+              ? "SIMULATION_STALE"
+              : signerFailed
+                ? "INTERNAL"
+                : authorityFailure
+                  ? "OPERATION_NOT_AUTHORIZED"
+                  : "PERSISTENCE_FAILED",
+          ),
+        );
+      }
+      deps.onPhase?.("evidence-persisted");
+      options.onSignedMaterial?.({
+        signedTransactionId,
+        expectedTransactionHash: signature.transactionHash,
+        ...(signature.rawTransaction === undefined
+          ? {}
+          : { rawTransaction: signature.rawTransaction }),
+        fromDurableEvidence: false,
+      });
+
       return {
         ok: true,
-        transactionHash: raced.transactionHash,
-        fromDurableEvidence: true,
+        transactionHash: signature.transactionHash,
+        fromDurableEvidence: false,
         authorization: deps.authorizeResult(
-          resultPayload(ids, raced.transactionHash),
+          resultPayload(ids, signature.transactionHash),
         ),
       };
-    const authorityFailure =
-      error instanceof Error &&
-      /canonical signing authority|canonical control fence|operation left AUTHORIZED|operation is missing|authorization evidence is missing/.test(
-        error.message,
-      );
-    const freshnessDeadlineFailure =
-      error instanceof Error &&
-      /freshness deadline expired/i.test(error.message);
-    return auditRefusal(
-      refuse(
-        freshnessDeadlineFailure
-          ? "SIMULATION_STALE"
-          : signerFailed
-            ? "INTERNAL"
-            : authorityFailure
-              ? "OPERATION_NOT_AUTHORIZED"
-              : "PERSISTENCE_FAILED",
-      ),
-    );
+    });
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !("code" in error) ||
+      error.code !== "ANVIL_MUTATION_LEASE_UNAVAILABLE"
+    )
+      throw error;
+    return auditRefusal(refuse("INTERNAL"));
   }
-  deps.onPhase?.("evidence-persisted");
-  options.onSignedMaterial?.({
-    signedTransactionId,
-    expectedTransactionHash: signature.transactionHash,
-    ...(signature.rawTransaction === undefined
-      ? {}
-      : { rawTransaction: signature.rawTransaction }),
-    fromDurableEvidence: false,
-  });
-
-  return {
-    ok: true,
-    transactionHash: signature.transactionHash,
-    fromDurableEvidence: false,
-    authorization: deps.authorizeResult(
-      resultPayload(ids, signature.transactionHash),
-    ),
-  };
 };
 
 export const signerTraceIdFor = traceIdFor;
