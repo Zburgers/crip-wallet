@@ -1,6 +1,6 @@
 # Phase 3 Plan - WS-005 Integrated Approval Controls
 
-Status: **IN PROGRESS — P3-01 THROUGH P3-03 CLEARED; P3-04 IMPLEMENTED / MAX REVIEW PASS, EXACT-SHA CI/SECRET SCAN PENDING; P3-05–P3-06 NOT STARTED**
+Status: **IN PROGRESS — P3-01 THROUGH P3-04 CLEARED; P3-05 LOCAL MATRIX PASS (F18 RESERVED FOR P3-06); P3-06 CLEAN-ROOM / INDEPENDENT CLOSEOUT PENDING**
 
 Planning branch: `phase-3/ws-005-integrated-controls`
 
@@ -624,9 +624,12 @@ repository checks and 363 package tests), `npm run test:db` (150/150 across
 six files, including execution evidence 58/58), and the P2-05D Anvil journey
 (1/1). Fresh GPT-5.6 Luna MAX review: **PASS, 9/10, confidence 0.90, no
 findings**. Protected exact-SHA CI `35498889238` and Secret Scan `35498889228`
-both pass on this candidate. P3-04 is locally implemented; its exact-SHA review
-and protected CI/Secret Scan are pending. Full Phase-3 acceptance is not
-claimed.
+both pass on this candidate. P3-04 candidate
+`54afbcc9e08374c844d6b7fd784e34fca1856a19` passed follow-up MAX review with no
+blocking findings, protected CI `35787705165`, and Secret Scan `35787705289`.
+P3-05's deterministic F01–F19 test crosswalk and local matrix evidence are
+recorded in `docs/TEST_MATRIX.md`; F18 fresh-clone verification remains owned
+by P3-06. Full Phase-3 acceptance is not claimed.
 
 ### P3-04 - Pause/revoke/recovery concurrency and stale-worker fencing
 
@@ -672,11 +675,22 @@ operation rows; signer and broadcast stores use the same order. Recovery uses
 key-share on policy so policy revocation can proceed without a lock cycle. A
 deterministic barrier test proves control invalidation does not pre-lock an
 operation while waiting for its authorization row. Follow-up MAX review passed
-with no blocking findings after remediation; exact-SHA CI/Secret Scan await
-the push. Obsolete sign-only child sources were removed, and adapter builds
-clear stale generated artifacts. P3-05 has not started.
+with no blocking findings after remediation; protected exact-SHA CI
+`35787705165` and Secret Scan `35787705289` pass on
+`54afbcc9e08374c844d6b7fd784e34fca1856a19`. Obsolete sign-only child sources
+were removed, and adapter builds clear stale generated artifacts. P3-05 local
+matrix gates pass; its F18 clean-clone proof and final closeout await P3-06.
 
 ### P3-05 - Adversarial, replay, substitution, and fault matrix
+
+Status: **LOCAL MATRIX PASS; F18 FRESH-CLONE VERIFICATION RESERVED FOR P3-06**.
+The exact named deterministic-test crosswalk is in `docs/TEST_MATRIX.md`.
+On the frozen P3-04 state plus the P3-05 test-only diff, local gates pass: DB
+163/163, Phase-3 255/255, concurrency 18/18, invariant/property 7/7 (fixed
+seeds, 512 runs), chain 10/10, E2E 1/1, fault 186/186, and adversarial 213/213.
+P3-04 exact-head protected workflow `35787705165` and Secret Scan `35787705289`
+pass; the P3-05 test-only candidate needs its own exact-head checks. F18 and
+packet-level final acceptance await the P3-06 fresh-clone run.
 
 Depends on P3-04's frozen state model. Test-only sublanes may run in parallel as
 defined below.

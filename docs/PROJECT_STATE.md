@@ -18,7 +18,7 @@ Update rule: at every meaningful integration point; keep this as the current res
 - Phase-1 Secret Scan: run `31919254475` — PASS
 - Phase-2 post-merge `main` CI: run `34058182763` — PASS
 - Phase-2 post-merge `main` Secret Scan: run `34058183008` — PASS
-- Phase-3 canonical branch: `phase-3/ws-005-implementation`; P3-03 candidate `510763b3c9c217f9058b1c9d388ce02d84e6ae9e`; P3-04 implementation + follow-up MAX review pass, exact-SHA CI/Secret Scan pending push
+- Phase-3 canonical branch: `phase-3/ws-005-implementation`; current P3-04/P3-05 evidence head `54afbcc9e08374c844d6b7fd784e34fca1856a19`; P3-04 cleared by MAX/CI/Secret Scan; P3-05 local matrix pass; P3-06 clean-room pending
 - ADR-0018: **ACCEPTED — 2026-09-17 by product owner**
 
 ## Gate status
@@ -71,7 +71,7 @@ The actual post-merge `main` candidate passed CI `34058182763` and Secret Scan `
 
 **Gate S2 is PASS / ACCEPTED, and Phase 2 / WS-004 is COMPLETE / ACCEPTED for the local boundary.**
 
-### Phase 3 — IN PROGRESS / P3-01 THROUGH P3-03 CLEARED; P3-04 IMPLEMENTED / MAX REVIEW PASS
+### Phase 3 — IN PROGRESS / P3-01 THROUGH P3-04 CLEARED; P3-05 LOCAL MATRIX PASS; P3-06 PENDING
 
 Phase 3 / WS-005 is executing from protected `main`.
 `docs/plans/PHASE-3.md` maps the integrated authority-to-economic-finality
@@ -109,8 +109,12 @@ passes: `npm run check` (21 repository + 363 package tests), `npm run test:db`
 `npm audit --audit-level=high` (no high or critical findings; two moderate
 Vitest advisories remain). Follow-up MAX review passed with no blocking
 findings after fixing control/authorization lock order and removing obsolete
-sign-only child artifacts. Exact-SHA CI/Secret Scan await the remediation push.
-P3-05 and P3-06 remain gated.
+sign-only child artifacts. Exact-head protected CI `35787705165` and Secret
+Scan `35787705289` pass on `54afbcc9e08374c844d6b7fd784e34fca1856a19`.
+P3-05 local matrix passes: DB 163/163, Phase-3 gate 255/255, concurrency
+18/18, invariants 7/7, chain 10/10, E2E 1/1, fault 186/186, and adversarial
+213/213; the named F01–F19 test crosswalk is in `docs/TEST_MATRIX.md`. F18 fresh-clone validation and final
+Phase-3 acceptance remain gated on P3-06.
 
 P3-00 found a real integration gap rather than an accepted implementation:
 current control invalidation did not cover signed/no-attempt work, the
@@ -145,7 +149,7 @@ acceptance is not claimed.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
 - WS-004 Phase-2 transaction pipeline/local adapter — P2-06D COMPLETE / ACCEPTED; Phase 2 / WS-004 COMPLETE / ACCEPTED / MERGED TO `main`.
-- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 through P3-03 cleared; P3-04 implemented and MAX review passed, exact-SHA CI/Secret Scan pending.
+- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 through P3-04 cleared; P3-05 local matrix pass; P3-06 fresh-clone closeout pending.
 - WS-006/007 — NOT OPENED.
 
 ## Safety boundary

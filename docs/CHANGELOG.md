@@ -70,6 +70,8 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
 
 ### Phase 3 / P3-04 review remediation checkpoint
 
+- This was the local pre-push review checkpoint; exact-head results and
+  subsequent P3-05 evidence are recorded below.
 - A fresh MAX review found a possible control/authorization lock inversion and
   obsolete generated sign-only child artifacts. Control now locks matching
   authorization evidence before operation/reservation rows; a deterministic
@@ -79,6 +81,17 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
   tests), DB 162/162, and the Phase-3 gate 254/254. Exact-head CI and Secret
   Scan await the remediation push; P3-05/06 remain gated. R-033 is unchanged
   and remains mitigated within the supported local runtime.
+
+### Phase 3 / P3-04 and P3-05 verification checkpoint
+
+- P3-04 candidate `54afbcc9e08374c844d6b7fd784e34fca1856a19` passed exact-head
+  protected CI `35787705165` and Secret Scan `35787705289`, clearing the
+  packet. The P3-05 crosswalk now maps every F01–F19 injection to a named
+  deterministic test and required state assertion; F18 is reserved for the
+  P3-06 fresh-clone run. P3-04 candidate counts: DB 162/162, Phase-3 gate 254/254,
+  concurrency 18/18, invariants 7/7 (512 fixed-seed runs), chain 10/10, E2E
+  1/1, fault 186/186, adversarial 212/212, Forge 10/10. P3-06 independent
+  review and clean-room evidence remain before Phase-3 readiness.
 
 ### Phase 3 planning
 

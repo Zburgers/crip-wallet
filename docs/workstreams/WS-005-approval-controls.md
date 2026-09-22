@@ -5,7 +5,7 @@
 Prove that owner approval, replay protection, revocation, pause and worker recovery cannot authorize stale work.
 
 **Phase-1 S1 slice: COMPLETE LOCALLY.**
-**Phase-3 integrated execution slice: IN PROGRESS; P3-01 through P3-03 CLEARED; P3-04 implemented / follow-up MAX review pass, exact-SHA CI/Secret Scan pending.**
+**Phase-3 integrated execution slice: IN PROGRESS; P3-01 through P3-04 CLEARED; P3-05 local matrix pass; P3-06 fresh-clone closeout pending.**
 
 ## S1 contract now implemented
 
@@ -67,8 +67,9 @@ pass: check 21 repository + 363 package tests, DB 150/150, and Anvil E2E 1/1;
 fresh GPT-5.6 Luna MAX review passed 9/10 (confidence 0.90, no findings).
 Protected CI `35498889238` and Secret Scan `35498889228` pass on this
 candidate. P3-04 follow-up MAX review passed after control lock-order
-remediation and obsolete sign-only artifact removal; exact-SHA CI/Secret Scan
-await the push. P3-05 and P3-06 remain gated. Phase 3 remains local
+remediation and obsolete sign-only artifact removal; exact-head CI
+`35787705165` and Secret Scan `35787705289` pass. P3-05 local fault/adversarial
+matrix passes; P3-06 fresh-clone closeout remains. Phase 3 remains local
 Anvil/fake-money only and is not fully accepted.
 
 P3-04 adds migrations `0032` and `0033` for exact signed-no-attempt release
@@ -78,9 +79,13 @@ no-send transaction requires one bound authorization/signed row, a matching
 control invalidation, and zero attempts/economic effects; it commits one
 `FAILED` recovery row, `RECONCILED`/`RELEASED` state, resolved lease, and
 correlated audits together. `npm run check` passes (21 repository + 363 package
-tests), `npm run test:db` passes 162/162, and `npm run test:phase3` passes
-254/254, including concurrent duplicate
+tests), `npm run test:db` passes 162/162 and the Phase-3 gate passes 254/254 on
+the P3-04 candidate. The P3-05 red-first missing/forged invalidation test also
+passes; updated DB, Phase-3, and adversarial reruns pass 163/163, 255/255, and
+213/213 respectively, including concurrent duplicate
 recovery, forced final-lease expiry rollback, and control/recovery/envelope-
 replacement plus approval, autonomous, signer, and broadcaster lock-order
 races. A deterministic barrier proves control waits for authorization before
-locking operation rows. Exact-SHA CI/Secret Scan are pending; P3-05 has not started.
+locking operation rows. Exact-head CI and Secret Scan are green. P3-05 local
+matrix counts and the F01–F19 test crosswalk are recorded in
+`docs/TEST_MATRIX.md`; F18 clean-room verification remains P3-06 work.

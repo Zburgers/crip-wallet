@@ -63,7 +63,7 @@ Secret Scan: `33189082181` — PASS.
 
 **Gate S1: PASS / ACCEPTED. S2-01: PASS. S2-02: PASS. S2-03: PASS. S2 requirement evidence: PASS. External S2 acceptance: PASS / ACCEPTED in review `5126373971`. Gate S2: PASS / ACCEPTED.**
 
-**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 through P3-03 are cleared; P3-04 implementation and follow-up MAX review pass, exact-SHA CI/Secret Scan pending; P3-05–P3-06 remain gated.**
+**Phase 2 / WS-004: COMPLETE / ACCEPTED for the governing local MVP boundary. Phase 3 / WS-005 is IN PROGRESS; P3-01 through P3-04 are cleared on their exact candidates; P3-05 local matrix passes with F18 clean-room verification assigned to P3-06; final clean-room/independent closeout remains gated.**
 
 ## Phase-3 planning checkpoint
 
@@ -74,8 +74,8 @@ P3-00 mapped the signer/control lock inversion, signed/no-attempt control gap,
 pre-`STARTED` authority gap, post-`STARTED` recovery conflict, and app-clock
 lease-resolution gap. Accepted ADR-0018 and `docs/plans/PHASE-3.md` define the
 treatment. The implementation matrix below records packet evidence; P3-01
-through P3-03 are cleared, P3-04 local gates and follow-up MAX review pass with
-exact-SHA CI/Secret Scan pending, and P3-05 through P3-06 remain planned. Documentation and a green
+through P3-04 are cleared, P3-05 local matrix gates pass, and P3-06 clean-room
+and independent closeout remain. Documentation and a green
 planning PR are not implementation proof.
 
 ADR-0015 is accepted architectural authority, not test evidence. It removes the previous P2-02 architecture blocker but no Phase-2 threat/product row becomes PASS until the named implementation test exists and protected current-head evidence is recorded.
@@ -163,9 +163,39 @@ ADR-0015 is accepted architectural authority, not test evidence. It removes the 
 | P3-01 pre-sign authority transaction and binding | PASS / MAX REVIEW + EXACT-SHA CI/SECRET SCAN PASS | `0026`; candidate `404837db138ad1bd5c3aceaff6bae67652d5ed01`; CI run `35485643373`, Secret Scan `35485643343`; atomic fence-first path; shared Anvil mutation lease; final freshness sample after lease acquisition; check 21 repo + 361 package tests, DB 137/137, concurrency 18/18, invariants 7/7, signer/execution 52/52, contracts 10/10, chain 10/10, E2E 1/1, fault 160/160, adversarial 188/188; live checkpoint/restart proof |
 | P3-02 signed-unbroadcast lifecycle/control | PASS / MAX REVIEW 0.92 + EXACT-SHA CI/SECRET SCAN PASS | Candidate `b95695c720fd68dd1085e371267a35113a05c816`; CI `35493551667`, Secret Scan `35493551719`; migrations `0027`–`0030`; invalidated REJECTED attempts cannot re-enter broadcast/finalization or be directly released/expired; `npm run check` 21 repo + 361 package tests, DB 145/145 (execution evidence 53/53), concurrency 18/18, invariants 7/7 |
 | P3-03 send commit + UNKNOWN/recovery integration | PASS / fresh exact-SHA MAX review 9/10 + protected CI/Secret Scan | Candidate `510763b3c9c217f9058b1c9d388ce02d84e6ae9e`; migration `0031`; fresh GPT-5.6 Luna MAX review PASS, 9/10, confidence 0.90, no findings; CI `35498889238`, Secret Scan `35498889228`. Local: check 21 repo + 363 package tests, DB 150/150 (execution evidence 58/58), P2-05D Anvil journey 1/1; STARTED mined-evidence-after-crash regression proves one economic effect after control invalidation |
-| P3-04 control/recovery concurrency fencing | LOCAL GATES + FOLLOW-UP MAX REVIEW PASS / EXACT-SHA CI + SECRET SCAN PENDING | Migrations `0032`–`0033`; check 21 repository + 363 package tests; DB 162/162; Phase-3 gate 254/254; DB-time lease expiry/renewal/takeover; deterministic authorization-before-operation lock barrier; final-lease rollback and concurrent duplicate no-send recovery; authorization/operation, policy/recovery, envelope replacement, approval replay, autonomous authorization, signer, and broadcaster lock-order races; exact proof and send-capable-attempt rejection; obsolete sign-only child sources removed and generated artifacts cleared on build |
-| P3-05 adversarial/fault matrix | PLANNED | P3-F01–P3-F19; owner/autonomous parity; replay/substitution/leakage/public-boundary refusal |
+| P3-04 control/recovery concurrency fencing | PASS / MAX REVIEW + EXACT-SHA PROTECTED CI + SECRET SCAN | Candidate `54afbcc9e08374c844d6b7fd784e34fca1856a19`; CI `35787705165`; Secret Scan `35787705289`; migrations `0032`–`0033`; check 21 repository + 363 package tests; DB 162/162; Phase-3 gate 254/254; DB-time lease expiry/renewal/takeover; deterministic authorization-before-operation lock barrier; final-lease rollback and concurrent duplicate no-send recovery; lock-order races; obsolete sign-only child sources removed and generated artifacts cleared on build |
+| P3-05 adversarial/fault matrix | LOCAL MATRIX PASS / F18 CLEAN-ROOM CHECK RESERVED FOR P3-06 | F01–F19 named deterministic-test crosswalk below; DB 163/163; Phase-3 gate 255/255; concurrency 18/18; invariant/property 7/7 (fixed seeds, 512 runs); chain 10/10; E2E 1/1; fault 186/186; adversarial 213/213 after explicit missing/forged invalidation case; Forge 10/10; owner/autonomous parity; replay/substitution/leakage/local-boundary refusal. The P3-05 test-only candidate still needs its own exact-head CI/Secret Scan. |
 | P3-06 clean-room and independent closeout | PLANNED | fresh clone/runtime, full inherited + Phase-3 gates, protected exact-SHA CI/Secret Scan, independent review, clean teardown |
+
+### P3-F01–F19 deterministic test crosswalk
+
+Each selector below names the regression test (or parameterized table) that
+asserts the listed durable outcome. F18 is intentionally an exact-candidate
+fresh-clone check in P3-06, not a claim made by these in-place runs.
+
+| ID | Named deterministic test | Required state/effect assertion |
+| --- | --- | --- |
+| F01 | `execution-evidence.test.ts`: “control fence that wins the lock order prevents signing” | no signer call; unsigned authority invalidated safely |
+| F02 | `execution-evidence.test.ts`: “signing that wins the fence lock commits before a later control change” | one signed row, then control quarantine before send |
+| F03 | `execution-evidence.test.ts`: “signer failure rolls back signing state, evidence, and start audit” | returns to AUTHORIZED; no signed row or success audit |
+| F04 | `signer-core.test.ts`: “refuses stale fences and revoked fence snapshots”; “refuses fixture mismatches and missing simulations”; “refuses envelopes whose executable fields drift from the simulation” | no signing/state advance on bound-fact drift |
+| F04A | `execution-evidence.test.ts`: “does not invoke the signer when freshness expires during fence lock wait” | deadline rollback; zero signer call |
+| F05 | `execution-evidence.test.ts`: “control quarantines signed work before STARTED and requires proven-no-send recovery” | DISPUTED; reservation retained; zero attempt until proof |
+| F06 | `execution-evidence.test.ts`: “replays old control request IDs without undoing later fence changes”; `control-fence.test.ts`: “control mutation rollback removes fence, invalidation, release, and audit side effects” | idempotent replay; one effective fence/audit |
+| F07 | `execution-evidence.test.ts`: “control preserves a STARTED attempt when the send gate wins” | no cancellation/release after STARTED; recovery remains allowed |
+| F08 | `execution-evidence.test.ts`: “durably records STARTED before an unavailable sender and retains the reservation”; `broadcast-core.test.ts`: “does not send when an existing STARTED attempt is recovered” | durable attempt retained; no re-sign or duplicate send |
+| F09 | `execution-evidence.test.ts`: “durably fences forward-then-drop and reuses the same attempt after restart”; `fault-proxy.test.ts`: “forwards exactly once, then drops the response” | UNKNOWN protected; same attempt reconciles once |
+| F10 | `p2-06c-substitution-recon.test.ts`: “rejects cross-block and cross-evidence bindings before reconciliation”; `execution-evidence.test.ts`: “keeps mismatched evidence for a CONFLICT attempt disputed” | mismatch remains DISPUTED; zero economic effect |
+| F11 | `wp05-recovery.test.ts`: “uses the database clock and bounds recovery lease duration”; “renews only the current live recovery lease generation”; “simultaneous recoverers and stale workers cannot mutate the reservation” | stale/expired generation cannot resolve or mutate |
+| F12 | `execution-evidence.test.ts`: “concurrent retries converge on one recovery and one effect”; “resumes exactly once after a crash immediately after SUCCESS resolution” | one recovery lineage and exactly one economic effect |
+| F13 | `execution-evidence.test.ts`: “refuses proven-no-send recovery with missing or forged control invalidation”; “control quarantines signed work before STARTED and requires proven-no-send recovery” | forged invalidation rejected; missing invalidation cannot release; funds remain reserved |
+| F13A | “control quarantines signed work before STARTED and requires proven-no-send recovery”, plus “rolls back proven-no-send release when the database lease expires before commit” | exact proof releases once; lease loss rolls back all economic/audit writes |
+| F14 | `execution-evidence.test.ts`: “enforces authorization uniqueness and signed-row immutability” | DB rejects duplicate authorization/signed lineage |
+| F15 | `execution-evidence.test.ts`: “reconciles an accepted exact attempt after a control invalidation”; “reconciles a CONFLICT attempt only when exact canonical evidence verifies”; “recovers exact mined evidence for a STARTED attempt after a crash” | only exact committed evidence reconciles, once |
+| F16 | `signer-core.test.ts`: “leaks no secret material through any refusal outcome”; `broadcast-core.test.ts`: “never includes raw signed bytes in validation errors”; `fault-proxy.test.ts`: “redacts raw transaction bytes from request inspection” | raw bytes/secrets absent from outputs and persisted evidence |
+| F17 | `fault-proxy.test.ts`: “fails closed when the loopback upstream is not Anvil 31337”; `fixture.test.ts`: public RPC, wrong chain, foreign checkout, stale fixture, and secret-free mode checks | refusal before signing, send, or reconciliation |
+| F18 | P3-06 clean-room: fresh clone, isolated runtime, teardown and generated-state/log scans | no cross-checkout contamination; repeatable evidence |
+| F19 | `capability.test.ts`: “keeps raw sender, direct signer, and persistence helpers off the public root”; `broadcast-core.test.ts`: STARTED-only send/recovery tests | raw sender unavailable through public API; send requires exact durable STARTED |
 
 ## Phase-2 implementation matrix
 

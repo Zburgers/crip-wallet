@@ -7,16 +7,19 @@
   from protected `main` after the Phase-3 planning PR and ADR-0018 were
   accepted/merged.
 - Planning authority: `docs/plans/PHASE-3.md`
-- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 THROUGH P3-03 CLEARED; P3-04 IMPLEMENTED / MAX REVIEW PASS, EXACT-SHA CI/SECRET SCAN PENDING** on
-  `phase-3/ws-005-implementation`. P3-03 candidate
+- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 THROUGH P3-04 CLEARED; P3-05 LOCAL MATRIX PASS (F18 RESERVED FOR P3-06); P3-06 CLEAN-ROOM PENDING** on
+  `phase-3/ws-005-implementation`, current head
+  `54afbcc9e08374c844d6b7fd784e34fca1856a19`. P3-03 candidate
   `510763b3c9c217f9058b1c9d388ce02d84e6ae9e` passed fresh MAX review (9/10,
   confidence 0.90, no findings), CI `35498889238`, and Secret Scan
   `35498889228`. P3-04 local gates pass (check 21 repository + 363 package
   tests; DB 162/162; Phase-3 gate 254/254), including the deterministic
   authorization-before-operation lock barrier. Follow-up MAX review passed
-  with no blocking findings; exact-SHA CI/Secret Scan await the remediation
-  push. P3-05–P3-06
-  remain gated.
+  with no blocking findings; exact-head CI `35787705165` and Secret Scan
+  `35787705289` pass. P3-05 local matrix gates pass: DB 163/163, Phase-3
+  255/255, concurrency 18/18, invariants 7/7, chain 10/10, E2E 1/1, fault
+  186/186, adversarial 213/213.
+  P3-06 fresh-clone clean-room and independent closeout remain.
 - Boundary: loopback Anvil `eip155:31337`, fake ERC-20, disposable local
   identities only. Public networks, real value, and production custody remain
   prohibited.

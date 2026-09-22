@@ -161,7 +161,10 @@ lock order, including autonomous authorization, approval replay, signer, and
 broadcaster paths against reservation transition; the P3-04 database suite
 passes 162/162 and the Phase-3 gate passes 254/254. Follow-up MAX review passed
 after control lock-order remediation and removal of obsolete sign-only child
-artifacts. Exact-head CI/Secret Scan await the push. P3-05/06 still own the adversarial matrix
-and clean-room closeout. The
+artifacts. Exact-head CI `35787705165` and Secret Scan `35787705289` pass.
+P3-05 local matrix is green after adding missing/forged invalidation coverage
+(DB 163/163, Phase-3 255/255, adversarial 213/213); the exact F01–F19 test
+crosswalk is in `docs/TEST_MATRIX.md`. Exact-head checks for that test-only
+candidate and P3-06 F18 clean-room/independent closeout remain. The
 Phase-3 threats remain open until all required packets pass; local packet
 evidence is not full Phase-3 acceptance.

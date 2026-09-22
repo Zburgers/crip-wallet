@@ -1820,6 +1820,98 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     },
   );
 
+  test("refuses proven-no-send recovery with missing or forged control invalidation", async () => {
+    await broadcastStartFixture();
+    const unrelatedAudit = await pool.query<{ event_id: string }>(
+      `SELECT event_id FROM audit_events
+       WHERE operation_id = 'op_1'
+         AND event_type NOT IN ('agent.revoked', 'owner.revoked', 'policy.revoked', 'system.paused')
+       LIMIT 1`,
+    );
+    expect(unrelatedAudit.rows).toHaveLength(1);
+    await expect(
+      pool.query(
+        `INSERT INTO authorization_invalidations
+         (invalidation_id, authorization_id, operation_id, control_event_id, reason)
+         VALUES ('forged-no-send-invalidation', 'approval_1:authorization',
+                 'op_1', $1, 'forged control evidence')`,
+        [unrelatedAudit.rows[0]!.event_id],
+      ),
+    ).rejects.toThrow(
+      /authorization invalidation binding is not authoritative/i,
+    );
+
+    const attemptId = "attempt_no_invalidation_recovery";
+    const lease = await claimRecoveryLease(pool, {
+      attemptId,
+      operationId: "op_1",
+      reservationId: "res_1",
+      leaseDurationSeconds: 60,
+      audit: componentAudit(
+        "op_1",
+        "missing-invalidation-claim",
+        signComponentAction(reconcilerCredential, "recovery.claim", {
+          attemptId,
+          operationId: "op_1",
+          reservationId: "res_1",
+          leaseDurationSeconds: 60,
+        }),
+      ),
+    });
+    const resolution = {
+      attemptId,
+      operationId: "op_1",
+      reservationId: "res_1",
+      leaseVersion: lease.leaseVersion,
+      outcome: "FAILED" as const,
+      reason: SIGNED_UNBROADCAST_CONTROLLED_NO_ATTEMPT_REASON,
+    };
+    await expect(
+      resolveRecovery(pool, {
+        ...resolution,
+        audit: componentAudit(
+          "op_1",
+          "missing-invalidation-resolution",
+          signComponentAction(reconcilerCredential, "recovery.resolve", {
+            ...resolution,
+            actualSpendAtomic: null,
+            proofReference: null,
+            evidence: null,
+          }),
+        ),
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RESERVATION_TRANSITION" });
+
+    await expect(
+      pool.query(
+        `SELECT o.current_state, r.status AS reservation_status,
+                b.available, b.reserved,
+                (SELECT count(*)::int FROM authorization_invalidations ai
+                 WHERE ai.operation_id = o.operation_id) AS invalidation_count,
+                (SELECT count(*)::int FROM recovery_attempts ra
+                 WHERE ra.operation_id = o.operation_id) AS recovery_count,
+                (SELECT count(*)::int FROM execution_economic_effects effect
+                 WHERE effect.operation_id = o.operation_id) AS effects
+         FROM operations o
+         JOIN budget_reservations r USING (operation_id)
+         JOIN budget_accounts b USING (budget_id)
+         WHERE o.operation_id = 'op_1'`,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          current_state: "SIGNED",
+          reservation_status: "AUTHORIZED",
+          available: "90",
+          reserved: "10",
+          invalidation_count: 0,
+          recovery_count: 0,
+          effects: 0,
+        },
+      ],
+    });
+  });
+
   test("control quarantines signed work before STARTED and requires proven-no-send recovery", async () => {
     await broadcastStartFixture();
     await pool.query(
