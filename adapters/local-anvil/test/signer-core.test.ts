@@ -355,6 +355,7 @@ class FakeStore implements SignerStore {
   persistCalls = 0;
   refusals: string[] = [];
   persisted: PersistSignedEvidenceInput[] = [];
+  loadError: Error | null = null;
   beginError: Error | null = null;
   persistError: Error | null = null;
 
@@ -363,6 +364,7 @@ class FakeStore implements SignerStore {
   }
 
   async loadSigningContext() {
+    if (this.loadError) throw this.loadError;
     return this.context;
   }
 
@@ -370,15 +372,26 @@ class FakeStore implements SignerStore {
     return this.durable;
   }
 
-  async beginSigning() {
+  async signAndPersistEvidence(
+    input: PersistSignedEvidenceInput,
+    sign: () => Promise<{
+      transactionHash: `0x${string}`;
+      rawTransaction?: string;
+    }>,
+    _audit: SigningAuditTrail,
+    onSigningStarted?: () => void,
+  ) {
     this.beginCalls += 1;
     if (this.beginError) throw this.beginError;
-  }
-
-  async persistSignedEvidence(input: PersistSignedEvidenceInput) {
+    onSigningStarted?.();
+    const material = await sign();
     this.persistCalls += 1;
-    this.persisted.push(input);
+    this.persisted.push({
+      ...input,
+      expectedTransactionHash: material.transactionHash,
+    });
     if (this.persistError) throw this.persistError;
+    return material;
   }
 
   async recordSigningRefusal(
@@ -404,6 +417,7 @@ const buildDeps = (
     role: "ADAPTER",
   },
   rpcUrl,
+  withChainMutationLease: async (work) => work(),
   loadDisposableAccount: () => ({ address: wallet as Address }),
   makeRpc: () => rpc,
   signTransaction: async (fields: ExactTransactionFields) => {
@@ -518,7 +532,127 @@ describe("restricted local signer core", () => {
     expect(store.persisted[0]?.signerCredentialId).toBe(
       credential.credentialId,
     );
+    const freshnessSampledAt = Date.parse(
+      String(store.persisted[0]?.freshnessSampledAt),
+    );
+    const freshnessDeadlineAt = Date.parse(
+      String(store.persisted[0]?.freshnessDeadlineAt),
+    );
+    expect(freshnessSampledAt).toBe(now.getTime());
+    expect(freshnessDeadlineAt).toBeGreaterThan(freshnessSampledAt);
+    expect(freshnessDeadlineAt).toBeLessThanOrEqual(freshnessSampledAt + 2_000);
+    expect(store.persisted[0]?.freshnessObservation).toEqual({
+      headNumber: "100",
+      simulationBlockNumber: "100",
+      simulationBlockHash: blockHash,
+      senderNonce: "3",
+      tokenBalanceAtomic: "1000000",
+      nativeBalanceWei: "100000000",
+      baseFeePerGas: "10",
+      maxPriorityFeePerGas: "2",
+    });
     expect(store.refusals).toHaveLength(0);
+  });
+
+  it("waits for the chain lease, samples afterward, and holds it through evidence commit", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    const rpc = new FakeRpc();
+    let leaseHeld = false;
+    let leaseCalls = 0;
+    let releaseLease!: () => void;
+    let signalLeaseWait!: () => void;
+    const leaseReleased = new Promise<void>((resolve) => {
+      releaseLease = resolve;
+    });
+    const leaseWaiting = new Promise<void>((resolve) => {
+      signalLeaseWait = resolve;
+    });
+    let headReads = 0;
+    const getBlockNumber = rpc.getBlockNumber.bind(rpc);
+    rpc.getBlockNumber = async () => {
+      headReads += 1;
+      return getBlockNumber();
+    };
+    const deps = buildDeps(store, rpc, {
+      makeRpc: () => {
+        expect(leaseHeld).toBe(true);
+        return rpc;
+      },
+      signTransaction: async () => {
+        expect(leaseHeld).toBe(true);
+        return { transactionHash: `0x${"ee".repeat(32)}` };
+      },
+    });
+    const persist = store.signAndPersistEvidence.bind(store);
+    store.signAndPersistEvidence = async (...args) => {
+      expect(leaseHeld).toBe(true);
+      return persist(...args);
+    };
+    Object.assign(deps, {
+      withChainMutationLease: async <T>(work: () => Promise<T>): Promise<T> => {
+        leaseCalls += 1;
+        signalLeaseWait();
+        await leaseReleased;
+        leaseHeld = true;
+        try {
+          return await work();
+        } finally {
+          leaseHeld = false;
+        }
+      },
+    });
+
+    const outcomePromise = signAuthorizedTransferCore(deps, ids);
+    await leaseWaiting;
+    expect(headReads).toBe(0);
+    rpc.currentBlockNumber = 101n;
+    rpc.blocks.set(101n, {
+      number: 101n,
+      hash: `0x${"cd".repeat(32)}`,
+      baseFeePerGas: 10n,
+    });
+    releaseLease();
+    const outcome = await outcomePromise;
+
+    expect(outcome.ok).toBe(true);
+    expect(leaseCalls).toBe(1);
+    expect(headReads).toBeGreaterThan(0);
+    expect(store.persisted[0]?.freshnessObservation.headNumber).toBe("101");
+    expect(leaseHeld).toBe(false);
+  });
+
+  it("does not sample or sign when the chain mutation lease cannot be acquired", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    let sampled = false;
+    let signed = false;
+    const deps = buildDeps(store, new FakeRpc(), {
+      makeRpc: () => {
+        sampled = true;
+        return new FakeRpc();
+      },
+      signTransaction: async () => {
+        signed = true;
+        return { transactionHash: `0x${"ee".repeat(32)}` };
+      },
+    });
+    Object.assign(deps, {
+      withChainMutationLease: async () => {
+        throw Object.assign(new Error("lease unavailable"), {
+          code: "ANVIL_MUTATION_LEASE_UNAVAILABLE",
+        });
+      },
+    });
+
+    await expect(signAuthorizedTransferCore(deps, ids)).resolves.toEqual({
+      ok: false,
+      code: "INTERNAL",
+    });
+    expect(sampled).toBe(false);
+    expect(signed).toBe(false);
+    expect(store.beginCalls).toBe(0);
+    expect(store.refusals).toEqual(["INTERNAL"]);
   });
 
   it("rejects caller-supplied raw transaction fields and malformed requests", async () => {
@@ -552,6 +686,62 @@ describe("restricted local signer core", () => {
       expect(outcome).toEqual({ ok: false, code: "INVALID_REQUEST" });
     }
     expect(store.beginCalls).toBe(0);
+  });
+
+  it("reports a store freshness timeout as stale simulation evidence", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    store.persistError = new Error("signing freshness deadline expired");
+
+    await expect(
+      signAuthorizedTransferCore(buildDeps(store, new FakeRpc()), ids),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: "SIMULATION_STALE",
+    });
+  });
+
+  it("refuses when durable evidence cannot be read before signing", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    store.findDurableSignedEvidence = async () => {
+      throw new Error("database connection detail");
+    };
+
+    await expect(
+      signAuthorizedTransferCore(buildDeps(store, new FakeRpc()), ids),
+    ).resolves.toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(store.beginCalls).toBe(0);
+    expect(store.refusals).toEqual(["PERSISTENCE_FAILED"]);
+  });
+
+  it("audits a persistence refusal when signing context cannot be loaded", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    store.loadError = new Error("database connection detail");
+
+    await expect(
+      signAuthorizedTransferCore(buildDeps(store, new FakeRpc()), ids),
+    ).resolves.toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(store.beginCalls).toBe(0);
+    expect(store.refusals).toEqual(["PERSISTENCE_FAILED"]);
+  });
+
+  it("keeps the persistence refusal if the follow-up evidence read fails", async () => {
+    const { context } = happyContext();
+    const store = new FakeStore(context);
+    store.persistError = new Error("database connection detail");
+    let reads = 0;
+    store.findDurableSignedEvidence = async () => {
+      if (++reads === 1) return null;
+      throw new Error("second database connection detail");
+    };
+
+    await expect(
+      signAuthorizedTransferCore(buildDeps(store, new FakeRpc()), ids),
+    ).resolves.toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(reads).toBe(2);
+    expect(store.refusals).toEqual(["PERSISTENCE_FAILED"]);
   });
 
   it("returns durable evidence without re-signing", async () => {

@@ -312,6 +312,7 @@ class MemorySignerStore implements SignerStore {
   signed: DurableSignedTransaction | null = null;
   attempts = new Map<string, BroadcastAttempt>();
   phases: string[] = [];
+  refusals: string[] = [];
   constructor(input: SigningContext | null = context) {
     this.signingContext = input
       ? structuredClone(input)
@@ -323,25 +324,31 @@ class MemorySignerStore implements SignerStore {
   async findDurableSignedEvidence() {
     return this.durable;
   }
-  async beginSigning() {
-    this.phases.push("signing-started");
-  }
-  async persistSignedEvidence(input: {
-    signedTransactionId: string;
-    expectedTransactionHash: `0x${string}`;
-    reservationId: string;
-    envelopeId: string;
-    envelopeRevision: number;
-    envelopeHash: string;
-    ids: SignAuthorizedTransferIds;
-    simulationId: string;
-    fixtureInstanceId: string;
-    signerCredentialId: string;
-    signedAt: string;
-  }) {
+  async signAndPersistEvidence(
+    input: {
+      signedTransactionId: string;
+      expectedTransactionHash?: `0x${string}`;
+      reservationId: string;
+      envelopeId: string;
+      envelopeRevision: number;
+      envelopeHash: string;
+      ids: SignAuthorizedTransferIds;
+      simulationId: string;
+      fixtureInstanceId: string;
+      signerCredentialId: string;
+    },
+    sign: () => Promise<{
+      transactionHash: `0x${string}`;
+      rawTransaction?: string;
+    }>,
+    _audit: unknown,
+    onSigningStarted?: () => void,
+  ) {
+    onSigningStarted?.();
+    const material = await sign();
     this.durable = {
-      transactionHash: input.expectedTransactionHash,
-      signedAt: input.signedAt,
+      transactionHash: material.transactionHash,
+      signedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
     };
     this.signed = {
       signedTransactionId: input.signedTransactionId,
@@ -352,12 +359,14 @@ class MemorySignerStore implements SignerStore {
       envelopeHash: input.envelopeHash,
       authorizationId: input.ids.authorizationId,
       fixtureInstanceId: input.fixtureInstanceId,
-      expectedTransactionHash: input.expectedTransactionHash,
+      expectedTransactionHash: material.transactionHash,
     };
-    this.phases.push("evidence-persisted");
     this.signingContext.operation.state = "SIGNED";
+    return material;
   }
-  async recordSigningRefusal() {}
+  async recordSigningRefusal(_operationId: string, reasonCode: string) {
+    this.refusals.push(reasonCode);
+  }
 }
 
 const makeBroadcastStore = (store: MemorySignerStore): BroadcastStore => ({
@@ -372,12 +381,17 @@ const makeBroadcastStore = (store: MemorySignerStore): BroadcastStore => ({
     };
     store.attempts.set(attemptId, attempt);
     store.phases.push("STARTED");
-    return attempt;
+    return { attempt, created: true };
   },
   finishBroadcastAttempt: async (input) => {
     const existing = store.attempts.get(input.attemptId);
     if (!existing) throw new Error("missing attempt");
-    const complete = { ...existing, ...input };
+    const complete = {
+      ...existing,
+      status: input.status,
+      responseTransactionHash: input.responseTransactionHash,
+      classificationReason: input.classificationReason,
+    };
     store.attempts.set(input.attemptId, complete);
     return complete;
   },
@@ -395,6 +409,7 @@ const makeSignerDeps = (
     role: "ADAPTER",
   },
   rpcUrl,
+  withChainMutationLease: async (work) => work(),
   loadDisposableAccount: () => ({ address: wallet as Address }),
   makeRpc: () => rpc,
   signTransaction: async (fields: ExactTransactionFields) => {
@@ -439,6 +454,75 @@ describe("signer-local execution handoff", () => {
   it("freezes the locked viem signed-byte/hash regression vector", () => {
     expect(rawTransaction).toBe(FROZEN_SIGNED_TRANSACTION);
     expect(keccak256(rawTransaction)).toBe(FROZEN_SIGNED_TRANSACTION_HASH);
+  });
+
+  it("fails closed when durable evidence cannot be read before signing", async () => {
+    const store = new MemorySignerStore();
+    store.findDurableSignedEvidence = async () => {
+      throw new Error("database connection detail");
+    };
+    const rpc = new FakeRpc();
+    let signs = 0;
+    let sends = 0;
+
+    const outcome = await executeAuthorizedTransferCore(
+      {
+        ...makeSignerDeps(store, rpc, rawTransaction),
+        signTransaction: async () => {
+          signs += 1;
+          return { transactionHash: FROZEN_SIGNED_TRANSACTION_HASH };
+        },
+        broadcastStore: makeBroadcastStore(store),
+        sender: {
+          sendRawTransaction: async () => {
+            sends += 1;
+            return FROZEN_SIGNED_TRANSACTION_HASH;
+          },
+        },
+        executionStore: noAttemptStore(),
+      },
+      ids,
+    );
+
+    expect(outcome).toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(store.refusals).toEqual(["PERSISTENCE_FAILED"]);
+    expect(signs).toBe(0);
+    expect(sends).toBe(0);
+  });
+
+  it("audits a refusal when broadcast state cannot be read", async () => {
+    const store = new MemorySignerStore();
+    const rpc = new FakeRpc();
+    let signs = 0;
+    let sends = 0;
+    const outcome = await executeAuthorizedTransferCore(
+      {
+        ...makeSignerDeps(store, rpc, rawTransaction),
+        signTransaction: async () => {
+          signs += 1;
+          return { transactionHash: FROZEN_SIGNED_TRANSACTION_HASH };
+        },
+        broadcastStore: makeBroadcastStore(store),
+        sender: {
+          sendRawTransaction: async () => {
+            sends += 1;
+            return FROZEN_SIGNED_TRANSACTION_HASH;
+          },
+        },
+        executionStore: {
+          withExecutionLock: async (_operationId, work) => work(),
+          findBroadcastAttempt: async () => {
+            throw new Error("database connection detail");
+          },
+        },
+      },
+      ids,
+    );
+
+    expect(outcome).toEqual({ ok: false, code: "PERSISTENCE_FAILED" });
+    expect(store.refusals).toEqual(["PERSISTENCE_FAILED"]);
+    expect(signs).toBe(0);
+    expect(sends).toBe(0);
   });
 
   it("signs, persists safe evidence, enters STARTED, and sends the exact bytes", async () => {
@@ -489,10 +573,7 @@ describe("signer-local execution handoff", () => {
     expect(outcome.broadcastAttemptId).toBe(
       `${"attempt:" + ids.operationId}:1`,
     );
-    expect(store.durable).toEqual({
-      transactionHash: keccak256(rawTransaction),
-      signedAt: now.toISOString().replace(/\.\d{3}Z$/, "Z"),
-    });
+    expect(store.durable?.transactionHash).toBe(keccak256(rawTransaction));
   });
 
   it("rematerializes only proven pre-send evidence and gates it to the exact hash", async () => {

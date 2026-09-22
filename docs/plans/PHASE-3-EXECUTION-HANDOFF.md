@@ -3,11 +3,23 @@
 ## Canonical start
 
 - Repository: `Zburgers/crip-wallet`
-- Canonical implementation branch: create `phase-3/ws-005-implementation`
-  from current protected `main` only after the Phase-3 planning PR and
-  ADR-0018 are accepted/merged.
+- Canonical implementation branch: `phase-3/ws-005-implementation`, created
+  from protected `main` after the Phase-3 planning PR and ADR-0018 were
+  accepted/merged.
 - Planning authority: `docs/plans/PHASE-3.md`
-- Status: Phase 3 / WS-005 is **OPENED / PLANNED, NOT IMPLEMENTED**.
+- Status: Phase 3 / WS-005 is **IN PROGRESS; P3-01 THROUGH P3-04 CLEARED; P3-05 LOCAL MATRIX PASS (F18 RESERVED FOR P3-06); P3-06 CLEAN-ROOM PENDING** on
+  `phase-3/ws-005-implementation`, current head
+  `54afbcc9e08374c844d6b7fd784e34fca1856a19`. P3-03 candidate
+  `510763b3c9c217f9058b1c9d388ce02d84e6ae9e` passed fresh MAX review (9/10,
+  confidence 0.90, no findings), CI `35498889238`, and Secret Scan
+  `35498889228`. P3-04 local gates pass (check 21 repository + 363 package
+  tests; DB 162/162; Phase-3 gate 254/254), including the deterministic
+  authorization-before-operation lock barrier. Follow-up MAX review passed
+  with no blocking findings; exact-head CI `35787705165` and Secret Scan
+  `35787705289` pass. P3-05 local matrix gates pass: DB 163/163, Phase-3
+  255/255, concurrency 18/18, invariants 7/7, chain 10/10, E2E 1/1, fault
+  186/186, adversarial 213/213.
+  P3-06 fresh-clone clean-room and independent closeout remain.
 - Boundary: loopback Anvil `eip155:31337`, fake ERC-20, disposable local
   identities only. Public networks, real value, and production custody remain
   prohibited.
@@ -44,6 +56,18 @@
 - Reuse existing lifecycle states and tables except the minimum forward-only
   migration/constraints defined by the plan.
 
+## P3-01 R-033 implementation
+
+The selected local consistency boundary is a checkout-scoped exclusive
+Anvil-mutation lease. Host RPC uses the loopback-published gateway; Anvil is
+unpublished on the internal network. Every supported mutator and the signer
+share `.local/coordination/anvil.lock`. The signer acquires it before the final
+freshness RPC and holds it through signing/evidence commit, so no chain RPC
+runs under PostgreSQL locks. The gateway checkpoints each mutation and fails
+closed if durable state cannot be verified. `dev-up`/`dev-down` serialize
+container lifecycle with the same lease. See `docs/plans/PHASE-3.md` for the
+implementation and live runtime evidence.
+
 ## Packet order
 
 ```text
@@ -71,7 +95,12 @@ and chain/audit/adversarial. Integrate them sequentially. P3-06 is sequential.
   require protected CI and Secret Scan on the exact candidate SHA.
 - Record runtime/container/fixture ownership and prove cleanup. Preserve any
   unrelated dirty work and never stop unproven shared resources.
-- Obtain a fresh independent Luna High or Extra High review before closeout.
+- After every completed packet push, run a fresh GPT-5.6 Luna MAX critic against
+  the exact SHA. Remediate real findings, push the fix, and repeat with a fresh
+  critic before advancing to the next sequential packet.
+- After P3-05 and before P3-06, freeze a candidate and run two fresh MAX
+  critics: one for security/races/economic integrity and one for product and
+  implementation quality.
 
 ## Stop/escalate
 
@@ -79,8 +108,8 @@ Stop the affected packet if ADR-0018 is unaccepted; authority/attempt identity
 cannot be proven; raw bytes must escape the child; a migration cannot fail
 closed; a send-capable result would need cancellation/re-sign/release; scope
 widens toward public networks/real funds/production custody; or any critical/
-high finding remains. Continue independent work that does not rely on the
-blocked decision.
+high finding remains. Begin P3-04 only after P3-03 local gates, fresh
+exact-SHA review, and protected CI/Secret Scan pass.
 
 ## Completion
 

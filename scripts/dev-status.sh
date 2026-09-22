@@ -24,6 +24,10 @@ source "$SCRIPT_DIR/local-context.sh"
   printf '%s\n' 'ERROR: local runtime belongs to a different checkout.' >&2
   exit 1
 }
+[[ "$CRIP_RUNTIME_STATE" == "ready" ]] || {
+  printf '%s\n' 'ERROR: local runtime is not ready; run npm run dev:up.' >&2
+  exit 1
+}
 "$SCRIPT_DIR/validate-local-env.sh" "$RUNTIME_ENV"
 
 readonly ANVIL_CONFIG="$REPO_ROOT/.local/anvil/anvil.json"

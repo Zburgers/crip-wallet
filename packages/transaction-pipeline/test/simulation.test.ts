@@ -305,7 +305,20 @@ describe("P2-03 canonical simulation and executable resolution", () => {
         constraints,
         maxBlockAge: 2n,
       }),
-    ).toEqual({ ok: true, reason: "FRESH" });
+    ).toEqual({
+      ok: true,
+      reason: "FRESH",
+      observation: {
+        headNumber: "101",
+        simulationBlockNumber: "100",
+        simulationBlockHash: blockHash,
+        senderNonce: "3",
+        tokenBalanceAtomic: "1000000",
+        nativeBalanceWei: "100000000",
+        baseFeePerGas: "10",
+        maxPriorityFeePerGas: "2",
+      },
+    });
   });
 
   const staleCases: ReadonlyArray<

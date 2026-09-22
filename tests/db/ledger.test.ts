@@ -399,7 +399,7 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
     const migration = await pool.query<{ filename: string; checksum: string }>(
       "SELECT filename, checksum FROM schema_migrations ORDER BY filename",
     );
-    expect(migration.rows).toHaveLength(25);
+    expect(migration.rows).toHaveLength(33);
     expect(migration.rows.map((row) => row.filename)).toEqual([
       "0001_ws003_budget_ledger.sql",
       "0002_ws003_idempotency_binding_guard.sql",
@@ -426,6 +426,14 @@ describe.sequential("WS-003 PostgreSQL budget ledger", () => {
       "0023_p205_broadcast_safety.sql",
       "0024_canonical_autonomous_authorization.sql",
       "0025_p205d_preparation_audit.sql",
+      "0026_ws005_integrated_control_boundary.sql",
+      "0027_ws005_signed_unbroadcast_control.sql",
+      "0028_ws005_existing_attempt_recovery.sql",
+      "0029_ws005_rejected_attempt_recovery_guard.sql",
+      "0030_ws005_invalidated_rejected_release_guard.sql",
+      "0031_ws005_started_authority_guard.sql",
+      "0032_ws005_controlled_no_send_recovery.sql",
+      "0033_ws005_recovery_lease_renewal.sql",
     ]);
     expect(
       migration.rows.every((row) => /^sha256:[0-9a-f]{64}$/.test(row.checksum)),

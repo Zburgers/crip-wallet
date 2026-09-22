@@ -104,15 +104,37 @@ test("binds runtime state to the checkout and separates two checkout projects", 
   }
 });
 
-test("keeps host port zero allocation, loopback bindings, and failed-start cleanup contractual", () => {
+test("publishes only the loopback Anvil gateway and keeps failed-start cleanup contractual", () => {
   const source = readFileSync(join(repositoryRoot, "compose.yaml"), "utf8");
   assert.match(source, /127\.0\.0\.1:\$\{CRIP_POSTGRES_PORT:-0\}:5432/);
-  assert.match(source, /127\.0\.0\.1:\$\{CRIP_ANVIL_PORT:-0\}:8545/);
+  const postgresService = source.match(
+    /^ {2}postgres:\n([\s\S]*?)(?=^ {2}anvil:)/m,
+  )?.[1];
+  assert.ok(postgresService);
+  assert.match(postgresService, /networks:\n {6}- local-only/);
+  assert.doesNotMatch(postgresService, /anvil-private|gateway-host/);
+  const anvilService = source.match(
+    /^ {2}anvil:\n([\s\S]*?)(?=^ {2}anvil-gateway:)/m,
+  )?.[1];
+  assert.ok(anvilService);
+  assert.doesNotMatch(anvilService, /^\s+ports:/m);
+  assert.match(source, /anvil-private:[\s\S]*internal: true/);
+  const gatewayService = source.match(
+    /^ {2}anvil-gateway:\n([\s\S]*?)(?=^networks:)/m,
+  )?.[1];
+  assert.ok(gatewayService);
+  assert.match(gatewayService, /127\.0\.0\.1:\$\{CRIP_ANVIL_PORT:-0\}:8545/);
+  assert.match(
+    gatewayService,
+    /networks:\n {6}- anvil-private\n {6}- gateway-host/,
+  );
   const lifecycle = readFileSync(
     join(repositoryRoot, "scripts/dev-up.sh"),
     "utf8",
   );
   assert.match(lifecycle, /trap cleanup_on_failure EXIT/);
+  assert.match(lifecycle, /port anvil-gateway 8545/);
+  assert.match(lifecycle, /acquire_anvil_mutation_lease/);
   assert.match(lifecycle, /down --remove-orphans/);
   assert.doesNotMatch(lifecycle, /down --remove-orphans --volumes|down -v/);
 });

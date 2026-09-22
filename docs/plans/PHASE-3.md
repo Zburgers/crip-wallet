@@ -1,6 +1,6 @@
 # Phase 3 Plan - WS-005 Integrated Approval Controls
 
-Status: **OPENED / PLANNED — NOT IMPLEMENTED**
+Status: **IN PROGRESS — P3-01 THROUGH P3-04 CLEARED; P3-05 LOCAL MATRIX PASS (F18 RESERVED FOR P3-06); P3-06 CLEAN-ROOM / INDEPENDENT CLOSEOUT PENDING**
 
 Planning branch: `phase-3/ws-005-integrated-controls`
 
@@ -67,8 +67,15 @@ Accepted entry assumptions:
   the isolated local execution child.
 - RPC, receipts, logs, adapter responses, and process clocks are evidence, not
   authorization authority.
-- Existing migrations are checksum-locked. Phase 3 uses forward migration
-  `0026_ws005_integrated_control_boundary.sql`.
+- Existing migrations are checksum-locked. P3-01 added
+  `0026_ws005_integrated_control_boundary.sql`; because that packet has already
+  been applied to the integration runtime, later packet schema changes use new
+  forward-only migrations rather than changing its checksum. P3-02 adds
+  `0027_ws005_signed_unbroadcast_control.sql` and follow-ups
+  `0028_ws005_existing_attempt_recovery.sql` and
+  `0029_ws005_rejected_attempt_recovery_guard.sql` and
+  `0030_ws005_invalidated_rejected_release_guard.sql`. P3-03 adds
+  `0031_ws005_started_authority_guard.sql` for fence-first send-start authority.
 
 ## P3-00 actual failure and race model
 
@@ -131,8 +138,8 @@ identity strings, and wall-clock time are not authoritative.
 
 ## Frozen architecture decision
 
-ADR-0018 is the Phase-3 design boundary. Its decisions are frozen for packet
-planning and require explicit ADR acceptance before P3-01 implementation:
+ADR-0018 is the Phase-3 design boundary. Its decisions were frozen during
+packet planning and are accepted before P3-01 implementation:
 
 - Reuse the four control-fence versions plus immutable authorization ID as the
   authority epoch. Do not add another epoch table.
@@ -260,7 +267,20 @@ reconciliation, regardless of later control changes.
 
 ## Database and migration impact
 
-Forward-only migration: `0026_ws005_integrated_control_boundary.sql`.
+Forward-only migrations:
+
+- `0026_ws005_integrated_control_boundary.sql` — P3-01 uniqueness backstops.
+- `0027_ws005_signed_unbroadcast_control.sql` — P3-02 evidence-aware control
+  invalidation and signed-work release fencing.
+- `0028_ws005_existing_attempt_recovery.sql` — allow broadcast/finalization
+  only through the exact immutable lineage of an already committed attempt,
+  even after control changes.
+- `0029_ws005_rejected_attempt_recovery_guard.sql` — prevent a proven no-send
+  `REJECTED` attempt from re-entering broadcast/finalization after control.
+- `0030_ws005_invalidated_rejected_release_guard.sql` — prevent direct release
+  and expiry of a control-invalidated `REJECTED` attempt.
+- `0031_ws005_started_authority_guard.sql` — apply the same fence-first
+  authority locks and currentness checks to durable `STARTED` creation.
 
 Required changes:
 
@@ -457,6 +477,12 @@ and scripts must be updated in the same packet.
 
 ### P3-01 - Pre-sign authority transaction and execution binding
 
+Status: **IMPLEMENTED / MAX REVIEW PASS / EXACT-SHA CI + SECRET SCAN PASS** on
+`404837db138ad1bd5c3aceaff6bae67652d5ed01` (runs `35485643373` and
+`35485643343`). The atomic database boundary, bounded database-time deadline,
+and selected R-033 chain-mutation lease are implemented. P3-02's dependency is
+cleared.
+
 Scope:
 
 - ADR-0018 must be accepted before code changes.
@@ -477,9 +503,54 @@ Acceptance:
 - Exactly one signed row exists for one operation/authorization.
 - Existing Phase-1 approval/autonomous and Phase-2 signer suites remain green.
 
+#### P3-01 R-033 resolution: checkout-scoped chain-mutation lease
+
+The selected resolution enforces one exclusive lease across every supported
+local Anvil writer. The gateway is the only RPC endpoint published to the host;
+it binds on a dynamically assigned loopback port. Anvil has no published host
+port and stays on the internal `anvil-private` network. The gateway is attached
+to that network and a dedicated `gateway-host` bridge; PostgreSQL remains on
+`local-only` and cannot reach the gateway over a shared container network.
+
+The gateway rejects batches and methods outside explicit read/mutation
+allowlists. It holds `.local/coordination/anvil.lock` across each state-changing
+RPC and its atomic durable-state checkpoint. A checkpoint failure poisons the
+gateway and blocks later calls. `dev-up` and `dev-down` hold the same lease
+across Anvil startup and shutdown. Runtime clients use the loopback gateway URL,
+so fixture tooling and application mutations share the same boundary.
+
+The signer takes the lease **before** its final Anvil freshness sample and
+holds it through local signing and signed-evidence commit. A mutation already
+in progress completes before that sample; later writers wait until the signer
+commits or rolls back. The freshness RPC therefore remains outside the
+PostgreSQL fence transaction, preserving ADR-0018's no-RPC-under-DB-lock rule.
+The bounded database-time deadline still limits lock wait and transaction
+duration.
+
+Local runtime evidence: the gateway reported `healthz` 200 on a `127.0.0.1`
+ephemeral host port while Anvil had no host port; network inspection showed
+PostgreSQL only on `local-only` and the gateway only on `gateway-host` plus
+`anvil-private`. A fake account balance mutation through the gateway changed
+the durable checkpoint and survived `dev-down`/`dev-up`; `anvil_reset` through
+the gateway returned the account to `0x0`, and a later clean restart restored
+that state. One initial post-reset startup failed closed; a guarded retry and a
+subsequent no-mutation restart both passed. All local P3-01 gates pass; exact
+counts are recorded in `TEST_MATRIX.md`. MAX review and exact-SHA CI/Secret Scan
+passed for the pushed candidate.
+
+This implementation resolves R-033 only for the supported checkout-local
+Compose runtime. A user with host Docker privileges can still bypass the RPC
+gateway by directly controlling containers; that host is inside the existing
+local trust boundary. It does not widen the scope to public RPC, testnets,
+mainnet, real funds, or production custody.
+
 ### P3-02 - Signed-unbroadcast lifecycle and control semantics
 
 Depends on P3-01.
+
+Status: **PASS / FRESH INDEPENDENT MAX REVIEW 0.92 / EXACT-SHA CI + SECRET SCAN PASS** on
+`b95695c720fd68dd1085e371267a35113a05c816` (CI `35493551667`, Secret Scan
+`35493551719`).
 
 Scope:
 
@@ -499,6 +570,25 @@ Acceptance:
 - Duplicate control events are idempotent and auditable.
 - DB tests prove all three invalidation-trigger branches: unsigned release,
   signed/no-attempt quarantine, and existing-attempt preservation.
+
+Local implementation uses additive migrations `0027` through `0030`. Control
+changes quarantine signed work with no attempt as `DISPUTED` while retaining
+its reservation. Existing attempts remain unchanged and receive linked
+invalidation audits; exact `ACCEPTED`/`UNKNOWN` chain evidence can reconcile
+after control, while a `REJECTED` no-send attempt cannot re-enter broadcast or
+be directly released or expired. The `STARTED` writer locks
+the same fence prefix, rejects invalidated authority, and creates a
+reservation-row conflict with a serializable control snapshot. Generic
+`FAILED` recovery and direct release/expiry cannot release invalidated signed
+work without an attempt or with a `REJECTED` attempt. Control request IDs
+remain idempotent across later state changes, and `CONFLICT` attempts remain
+auditable.
+
+P3-02 local evidence: `npm run check` passed (21 repository tests and 361
+package tests), `npm run test:db` passed 145/145 across six files including
+`execution-evidence.test.ts` 53/53, `npm run test:concurrency` passed 18/18,
+and `npm run test:invariants` passed 7/7. Fresh exact-SHA review and protected
+CI/Secret Scan passed for its recorded candidate above.
 
 ### P3-03 - Send commit, broadcast uncertainty, and durable recovery integration
 
@@ -525,6 +615,22 @@ Acceptance:
 - No exported/internal-alternate path can invoke a raw send without the exact
   committed `STARTED` row.
 
+P3-03 candidate `510763b3c9c217f9058b1c9d388ce02d84e6ae9e` adds durable
+fence-first `STARTED` authority and real local-chain recovery. Recovery accepts
+a still-`STARTED` attempt only into the existing canonical evidence verifier;
+the crash-after-send regression proves exact mined evidence reconciles once,
+even after a control fence changes. Local checks pass: `npm run check` (21
+repository checks and 363 package tests), `npm run test:db` (150/150 across
+six files, including execution evidence 58/58), and the P2-05D Anvil journey
+(1/1). Fresh GPT-5.6 Luna MAX review: **PASS, 9/10, confidence 0.90, no
+findings**. Protected exact-SHA CI `35498889238` and Secret Scan `35498889228`
+both pass on this candidate. P3-04 candidate
+`54afbcc9e08374c844d6b7fd784e34fca1856a19` passed follow-up MAX review with no
+blocking findings, protected CI `35787705165`, and Secret Scan `35787705289`.
+P3-05's deterministic F01–F19 test crosswalk and local matrix evidence are
+recorded in `docs/TEST_MATRIX.md`; F18 fresh-clone verification remains owned
+by P3-06. Full Phase-3 acceptance is not claimed.
+
 ### P3-04 - Pause/revoke/recovery concurrency and stale-worker fencing
 
 Depends on P3-03.
@@ -548,7 +654,43 @@ Acceptance:
 - Send-capable ambiguity can never use that release path.
 - Concurrent workers create one recovery result and at most one economic effect.
 
+P3-04 local implementation evidence: migrations `0032` and `0033` add the
+exact signed-no-attempt release backstop and the authenticated lease-renewal
+audit type. Claim, renewal, and final resolution compare the exact credential
+and lease generation using PostgreSQL time; the final resolution conditionally
+resolves only a still-live lease. The signed-no-attempt path verifies one exact
+authorization and signed transaction, the matching control invalidation, and
+zero broadcast attempts/economic effects before atomically reconciling the
+operation, releasing the reservation, resolving the lease, and appending the
+recovery audits. Local gates pass: `npm run check` (21 repository tests and
+363 package tests), `npm run test:db` (162/162 across six files), and
+`npm run test:phase3` (254/254), including
+barrier-based duplicate recovery, lease-expiry rollback, renewal, takeover,
+send-capable no-send rejection, and control/recovery/envelope replacement,
+approval replay, autonomous authorization, signer, and broadcaster lock-order
+races against reservation transition.
+Reservation transitions, authorized envelope replacement, approval replays, and
+autonomous retries lock policy decisions and authorization evidence before
+operation rows; signer and broadcast stores use the same order. Recovery uses
+key-share on policy so policy revocation can proceed without a lock cycle. A
+deterministic barrier test proves control invalidation does not pre-lock an
+operation while waiting for its authorization row. Follow-up MAX review passed
+with no blocking findings after remediation; protected exact-SHA CI
+`35787705165` and Secret Scan `35787705289` pass on
+`54afbcc9e08374c844d6b7fd784e34fca1856a19`. Obsolete sign-only child sources
+were removed, and adapter builds clear stale generated artifacts. P3-05 local
+matrix gates pass; its F18 clean-clone proof and final closeout await P3-06.
+
 ### P3-05 - Adversarial, replay, substitution, and fault matrix
+
+Status: **LOCAL MATRIX PASS; F18 FRESH-CLONE VERIFICATION RESERVED FOR P3-06**.
+The exact named deterministic-test crosswalk is in `docs/TEST_MATRIX.md`.
+On the frozen P3-04 state plus the P3-05 test-only diff, local gates pass: DB
+163/163, Phase-3 255/255, concurrency 18/18, invariant/property 7/7 (fixed
+seeds, 512 runs), chain 10/10, E2E 1/1, fault 186/186, and adversarial 213/213.
+P3-04 exact-head protected workflow `35787705165` and Secret Scan `35787705289`
+pass; the P3-05 test-only candidate needs its own exact-head checks. F18 and
+packet-level final acceptance await the P3-06 fresh-clone run.
 
 Depends on P3-04's frozen state model. Test-only sublanes may run in parallel as
 defined below.

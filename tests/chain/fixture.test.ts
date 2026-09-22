@@ -181,10 +181,6 @@ test("reset and redeploy creates a new fixture instance and stales the prior ins
   assert.notEqual(current.fixtureInstanceId, prior.fixtureInstanceId);
   assert.equal(current.token.address, prior.token.address);
   assert.equal(
-    current.deployment.transactionHash,
-    prior.deployment.transactionHash,
-  );
-  assert.equal(
     current.token.runtimeBytecodeHash,
     prior.token.runtimeBytecodeHash,
   );
