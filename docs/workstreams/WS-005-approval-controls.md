@@ -5,7 +5,7 @@
 Prove that owner approval, replay protection, revocation, pause and worker recovery cannot authorize stale work.
 
 **Phase-1 S1 slice: COMPLETE LOCALLY.**
-**Phase-3 integrated execution slice: IN PROGRESS; P3-01 through P3-03 CLEARED; P3-04 locally implemented, exact-SHA review/CI pending.**
+**Phase-3 integrated execution slice: IN PROGRESS; P3-01 through P3-03 CLEARED; P3-04 implemented / follow-up MAX review pass, exact-SHA CI/Secret Scan pending.**
 
 ## S1 contract now implemented
 
@@ -66,7 +66,9 @@ reconciles a still-STARTED row once after control invalidation. Local gates
 pass: check 21 repository + 363 package tests, DB 150/150, and Anvil E2E 1/1;
 fresh GPT-5.6 Luna MAX review passed 9/10 (confidence 0.90, no findings).
 Protected CI `35498889238` and Secret Scan `35498889228` pass on this
-candidate. P3-04 through P3-06 remain gated. Phase 3 remains local
+candidate. P3-04 follow-up MAX review passed after control lock-order
+remediation and obsolete sign-only artifact removal; exact-SHA CI/Secret Scan
+await the push. P3-05 and P3-06 remain gated. Phase 3 remains local
 Anvil/fake-money only and is not fully accepted.
 
 P3-04 adds migrations `0032` and `0033` for exact signed-no-attempt release
@@ -76,8 +78,9 @@ no-send transaction requires one bound authorization/signed row, a matching
 control invalidation, and zero attempts/economic effects; it commits one
 `FAILED` recovery row, `RECONCILED`/`RELEASED` state, resolved lease, and
 correlated audits together. `npm run check` passes (21 repository + 363 package
-tests) and `npm run test:db` passes 161/161, including concurrent duplicate
+tests), `npm run test:db` passes 162/162, and `npm run test:phase3` passes
+254/254, including concurrent duplicate
 recovery, forced final-lease expiry rollback, and control/recovery/envelope-
 replacement plus approval, autonomous, signer, and broadcaster lock-order
-races. Exact-SHA MAX review and protected CI/Secret Scan
-are pending; P3-05 has not started.
+races. A deterministic barrier proves control waits for authorization before
+locking operation rows. Exact-SHA CI/Secret Scan are pending; P3-05 has not started.

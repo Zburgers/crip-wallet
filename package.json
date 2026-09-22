@@ -32,6 +32,8 @@
     "test:concurrency": "node tooling/phase1-test-gate.mjs concurrency",
     "pretest:invariants": "npm run build --workspaces --if-present",
     "test:invariants": "node tooling/phase1-test-gate.mjs invariants",
+    "pretest:phase3": "npm run build --workspaces --if-present",
+    "test:phase3": "node tooling/phase3-test-gate.mjs",
     "pretest:fault": "npm run build --workspaces --if-present",
     "contracts:test": "node tooling/phase2-contracts.mjs",
     "fixture:phase2": "node tooling/phase2-fixture.mjs",

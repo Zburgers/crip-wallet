@@ -68,6 +68,18 @@ Update rule: record user/operator-visible, schema, security, policy, compatibili
   0.90, no findings. Protected exact-SHA CI `35498889238` and Secret Scan
   `35498889228` pass.
 
+### Phase 3 / P3-04 review remediation checkpoint
+
+- A fresh MAX review found a possible control/authorization lock inversion and
+  obsolete generated sign-only child artifacts. Control now locks matching
+  authorization evidence before operation/reservation rows; a deterministic
+  PostgreSQL barrier proves the order. Removed the obsolete child sources and
+  made adapter builds clear stale generated output. Follow-up MAX review passed
+  with no blocking findings. Local check passes (21 repository + 363 package
+  tests), DB 162/162, and the Phase-3 gate 254/254. Exact-head CI and Secret
+  Scan await the remediation push; P3-05/06 remain gated. R-033 is unchanged
+  and remains mitigated within the supported local runtime.
+
 ### Phase 3 planning
 
 - P3-01 implementation was integrated at `91f649b`: migration 0026,

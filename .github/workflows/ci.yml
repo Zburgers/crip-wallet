@@ -69,6 +69,9 @@ jobs:
       - name: Run invariant and property gate
         run: npm run test:invariants
 
+      - name: Run Phase-3 integrated control and recovery gate
+        run: npm run test:phase3
+
       - name: Run P2-05D clean vertical-slice E2E
         run: npm run test:e2e
 

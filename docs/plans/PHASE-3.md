@@ -1,6 +1,6 @@
 # Phase 3 Plan - WS-005 Integrated Approval Controls
 
-Status: **IN PROGRESS — P3-01 THROUGH P3-03 CLEARED; P3-04 LOCAL IMPLEMENTATION COMPLETE, EXACT-SHA REVIEW/CI PENDING; P3-05–P3-06 NOT STARTED**
+Status: **IN PROGRESS — P3-01 THROUGH P3-03 CLEARED; P3-04 IMPLEMENTED / MAX REVIEW PASS, EXACT-SHA CI/SECRET SCAN PENDING; P3-05–P3-06 NOT STARTED**
 
 Planning branch: `phase-3/ws-005-integrated-controls`
 
@@ -660,7 +660,8 @@ authorization and signed transaction, the matching control invalidation, and
 zero broadcast attempts/economic effects before atomically reconciling the
 operation, releasing the reservation, resolving the lease, and appending the
 recovery audits. Local gates pass: `npm run check` (21 repository tests and
-363 package tests) and `npm run test:db` (161/161 across six files), including
+363 package tests), `npm run test:db` (162/162 across six files), and
+`npm run test:phase3` (254/254), including
 barrier-based duplicate recovery, lease-expiry rollback, renewal, takeover,
 send-capable no-send rejection, and control/recovery/envelope replacement,
 approval replay, autonomous authorization, signer, and broadcaster lock-order
@@ -668,9 +669,12 @@ races against reservation transition.
 Reservation transitions, authorized envelope replacement, approval replays, and
 autonomous retries lock policy decisions and authorization evidence before
 operation rows; signer and broadcast stores use the same order. Recovery uses
-key-share on policy so policy
-revocation can proceed without a lock cycle. Fresh exact-SHA MAX review and
-protected CI/Secret Scan remain pending; P3-05 has not started.
+key-share on policy so policy revocation can proceed without a lock cycle. A
+deterministic barrier test proves control invalidation does not pre-lock an
+operation while waiting for its authorization row. Follow-up MAX review passed
+with no blocking findings after remediation; exact-SHA CI/Secret Scan await
+the push. Obsolete sign-only child sources were removed, and adapter builds
+clear stale generated artifacts. P3-05 has not started.
 
 ### P3-05 - Adversarial, replay, substitution, and fault matrix
 

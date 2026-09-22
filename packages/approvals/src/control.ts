@@ -593,6 +593,69 @@ const invalidateHeldBeforeApproval = async (
   );
 };
 
+const lockAffectedAuthorizations = async (
+  client: PoolClient,
+  request: ChangeControlFenceRequest,
+): Promise<void> => {
+  const predicate = targetPredicate(request.scopeType);
+  const args = request.scopeType === "SYSTEM" ? [] : [request.scopeId];
+  const candidates = await client.query<{
+    authorization_id: string;
+    operation_id: string;
+    reservation_id: string;
+    budget_id: string;
+  }>(
+    `SELECT e.authorization_id, e.operation_id, e.reservation_id, r.budget_id
+     FROM authorization_evidence e
+     JOIN operations o ON o.operation_id = e.operation_id
+     JOIN budget_reservations r ON r.operation_id = e.operation_id
+       AND r.reservation_id = e.reservation_id
+     JOIN agents ag ON ag.agent_id = o.agent_id
+     LEFT JOIN authorization_invalidations ai ON ai.authorization_id = e.authorization_id
+     WHERE ai.authorization_id IS NULL
+       AND r.status IN ('AUTHORIZED', 'BROADCAST', 'DISPUTED')
+       AND ${predicate}
+     ORDER BY e.authorization_id`,
+    args,
+  );
+  if (candidates.rowCount === 0) return;
+
+  const authorizationIds = [
+    ...new Set(candidates.rows.map((row) => row.authorization_id)),
+  ].sort();
+  await client.query(
+    `SELECT authorization_id FROM authorization_evidence
+     WHERE authorization_id = ANY($1::text[])
+     ORDER BY authorization_id FOR UPDATE`,
+    [authorizationIds],
+  );
+
+  const operationIds = [
+    ...new Set(candidates.rows.map((row) => row.operation_id)),
+  ].sort();
+  const reservationIds = [
+    ...new Set(candidates.rows.map((row) => row.reservation_id)),
+  ].sort();
+  const budgetIds = [
+    ...new Set(candidates.rows.map((row) => row.budget_id)),
+  ].sort();
+  await client.query(
+    `SELECT operation_id FROM operations
+     WHERE operation_id = ANY($1::text[]) ORDER BY operation_id FOR UPDATE`,
+    [operationIds],
+  );
+  await client.query(
+    `SELECT reservation_id FROM budget_reservations
+     WHERE reservation_id = ANY($1::text[]) ORDER BY reservation_id FOR UPDATE`,
+    [reservationIds],
+  );
+  await client.query(
+    `SELECT budget_id FROM budget_accounts
+     WHERE budget_id = ANY($1::text[]) ORDER BY budget_id FOR UPDATE`,
+    [budgetIds],
+  );
+};
+
 const invalidateAffectedAuthorizations = async (
   client: PoolClient,
   request: ChangeControlFenceRequest,
@@ -602,6 +665,7 @@ const invalidateAffectedAuthorizations = async (
 ): Promise<void> => {
   const predicate = targetPredicate(request.scopeType);
   const args = request.scopeType === "SYSTEM" ? [] : [request.scopeId];
+  await lockAffectedAuthorizations(client, request);
   const held = await client.query<ControlOperationRow>(
     `SELECT NULL::text AS approval_id, o.operation_id, r.reservation_id, r.budget_id,
             r.amount_atomic, e.envelope_id, e.revision AS envelope_revision, e.envelope_hash,
@@ -700,7 +764,7 @@ const invalidateAffectedAuthorizations = async (
        )
        AND ${predicate}
      ORDER BY e.authorization_id
-     FOR UPDATE OF e, o, r, b`,
+     `,
     args,
   );
   for (const row of authorized.rows)
@@ -740,7 +804,7 @@ const invalidateAffectedAuthorizations = async (
        AND r.status IN ('AUTHORIZED', 'BROADCAST', 'DISPUTED')
        AND ${predicate}
      ORDER BY e.authorization_id
-     FOR UPDATE OF e, o, r`,
+     `,
     args,
   );
   for (const row of signed.rows)

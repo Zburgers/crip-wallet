@@ -1363,6 +1363,50 @@ describe.sequential("WS-004 execution evidence persistence", () => {
     }
   });
 
+  test("control locks authorization before acquiring operation rows", async () => {
+    await broadcastStartFixture();
+    const blocker = await pool.connect();
+    const controlApplicationName = "p3-control-auth-first";
+    const controlPool = new Pool({
+      host: runtime.postgres.host,
+      port: runtime.postgres.port,
+      database: runtime.postgres.database,
+      user: runtime.postgres.user,
+      password: runtime.postgres.password,
+      max: 1,
+      application_name: controlApplicationName,
+    });
+
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query(
+        "SELECT authorization_id FROM authorization_evidence WHERE operation_id = 'op_1' FOR UPDATE",
+      );
+      const control = changeControlFence(controlPool, {
+        scopeType: "SYSTEM",
+        scopeId: "system",
+        command: "PAUSE",
+        audit: audit("op_1", "control-auth-first"),
+      });
+      await waitForDatabaseBlock(controlApplicationName);
+
+      await expect(
+        blocker.query(
+          "SELECT operation_id FROM operations WHERE operation_id = 'op_1' FOR UPDATE NOWAIT",
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+      await blocker.query("COMMIT");
+      await expect(control).resolves.toMatchObject({
+        state: "PAUSED",
+        changed: true,
+      });
+    } finally {
+      await blocker.query("ROLLBACK").catch(() => undefined);
+      blocker.release();
+      await controlPool.end();
+    }
+  });
+
   test("policy revocation does not deadlock with recovery lease claim", async () => {
     await broadcastStartFixture();
     const blocker = await pool.connect();
