@@ -18,7 +18,7 @@
   "dependencies": {
     "@crip/audit": "0.0.0",
     "@crip/schemas": "0.0.0",
-    "pg": "8.23.0",
+    "pg": "8.23.1",
     "viem": "2.56.3"
   }
 }
