@@ -14,9 +14,5 @@ updates:
       day: monday
     open-pull-requests-limit: 5
 
-  - package-ecosystem: docker
-    directory: /
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+# Docker updater intentionally absent on main: no Dockerfile/Kubernetes manifest
+# is tracked at /. Re-enable for the actual Dockerfile directory when merged.
