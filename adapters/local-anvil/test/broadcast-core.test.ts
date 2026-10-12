@@ -8,7 +8,7 @@ import {
   type BroadcastAttempt,
   type BroadcastStore,
   type DurableSignedTransaction,
-} from "../src/index.js";
+} from "../src/broadcast-core.js";
 
 const account = privateKeyToAccount(`0x${"1".repeat(64)}`);
 const otherAccount = privateKeyToAccount(`0x${"2".repeat(64)}`);
@@ -59,7 +59,7 @@ const memoryStore = (existing?: BroadcastAttempt): BroadcastStore => {
   return {
     findSignedTransaction: async () => signed,
     startBroadcastAttempt: async (value, attemptId) => {
-      if (attempt) return attempt;
+      if (attempt) return { attempt, created: false };
       attempt = {
         attemptId,
         ...value,
@@ -67,11 +67,16 @@ const memoryStore = (existing?: BroadcastAttempt): BroadcastStore => {
         responseTransactionHash: null,
         classificationReason: null,
       };
-      return attempt;
+      return { attempt, created: true };
     },
     finishBroadcastAttempt: async (input) => {
       if (!attempt) throw new Error("missing attempt");
-      attempt = { ...attempt, ...input };
+      attempt = {
+        ...attempt,
+        status: input.status,
+        responseTransactionHash: input.responseTransactionHash,
+        classificationReason: input.classificationReason,
+      };
       return attempt;
     },
   };
@@ -239,6 +244,29 @@ describe("persist-before-send broadcast", () => {
       input,
     );
     expect(result.ok).toBe(false);
+    expect(sends).toBe(0);
+  });
+
+  it("does not send when an existing STARTED attempt is recovered", async () => {
+    const started: BroadcastAttempt = {
+      attemptId: input.attemptId,
+      ...signed,
+      status: "STARTED",
+      responseTransactionHash: null,
+      classificationReason: null,
+    };
+    let sends = 0;
+    const result = await broadcastSignedTransaction(
+      memoryStore(started),
+      {
+        sendRawTransaction: async () => {
+          sends += 1;
+          return hash;
+        },
+      },
+      input,
+    );
+    expect(result).toMatchObject({ ok: false, attempt: { status: "STARTED" } });
     expect(sends).toBe(0);
   });
 

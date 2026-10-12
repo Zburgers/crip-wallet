@@ -7,6 +7,7 @@ import { signComponentAction } from "@crip/trust-boundary";
 import { createWalletClient, http, keccak256, toBytes } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
+import { withChainMutationLease } from "./chain-mutation-lease.mjs";
 import type {
   Address,
   ExactTransactionFields,
@@ -16,6 +17,7 @@ import type {
 
 const ANVIL_CONFIG_PATH = ".local/anvil/anvil.json";
 const SIGNER_CREDENTIAL_PATH = ".local/signer/credential.json";
+const ANVIL_MUTATION_LOCK_PATH = ".local/coordination/anvil.lock";
 const KEY_PATTERN = /^0x[0-9a-f]{64}$/;
 const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/;
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -142,6 +144,8 @@ export const createLocalSignerDeps = (input: LocalSignerDeps) => {
       role: credential.role,
     },
     rpcUrl: input.rpcUrl,
+    withChainMutationLease: <T>(work: () => Promise<T>) =>
+      withChainMutationLease(join(input.root, ANVIL_MUTATION_LOCK_PATH), work),
     loadDisposableAccount: () => ({ address: disposable.address }),
     makeRpc: (fixtureInstanceId: string): LocalReadRpc =>
       createLocalAnvilReadRpc({

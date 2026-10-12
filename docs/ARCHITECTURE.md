@@ -24,6 +24,9 @@ PostgreSQL state + audit          approval / autonomous fence
                                  local Anvil adapter process
                                            |
                                            v
+                               loopback RPC gateway
+                                  | shared lease
+                                  v
                               Anvil 31337 + mock ERC-20
 
 Cross-cutting: OpenTelemetry, structured redacted logs, pause/revocation fences,
@@ -41,7 +44,8 @@ authenticated local component credentials, and durable recovery leases
 | Transaction pipeline | Construct, decode, verify, simulate, finalize candidates                                                                    | Accept raw calldata for MVP transfers       |
 | Approval/controls    | Envelope-bound one-time approval, versioned pause/revocation fence, stale-authority invalidation                            | Claim post-broadcast cancellation           |
 | Adapter SDK          | Normalize capabilities, signing authorization, broadcast, receipts                                                          | Define core policy or overstate enforcement |
-| Local Anvil adapter  | Isolate disposable local signer and local RPC                                                                               | Serve production/public networks            |
+| Local Anvil adapter  | Isolate disposable local signer and serialize final chain freshness with mutations                                            | Serve production/public networks            |
+| Local RPC gateway    | Allowlist local RPC and checkpoint each mutation under the shared lease                                                      | Expose Anvil directly or accept arbitrary RPC methods |
 | Audit/telemetry      | Correlate durable events and operational evidence                                                                           | Become authorization input or log secrets   |
 | Recovery worker      | Idempotently resume leased lifecycle work                                                                                   | Recreate authorization on retry             |
 
@@ -70,14 +74,27 @@ actor labels are not authority. Evidence snapshots retain the credential and
 signature hash. Recovery leases and attempt IDs are durable and fenced; unknown
 outcomes remain disputed until authenticated reconciliation.
 
-## Phase-3 planned integration boundary
+## Phase-3 integrated boundary
 
-Phase 3 is opened for planning but is not implemented. Accepted ADR-0018 closes
-the gap between the accepted S1 fences and accepted S2 execution path with two
-planned linearization points:
+Phase 3 is in progress. Accepted ADR-0018 defines two linearization points
+between the accepted S1 fences and accepted S2 execution path. P3-01's DB
+transaction and selected R-033 chain-mutation lease passed MAX review and
+exact-SHA CI/Secret Scan. P3-02 quarantines signed/no-attempt work, allows
+exact ACCEPTED/UNKNOWN reconciliation after control, and blocks REJECTED
+no-send attempts from re-entering broadcast; its exact-SHA review and protected
+checks passed. P3-03 candidate
+`510763b3c9c217f9058b1c9d388ce02d84e6ae9e` implements the fence-first
+`STARTED` send commit, sole-gateway enforcement, and real local-chain status
+and recovery. A mined transaction tied to a still-STARTED attempt enters the
+same canonical verifier and authenticated reconciliation path as other
+recoverable attempts. Fresh exact-SHA review passed 9/10 (confidence 0.90,
+no findings); protected CI `35498889238` and Secret Scan `35498889228` pass.
+
+The integrated design is:
 
 1. bounded local signing and signed-evidence persistence occur atomically in one
-   fence-first database transaction; and
+   fence-first database transaction; the signer acquires the mutation lease
+   before its final freshness RPC and holds it through commit; and
 2. a second fence-first transaction revalidates the exact authority before its
    `STARTED` commit becomes the send-commit point.
 
@@ -90,11 +107,14 @@ four fence versions, authorization ID, attempt identity, and recovery
 
 ## Deployment topology
 
-MVP is a single developer-machine topology: loopback application processes,
-loopback-published PostgreSQL, and loopback-published Anvil containers on one
-private Compose network. Each checkout derives a distinct Compose project and
-database volume identity from its canonical path; host-port conflicts fail
-instead of sharing another checkout's services. `.local/` holds generated
+MVP is a single developer-machine topology. PostgreSQL uses the `local-only`
+bridge and a loopback-published host port. Anvil has no host port and runs only
+on the internal `anvil-private` network. The RPC gateway connects to Anvil on
+that network and uses a dedicated `gateway-host` bridge for its dynamically
+assigned loopback host port; PostgreSQL cannot reach the gateway over a shared
+container network. Supported mutations and Anvil lifecycle restarts share the
+checkout-scoped lease. Each checkout derives a distinct Compose project and
+database volume identity from its canonical path. `.local/` holds generated
 disposable state and is never versioned. No public RPC, cloud service, testnet,
 or mainnet exists in scope.
 

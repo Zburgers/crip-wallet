@@ -195,8 +195,20 @@ export type FreshnessFailureCode =
   | "EXECUTABLE_CHANGED"
   | "SIMULATION_CHANGED";
 
+export interface FreshnessObservation {
+  headNumber: string;
+  simulationBlockNumber: string;
+  simulationBlockHash: Hash;
+  senderNonce: string;
+  tokenBalanceAtomic: string;
+  nativeBalanceWei: string;
+  baseFeePerGas: string;
+  maxPriorityFeePerGas: string;
+}
+
 export type FreshnessResult =
-  { ok: true; reason: "FRESH" } | { ok: false; code: FreshnessFailureCode };
+  | { ok: true; reason: "FRESH"; observation: FreshnessObservation }
+  | { ok: false; code: FreshnessFailureCode };
 
 const HASH_PATTERN = /^0x[0-9a-f]{64}$/;
 const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/;
@@ -798,10 +810,8 @@ export const checkSimulationFreshness = async (
     canonicalByHash.hash !== canonical.hash
   )
     return { ok: false, code: "NONCANONICAL_BLOCK" };
-  if (
-    (await input.rpc.getPendingNonce(input.executable.from)).toString() !==
-    input.simulation.senderNonce
-  )
+  const senderNonce = await input.rpc.getPendingNonce(input.executable.from);
+  if (senderNonce.toString() !== input.simulation.senderNonce)
     return { ok: false, code: "NONCE_CHANGED" };
   const tokenBalance = await input.rpc.getTokenBalance(
     input.executable.target,
@@ -828,7 +838,20 @@ export const checkSimulationFreshness = async (
     BigInt(input.executable.maxFeePerGas)
   )
     return { ok: false, code: "FEE_CEILING_CONFLICT" };
-  return { ok: true, reason: "FRESH" };
+  return {
+    ok: true,
+    reason: "FRESH",
+    observation: {
+      headNumber: currentHead.toString(),
+      simulationBlockNumber: canonical.number.toString(),
+      simulationBlockHash: canonical.hash,
+      senderNonce: senderNonce.toString(),
+      tokenBalanceAtomic: tokenBalance.toString(),
+      nativeBalanceWei: nativeBalance.toString(),
+      baseFeePerGas: feeData.baseFeePerGas.toString(),
+      maxPriorityFeePerGas: feeData.maxPriorityFeePerGas.toString(),
+    },
+  };
 };
 
 const LOCAL_ANVIL_CHAIN = defineChain({

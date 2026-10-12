@@ -4,6 +4,8 @@ import {
 } from "@crip/adapter-sdk";
 import { keccak256, parseTransaction, serializeTransaction } from "viem";
 
+import { signerTraceIdFor } from "./signer-core.js";
+
 const HASH_PATTERN = /^0x[0-9a-f]{64}$/;
 const RAW_TRANSACTION_PATTERN = /^0x[0-9a-f]+$/;
 
@@ -46,12 +48,14 @@ export interface BroadcastStore {
   startBroadcastAttempt(
     signed: DurableSignedTransaction,
     attemptId: string,
-  ): Promise<BroadcastAttempt>;
+    traceId: string,
+  ): Promise<{ attempt: BroadcastAttempt; created: boolean }>;
   finishBroadcastAttempt(input: {
     attemptId: string;
     status: Exclude<BroadcastAttemptStatus, "STARTED">;
     responseTransactionHash: string | null;
     classificationReason: string;
+    traceId: string;
   }): Promise<BroadcastAttempt>;
 }
 
@@ -139,15 +143,27 @@ export const broadcastSignedTransaction = async (
   if (derivedTransactionHash !== signed.expectedTransactionHash)
     throw new Error("signed bytes do not match expected transaction hash");
 
-  const started = await store.startBroadcastAttempt(signed, input.attemptId);
+  const traceId = signerTraceIdFor(input.request);
+  const startedResult = await store.startBroadcastAttempt(
+    signed,
+    input.attemptId,
+    traceId,
+  );
+  const started = startedResult.attempt;
   if (
     started.signedTransactionId !== signed.signedTransactionId ||
+    started.reservationId !== signed.reservationId ||
+    started.envelopeId !== signed.envelopeId ||
+    started.envelopeRevision !== signed.envelopeRevision ||
+    started.envelopeHash !== signed.envelopeHash ||
+    started.fixtureInstanceId !== signed.fixtureInstanceId ||
     started.expectedTransactionHash !== signed.expectedTransactionHash ||
     started.operationId !== signed.operationId ||
-    started.authorizationId !== signed.authorizationId
+    started.authorizationId !== signed.authorizationId ||
+    (startedResult.created && started.attemptId !== input.attemptId)
   )
     throw new Error("broadcast attempt binding mismatch");
-  if (started.status !== "STARTED") {
+  if (!startedResult.created || started.status !== "STARTED") {
     return started.status === "ACCEPTED"
       ? { ok: true, attempt: started }
       : { ok: false, attempt: started };
@@ -184,6 +200,7 @@ export const broadcastSignedTransaction = async (
     status,
     responseTransactionHash,
     classificationReason,
+    traceId,
   });
   return status === "ACCEPTED"
     ? { ok: true, attempt: completed }

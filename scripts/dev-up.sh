@@ -6,6 +6,9 @@ readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
 readonly LOCAL_DIR="$REPO_ROOT/.local"
 readonly RUNTIME_ENV="$LOCAL_DIR/runtime.env"
 readonly ANVIL_CONFIG="$LOCAL_DIR/anvil/anvil.json"
+readonly ANVIL_STATE_DIR="$LOCAL_DIR/anvil-state"
+readonly COORDINATION_DIR="$LOCAL_DIR/coordination"
+readonly ANVIL_POISON_FILE="$COORDINATION_DIR/anvil.poisoned"
 
 source "$SCRIPT_DIR/local-context.sh"
 
@@ -19,9 +22,14 @@ require_command() {
 
 require_command docker
 require_command openssl
+require_command id
 
 umask 077
-mkdir -p "$LOCAL_DIR/anvil"
+mkdir -p "$LOCAL_DIR/anvil" "$ANVIL_STATE_DIR" "$COORDINATION_DIR"
+chmod 700 "$LOCAL_DIR" "$LOCAL_DIR/anvil" "$ANVIL_STATE_DIR" "$COORDINATION_DIR"
+acquire_anvil_mutation_lease
+readonly CRIP_LOCAL_UID="$(id -u)"
+readonly CRIP_LOCAL_GID="$(id -g)"
 
 runtime_value() {
   local -r key="$1"
@@ -29,11 +37,25 @@ runtime_value() {
   awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$RUNTIME_ENV"
 }
 
-readonly POSTGRES_PASSWORD="$(runtime_value CRIP_POSTGRES_PASSWORD)"
-if [[ -n "$POSTGRES_PASSWORD" ]]; then
-  readonly EFFECTIVE_PASSWORD="$POSTGRES_PASSWORD"
+readonly SAME_RUNTIME_CHECKOUT="$(runtime_value CRIP_CHECKOUT_HASH)"
+readonly SAME_RUNTIME_PROJECT="$(runtime_value CRIP_COMPOSE_PROJECT)"
+readonly EXISTING_PASSWORD="$(runtime_value CRIP_POSTGRES_PASSWORD)"
+existing_port() {
+  local -r value="$(runtime_value "$1")"
+  if [[ "$value" =~ ^[1-9][0-9]{3,4}$ ]]; then
+    printf '%s' "$value"
+  else
+    printf '0'
+  fi
+}
+if [[ "$SAME_RUNTIME_CHECKOUT" == "$CRIP_CHECKOUT_HASH" && "$SAME_RUNTIME_PROJECT" == "$CRIP_COMPOSE_PROJECT" ]]; then
+  readonly EFFECTIVE_PASSWORD="$EXISTING_PASSWORD"
+  readonly EXISTING_POSTGRES_PORT="$(existing_port CRIP_POSTGRES_PORT)"
+  readonly EXISTING_ANVIL_PORT="$(existing_port CRIP_ANVIL_PORT)"
 else
   readonly EFFECTIVE_PASSWORD="$(openssl rand -hex 24)"
+  readonly EXISTING_POSTGRES_PORT=0
+  readonly EXISTING_ANVIL_PORT=0
 fi
 
 write_runtime() {
@@ -53,6 +75,8 @@ write_runtime() {
     printf 'CRIP_POSTGRES_DATABASE=crip_wallet\n'
     printf 'CRIP_POSTGRES_USER=crip\n'
     printf 'CRIP_POSTGRES_PASSWORD=%s\n' "$EFFECTIVE_PASSWORD"
+    printf 'CRIP_LOCAL_UID=%s\n' "$CRIP_LOCAL_UID"
+    printf 'CRIP_LOCAL_GID=%s\n' "$CRIP_LOCAL_GID"
     printf 'CRIP_ANVIL_HOST=127.0.0.1\n'
     printf 'CRIP_ANVIL_PORT=%s\n' "$runtime_anvil_port"
     printf 'CRIP_RPC_URL=http://127.0.0.1:%s\n' "$runtime_anvil_port"
@@ -61,26 +85,19 @@ write_runtime() {
   mv -f "$temporary" "$RUNTIME_ENV"
 }
 
-runtime_is_ready() {
-  [[ -f "$RUNTIME_ENV" ]] || return 1
-  [[ "$(runtime_value CRIP_RUNTIME_STATE)" == "ready" ]] || return 1
-  [[ "$(runtime_value CRIP_CHECKOUT_HASH)" == "$CRIP_CHECKOUT_HASH" ]] || return 1
-  [[ "$(runtime_value CRIP_COMPOSE_PROJECT)" == "$CRIP_COMPOSE_PROJECT" ]] || return 1
-  [[ "$(runtime_value CRIP_POSTGRES_PORT)" =~ ^[1-9][0-9]{3,4}$ ]] || return 1
-  [[ "$(runtime_value CRIP_ANVIL_PORT)" =~ ^[1-9][0-9]{3,4}$ ]] || return 1
-}
-
-if runtime_is_ready; then
-  "$SCRIPT_DIR/validate-local-env.sh" "$RUNTIME_ENV"
-else
-  write_runtime starting 0 0
-  "$SCRIPT_DIR/validate-local-env.sh" "$RUNTIME_ENV"
-fi
+write_runtime starting "$EXISTING_POSTGRES_PORT" "$EXISTING_ANVIL_PORT"
+"$SCRIPT_DIR/validate-local-env.sh" "$RUNTIME_ENV"
 
 startup_attempted=1
 cleanup_on_failure() {
   local -r status="$?"
   if ((status != 0)) && ((startup_attempted)); then
+    docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
+      --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" \
+      stop anvil-gateway >/dev/null 2>&1 || true
+    docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
+      --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" \
+      kill anvil >/dev/null 2>&1 || true
     docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
       --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" \
       down --remove-orphans >/dev/null 2>&1 || true
@@ -98,7 +115,17 @@ fi
 
 printf '%s\n' 'LOCAL TEST ONLY: starting disposable Anvil and local PostgreSQL.' >&2
 docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
-  --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" up -d --wait
+  --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" up -d --wait postgres
+docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
+  --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" \
+  stop anvil-gateway >/dev/null 2>&1 || true
+docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
+  --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" \
+  kill anvil >/dev/null 2>&1 || true
+rm -f "$ANVIL_POISON_FILE"
+docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
+  --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" \
+  up -d --wait --build --force-recreate anvil anvil-gateway
 readonly anvil_container_id="$(docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
   --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" ps -q anvil)"
 [[ -n "$anvil_container_id" ]] || {
@@ -124,7 +151,7 @@ docker exec "$anvil_container_id" cat /tmp/anvil.json >"$ANVIL_CONFIG"
 readonly postgres_binding="$(docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
   --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" port postgres 5432)"
 readonly anvil_binding="$(docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
-  --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" port anvil 8545)"
+  --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" port anvil-gateway 8545)"
 [[ "$postgres_binding" == 127.0.0.1:* && "$anvil_binding" == 127.0.0.1:* ]] || {
   printf '%s\n' 'ERROR: Compose did not report loopback-only effective ports.' >&2
   exit 1

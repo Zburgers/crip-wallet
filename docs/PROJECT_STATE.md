@@ -6,7 +6,7 @@ Update rule: at every meaningful integration point; keep this as the current res
 ## Repository
 
 - Repository: `Zburgers/crip-wallet`
-- Current default branch at Phase-3 planning start: `main` at `769db481472aab60a07efdd4b2390058321402e4`
+- Protected `main` after PR #26: `43f20fee99f7f771971871c852819be79849639f`
 - Phase 0/1 merge: PR #1 merged as `4dd91b481ccac51247e2c7e1220b5e74f968c0d5`
 - Phase 2 / WS-004 merge: PR #5 merged to `main` as `2c7e50f6aee6887ddd4af74c7bc33639707451b4`
 - Historical Phase-2 integration branch: `phase-2/ws-004-local-erc20`
@@ -18,8 +18,8 @@ Update rule: at every meaningful integration point; keep this as the current res
 - Phase-1 Secret Scan: run `31919254475` — PASS
 - Phase-2 post-merge `main` CI: run `34058182763` — PASS
 - Phase-2 post-merge `main` Secret Scan: run `34058183008` — PASS
-- Phase-3 planning branch: `phase-3/ws-005-integrated-controls`
-- ADR-0018: **ACCEPTED — 2026-09-17 by product owner**; implementation remains not started
+- Phase-3 canonical branch: `phase-3/ws-005-implementation`; current P3-04/P3-05 evidence head `54afbcc9e08374c844d6b7fd784e34fca1856a19`; P3-04 cleared by MAX/CI/Secret Scan; P3-05 local matrix pass; P3-06 clean-room pending
+- ADR-0018: **ACCEPTED — 2026-09-17 by product owner**
 
 ## Gate status
 
@@ -71,22 +71,69 @@ The actual post-merge `main` candidate passed CI `34058182763` and Secret Scan `
 
 **Gate S2 is PASS / ACCEPTED, and Phase 2 / WS-004 is COMPLETE / ACCEPTED for the local boundary.**
 
-### Phase 3 — OPENED / PLANNED / NOT IMPLEMENTED
+### Phase 3 — IN PROGRESS / P3-01 THROUGH P3-04 CLEARED; P3-05 LOCAL MATRIX PASS; P3-06 PENDING
 
-Phase 3 / WS-005 is formally opened for architecture and execution planning.
+Phase 3 / WS-005 is executing from protected `main`.
 `docs/plans/PHASE-3.md` maps the integrated authority-to-economic-finality
 boundary and packets P3-01 through P3-06. Accepted ADR-0018 defines the planned
 signing and send-commit linearization points, signed-unbroadcast quarantine,
 post-send recovery authority, canonical lock order, and minimum migration
-backstops. P3-01 implementation begins only from the protected post-planning
-main.
+backstops. P3-01 was integrated at `91f649b` and advanced through integration
+evidence at `d48a503`. Its selected R-033 resolution adds a checkout-scoped
+lease shared by the loopback RPC gateway, lifecycle scripts, and signer. The
+signer samples chain freshness only after acquiring the lease and holds it
+through evidence commit, so RPC remains outside DB locks. P3-01 candidate
+`404837db138ad1bd5c3aceaff6bae67652d5ed01` passed fresh MAX review, exact-SHA
+CI, and Secret Scan. P3-02 uses additive migrations `0027` through `0030` for
+signed/no-attempt quarantine, exact ACCEPTED/UNKNOWN reconciliation after
+control, REJECTED no-send recovery fencing, blocked direct release/expiry after
+invalidation, replay-safe control request IDs, and all attempt-status audits.
+Candidate `b95695c720fd68dd1085e371267a35113a05c816` passed fresh MAX review
+at 0.92, protected CI `35493551667`, and Secret Scan `35493551719`.
+
+P3-03 candidate `510763b3c9c217f9058b1c9d388ce02d84e6ae9e` adds the
+fence-first `STARTED` send commit, sole-gateway enforcement, and real local
+status/recovery evidence. A mined transaction on a durable `STARTED` row now
+reconciles only through exact canonical evidence; its crash-after-send test
+proves one economic effect after a control invalidation. Local gates pass:
+`npm run check` (21 repository checks and 363 package tests), `npm run test:db`
+(150/150 across six files), and the P2-05D Anvil journey (1/1). Fresh GPT-5.6
+Luna MAX review is PASS, 9/10, confidence 0.90, with no findings. Protected
+CI `35498889238` and Secret Scan `35498889228` pass on this exact candidate.
+P3-04 adds migrations `0032`–`0033` for exact signed-no-attempt recovery and
+audited lease renewal. DB-time claim/renew/final-resolution checks bind the
+active credential and lease generation; final resolution rolls back all
+state/account/audit writes if its live-lease update fails. Local validation
+passes: `npm run check` (21 repository + 363 package tests), `npm run test:db`
+(162/162 across six files), `npm run test:phase3` (254/254), and
+`npm audit --audit-level=high` (no high or critical findings; two moderate
+Vitest advisories remain). Follow-up MAX review passed with no blocking
+findings after fixing control/authorization lock order and removing obsolete
+sign-only child artifacts. Exact-head protected CI `35787705165` and Secret
+Scan `35787705289` pass on `54afbcc9e08374c844d6b7fd784e34fca1856a19`.
+P3-05 local matrix passes: DB 163/163, Phase-3 gate 255/255, concurrency
+18/18, invariants 7/7, chain 10/10, E2E 1/1, fault 186/186, and adversarial
+213/213; the named F01–F19 test crosswalk is in `docs/TEST_MATRIX.md`. F18 fresh-clone validation and final
+Phase-3 acceptance remain gated on P3-06.
 
 P3-00 found a real integration gap rather than an accepted implementation:
-current control invalidation does not cover signed/no-attempt work, the current
-broadcast writer does not revalidate control authority, signer/control lock
-ordering is inverted, and current-fence guards can obstruct post-send recovery.
-No Phase-3 code, migration, or acceptance evidence is claimed by this planning
-state.
+current control invalidation did not cover signed/no-attempt work, the
+broadcast writer needs full authority revalidation, and current-fence guards
+can obstruct post-send recovery. P3-01 fixes signer/control lock ordering;
+P3-02 quarantines signed/no-attempt work and blocks a new STARTED attempt after
+control invalidation.
+P3-01 follow-up gates pass locally: `npm run check` (21 repository + 361
+package tests), DB 137/137, concurrency 18/18, invariants 7/7,
+signer/execution 52/52, contracts 10/10, chain 10/10, E2E 1/1, fault 160/160,
+and adversarial 188/188. `npm audit --audit-level=high` exits 0; two moderate
+Vitest advisories remain. The evidence is recorded in `docs/TEST_MATRIX.md`.
+The local Compose proof exercised a fake balance
+mutation through the gateway, verified its checkpoint after restart, reset the
+disposable chain through the same gateway, and verified the clean state after a
+second restart. The gateway had a loopback host binding, Anvil had no host port,
+and PostgreSQL did not share a network with the gateway. P3-01 through P3-03
+are cleared at their recorded implementation candidates. Full Phase-3
+acceptance is not claimed.
 
 ## Dependency state
 
@@ -102,7 +149,7 @@ state.
 - WS-003 atomic budget ledger — COMPLETE; S1 accepted.
 - WS-005 Phase-1 S1 control slice — COMPLETE; S1 accepted.
 - WS-004 Phase-2 transaction pipeline/local adapter — P2-06D COMPLETE / ACCEPTED; Phase 2 / WS-004 COMPLETE / ACCEPTED / MERGED TO `main`.
-- WS-005 Phase-3 integrated approval/control/recovery slice — OPENED / PLANNED / NOT IMPLEMENTED.
+- WS-005 Phase-3 integrated approval/control/recovery slice — IN PROGRESS; P3-01 through P3-04 cleared; P3-05 local matrix pass; P3-06 fresh-clone closeout pending.
 - WS-006/007 — NOT OPENED.
 
 ## Safety boundary
@@ -120,4 +167,4 @@ Phase 2 remains strictly local and fake-money only: Anvil chain `31337` / `0x7a6
   handoff. Phase-2 acceptance and Phase-3 planning do not widen the local-only
   safety boundary.
 
-Last updated: 2026-09-17 for Phase-3 / WS-005 architecture planning.
+Last updated: 2026-09-20 for the P3-01 local implementation checkpoint.

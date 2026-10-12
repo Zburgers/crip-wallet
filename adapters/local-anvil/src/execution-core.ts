@@ -8,6 +8,7 @@ import {
   type RawTransactionSender,
 } from "./broadcast-core.js";
 import {
+  signerTraceIdFor,
   signAuthorizedTransferCore,
   type SignAuthorizedTransferIds,
   type SignerDeps,
@@ -127,7 +128,26 @@ export const executeAuthorizedTransferCore = async (
   const ids = parsed.data;
 
   return deps.executionStore.withExecutionLock(ids.operationId, async () => {
-    const existingAttempt = await deps.executionStore.findBroadcastAttempt(ids);
+    let existingAttempt: BroadcastAttempt | null;
+    try {
+      existingAttempt = await deps.executionStore.findBroadcastAttempt(ids);
+    } catch {
+      try {
+        await deps.store.recordSigningRefusal(
+          ids.operationId,
+          "PERSISTENCE_FAILED",
+          {
+            eventIdBase: `evt:${ids.operationId}:signing`,
+            traceId: signerTraceIdFor(ids),
+            actorId: deps.credential.componentId,
+            credentialId: deps.credential.credentialId,
+          },
+        );
+      } catch {
+        // A failed refusal trail must not mask the sanitized refusal.
+      }
+      return { ok: false, code: "PERSISTENCE_FAILED" };
+    }
     if (existingAttempt) {
       return lifecycleResult(
         ids,
@@ -138,7 +158,6 @@ export const executeAuthorizedTransferCore = async (
       );
     }
 
-    const durableEvidence = await deps.store.findDurableSignedEvidence(ids);
     let material:
       | {
           signedTransactionId: string;
@@ -148,7 +167,7 @@ export const executeAuthorizedTransferCore = async (
         }
       | undefined;
     const signerOutcome = await signAuthorizedTransferCore(deps, ids, {
-      rematerializeExistingEvidence: durableEvidence !== null,
+      rematerializeExistingEvidence: true,
       onSignedMaterial: (value) => {
         material = value;
       },
@@ -164,11 +183,7 @@ export const executeAuthorizedTransferCore = async (
     } catch {
       return { ok: false, code: "INTERNAL" };
     }
-    if (
-      derivedHash !== signerOutcome.transactionHash ||
-      (durableEvidence !== null &&
-        derivedHash !== durableEvidence.transactionHash)
-    )
+    if (derivedHash !== signerOutcome.transactionHash)
       return { ok: false, code: "INTERNAL" };
 
     const attemptId = material.signedTransactionId.replace(
@@ -182,7 +197,8 @@ export const executeAuthorizedTransferCore = async (
           const started = await deps.broadcastStore.startBroadcastAttempt(
             ...args,
           );
-          if (started.status === "STARTED") deps.onPhase?.("broadcast-started");
+          if (started.created && started.attempt.status === "STARTED")
+            deps.onPhase?.("broadcast-started");
           return started;
         },
       },

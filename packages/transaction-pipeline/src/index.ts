@@ -62,6 +62,7 @@ export {
   type FeeData,
   type FreshnessFailureCode,
   type FreshnessInput,
+  type FreshnessObservation,
   type FreshnessResult,
   type Hash,
   type LocalFixtureIdentity,

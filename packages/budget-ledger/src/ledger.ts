@@ -87,6 +87,9 @@ export interface RecoveryResolution {
   verifiedRevert?: boolean;
 }
 
+export const SIGNED_UNBROADCAST_CONTROLLED_NO_ATTEMPT_REASON =
+  "SIGNED_UNBROADCAST_CONTROLLED_NO_ATTEMPT";
+
 export interface ReserveRequest {
   reservationId: string;
   budgetId: string;
@@ -428,7 +431,8 @@ const getReservationForUpdate = async (
      JOIN wallets w ON w.wallet_id = o.wallet_id
      JOIN policies p ON p.policy_id = o.policy_id
      WHERE r.reservation_id = $1
-     FOR UPDATE OF r, b, o, i, a, w, p`,
+     FOR UPDATE OF r, b, i, a, w
+     FOR KEY SHARE OF p`,
     [reservationId],
   );
   const row = result.rows[0];
@@ -440,6 +444,77 @@ const getReservationForUpdate = async (
   assertBindingConsistency(row);
   const reservation = mapReservation(row);
   return { reservation, correlation: mapAuditCorrelation(row) };
+};
+
+const lockOperationForRecovery = async (
+  client: PoolClient,
+  operationId: string,
+): Promise<string | undefined> => {
+  const result = await client.query<{ current_state: string }>(
+    "SELECT current_state FROM operations WHERE operation_id = $1 FOR UPDATE",
+    [operationId],
+  );
+  return result.rows[0]?.current_state;
+};
+
+const lockReservationOperation = async (
+  client: PoolClient,
+  reservationId: string,
+): Promise<void> => {
+  const result = await client.query<{ operation_id: string }>(
+    "SELECT operation_id FROM budget_reservations WHERE reservation_id = $1",
+    [reservationId],
+  );
+  const operationId = result.rows[0]?.operation_id;
+  if (!operationId)
+    throw new LedgerError(
+      "RESERVATION_NOT_FOUND",
+      `reservation not found: ${reservationId}`,
+    );
+  await lockOperationForRecovery(client, operationId);
+};
+
+const lockReservationAuthorization = async (
+  client: PoolClient,
+  reservationId: string,
+): Promise<void> => {
+  const bindings = await client.query<{
+    authorization_id: string;
+    operation_id: string;
+    policy_decision_id: string;
+  }>(
+    `SELECT authorization_id, operation_id, policy_decision_id
+     FROM authorization_evidence WHERE reservation_id = $1`,
+    [reservationId],
+  );
+  if (bindings.rows.length > 1)
+    throw new LedgerError(
+      "BUDGET_BINDING_MISMATCH",
+      "reservation has multiple canonical authorization bindings",
+    );
+  const binding = bindings.rows[0];
+  if (!binding) return;
+  const decision = await client.query(
+    `SELECT decision_id FROM policy_decisions
+     WHERE operation_id = $1 AND decision_id = $2 FOR SHARE`,
+    [binding.operation_id, binding.policy_decision_id],
+  );
+  if (decision.rowCount !== 1)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "canonical policy decision is missing",
+    );
+  const authorization = await client.query(
+    `SELECT authorization_id FROM authorization_evidence
+     WHERE authorization_id = $1 AND operation_id = $2 AND reservation_id = $3
+     FOR SHARE`,
+    [binding.authorization_id, binding.operation_id, reservationId],
+  );
+  if (authorization.rowCount !== 1)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "canonical authorization evidence is missing",
+    );
 };
 
 const getReservationBindingForReserve = async (
@@ -724,6 +799,8 @@ const transitionReservation = async (
   ) => Promise<ReservationSnapshot>,
 ): Promise<ReservationSnapshot> =>
   withSerializableTransaction(pool, async (client) => {
+    await lockReservationAuthorization(client, input.reservationId);
+    await lockReservationOperation(client, input.reservationId);
     const binding = await getReservationForUpdate(client, input.reservationId);
     assertAuditCorrelation(input.audit, binding.correlation);
     return transition(client, binding.reservation, binding.correlation);
@@ -768,6 +845,7 @@ const assertCanonicalAuthorizationEvidence = async (
   client: PoolClient,
   reservation: ReservationSnapshot,
   operationStates: readonly string[] = ["AUTHORIZED"],
+  allowExistingAttempt = false,
 ): Promise<void> => {
   const result = await client.query<{ authorization_id: string }>(
     `SELECT ae.authorization_id
@@ -785,7 +863,30 @@ const assertCanonicalAuthorizationEvidence = async (
      WHERE ae.reservation_id = $1
        AND ae.operation_id = $2
        AND o.current_state = ANY($3::text[])
-       AND ai.authorization_id IS NULL
+       AND (
+         ai.authorization_id IS NULL
+         OR (
+           $4::boolean
+           AND EXISTS (
+             SELECT 1
+             FROM signed_transactions s
+             JOIN broadcast_attempts a
+               ON a.signed_transaction_id = s.signed_transaction_id
+              AND a.operation_id = s.operation_id
+              AND a.reservation_id = s.reservation_id
+              AND a.envelope_id = s.envelope_id
+              AND a.envelope_revision = s.envelope_revision
+              AND a.envelope_hash = s.envelope_hash
+              AND a.authorization_id = s.authorization_id
+              AND a.fixture_instance_id = s.fixture_instance_id
+              AND a.expected_transaction_hash = s.expected_transaction_hash
+             WHERE s.operation_id = ae.operation_id
+               AND s.reservation_id = ae.reservation_id
+               AND s.authorization_id = ae.authorization_id
+               AND a.status IN ('STARTED', 'ACCEPTED', 'UNKNOWN', 'CONFLICT')
+           )
+         )
+       )
        AND e.envelope_hash = ae.envelope_hash
        AND pd.decision_hash = ae.policy_decision_hash
        AND pd.policy_id = ae.policy_id
@@ -797,7 +898,12 @@ const assertCanonicalAuthorizationEvidence = async (
            AND latest.revision > ae.envelope_revision
        )
      FOR SHARE OF ae, o, e, pd`,
-    [reservation.reservationId, reservation.operationId, operationStates],
+    [
+      reservation.reservationId,
+      reservation.operationId,
+      operationStates,
+      allowExistingAttempt,
+    ],
   );
   if (result.rowCount !== 1)
     throw new LedgerError(
@@ -853,11 +959,12 @@ export const markReservationBroadcast = (
           "INVALID_RESERVATION_TRANSITION",
           `cannot mark ${reservation.status} reservation as broadcast`,
         );
-      await assertCanonicalAuthorizationEvidence(client, reservation, [
-        "AUTHORIZED",
-        "SIGNING",
-        "SIGNED",
-      ]);
+      await assertCanonicalAuthorizationEvidence(
+        client,
+        reservation,
+        ["AUTHORIZED", "SIGNING", "SIGNED"],
+        true,
+      );
       if (reservation.status === "BROADCAST") {
         const existing = await getBroadcastEvidence(
           client,
@@ -1171,6 +1278,26 @@ export interface RecoveryClaimRequest {
   audit: AuditContext;
 }
 
+export interface RecoveryLeaseRenewalRequest {
+  operationId: string;
+  reservationId: string;
+  leaseVersion: string;
+  leaseDurationSeconds: number;
+  audit: AuditContext;
+}
+
+const assertRecoveryLeaseDuration = (seconds: number): void => {
+  if (
+    !Number.isInteger(seconds) ||
+    seconds <= 0 ||
+    seconds > MAX_RECOVERY_LEASE_SECONDS
+  )
+    throw new LedgerError(
+      "RECOVERY_LEASE_STALE",
+      `recovery lease duration must be an integer between 1 and ${MAX_RECOVERY_LEASE_SECONDS} seconds`,
+    );
+};
+
 const recoveryEventId = (audit: AuditContext, suffix: string): string =>
   `${audit.eventId}:recovery:${suffix}`;
 
@@ -1208,7 +1335,7 @@ const writeRecoveryAudit = async (
   appendAuditEvent(client, {
     eventId: recoveryEventId(
       audit,
-      `${eventType.replaceAll(".", ":")}:${data.attemptId ?? "claim"}`,
+      `${eventType.replaceAll(".", ":")}:${data.attemptId ?? "lease"}`,
     ),
     actorType: "worker",
     actorId: authenticated.componentId,
@@ -1230,16 +1357,9 @@ export const claimRecoveryLease = async (
   pool: Pool,
   input: RecoveryClaimRequest,
 ): Promise<RecoveryLease> => {
-  if (
-    !Number.isInteger(input.leaseDurationSeconds) ||
-    input.leaseDurationSeconds <= 0 ||
-    input.leaseDurationSeconds > MAX_RECOVERY_LEASE_SECONDS
-  )
-    throw new LedgerError(
-      "RECOVERY_LEASE_STALE",
-      `recovery lease duration must be an integer between 1 and ${MAX_RECOVERY_LEASE_SECONDS} seconds`,
-    );
+  assertRecoveryLeaseDuration(input.leaseDurationSeconds);
   return withSerializableTransaction(pool, async (client) => {
+    await lockOperationForRecovery(client, input.operationId);
     const binding = await getReservationForUpdate(client, input.reservationId);
     if (binding.reservation.operationId !== input.operationId)
       throw new LedgerError(
@@ -1331,24 +1451,420 @@ export const claimRecoveryLease = async (
   });
 };
 
+/** Extend the current live lease without changing its fenced generation. */
+export const renewRecoveryLease = async (
+  pool: Pool,
+  input: RecoveryLeaseRenewalRequest,
+): Promise<RecoveryLease> => {
+  assertRecoveryLeaseDuration(input.leaseDurationSeconds);
+  return withSerializableTransaction(pool, async (client) => {
+    await lockOperationForRecovery(client, input.operationId);
+    const binding = await getReservationForUpdate(client, input.reservationId);
+    if (binding.reservation.operationId !== input.operationId)
+      throw new LedgerError(
+        "BUDGET_BINDING_MISMATCH",
+        "recovery operation and reservation do not match",
+      );
+    const payload = {
+      operationId: input.operationId,
+      reservationId: input.reservationId,
+      leaseVersion: input.leaseVersion,
+      leaseDurationSeconds: input.leaseDurationSeconds,
+    };
+    const authenticated = await authenticateComponent(
+      client,
+      input.audit.componentAuth,
+      "RECONCILER",
+      "recovery.renew",
+      payload,
+    );
+    const lease = await client.query<{
+      reservation_id: string;
+      credential_id: string;
+      lease_version: string;
+      lease_state: "ACTIVE" | "RESOLVED";
+      lease_is_live: boolean;
+    }>(
+      `SELECT reservation_id, credential_id, lease_version, lease_state,
+              lease_expires_at > clock_timestamp() AS lease_is_live
+       FROM operation_recovery_leases WHERE operation_id = $1 FOR UPDATE`,
+      [input.operationId],
+    );
+    const current = lease.rows[0];
+    if (
+      !current ||
+      current.reservation_id !== input.reservationId ||
+      current.credential_id !== authenticated.credentialId ||
+      current.lease_version !== input.leaseVersion ||
+      current.lease_state !== "ACTIVE" ||
+      !current.lease_is_live
+    )
+      throw new LedgerError(
+        "RECOVERY_LEASE_STALE",
+        "recovery lease is stale or not owned by this worker",
+      );
+
+    const renewed = await client.query<{ lease_expires_at: Date | string }>(
+      `UPDATE operation_recovery_leases
+       SET lease_expires_at = clock_timestamp() + ($5::integer * interval '1 second'),
+           updated_at = clock_timestamp()
+       WHERE operation_id = $1 AND reservation_id = $2 AND credential_id = $3
+         AND lease_version = $4 AND lease_state = 'ACTIVE'
+         AND lease_expires_at > clock_timestamp()
+       RETURNING lease_expires_at`,
+      [
+        input.operationId,
+        input.reservationId,
+        authenticated.credentialId,
+        input.leaseVersion,
+        input.leaseDurationSeconds,
+      ],
+    );
+    const leaseExpiresAt = renewed.rows[0]?.lease_expires_at;
+    if (!leaseExpiresAt)
+      throw new LedgerError(
+        "RECOVERY_LEASE_STALE",
+        "recovery lease expired or changed before renewal",
+      );
+    const leaseExpiresAtIso = new Date(leaseExpiresAt).toISOString();
+    await writeRecoveryAudit(
+      client,
+      input.audit,
+      "execution.recovery.lease_renewed",
+      binding.reservation,
+      binding.correlation,
+      authenticated,
+      {
+        leaseVersion: Number(input.leaseVersion),
+        leaseExpiresAt: leaseExpiresAtIso,
+      },
+    );
+    return {
+      operationId: input.operationId,
+      reservationId: input.reservationId,
+      credentialId: authenticated.credentialId,
+      componentId: authenticated.componentId,
+      leaseVersion: input.leaseVersion,
+      leaseExpiresAt: leaseExpiresAtIso,
+    };
+  });
+};
+
+const resolveControlledNoSendRecovery = async (
+  client: PoolClient,
+  input: RecoveryResolution & { audit: AuditContext },
+): Promise<ReservationSnapshot> => {
+  const authenticated = await authenticateComponent(
+    client,
+    input.audit.componentAuth,
+    "RECONCILER",
+    "recovery.resolve",
+    recoveryPayload(input, null),
+  );
+  const authorization = await client.query<{ authorization_id: string }>(
+    `SELECT authorization_id FROM authorization_evidence
+     WHERE operation_id = $1 AND reservation_id = $2 FOR UPDATE`,
+    [input.operationId, input.reservationId],
+  );
+  if (authorization.rows.length !== 1)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "controlled no-send recovery requires one canonical authorization",
+    );
+
+  const operationState = await lockOperationForRecovery(
+    client,
+    input.operationId,
+  );
+  const binding = await getReservationForUpdate(client, input.reservationId);
+  if (binding.reservation.operationId !== input.operationId)
+    throw new LedgerError(
+      "BUDGET_BINDING_MISMATCH",
+      "recovery operation and reservation do not match",
+    );
+
+  const resolutionHash = authenticated.authPayloadHash;
+  const prior = await client.query<{
+    operation_id: string;
+    reservation_id: string;
+    resolution_hash: string;
+  }>(
+    `SELECT operation_id, reservation_id, resolution_hash
+     FROM recovery_attempts WHERE attempt_id = $1`,
+    [input.attemptId],
+  );
+  if (prior.rows[0]) {
+    if (
+      prior.rows[0].operation_id !== input.operationId ||
+      prior.rows[0].reservation_id !== input.reservationId ||
+      prior.rows[0].resolution_hash !== resolutionHash
+    )
+      throw new LedgerError(
+        "RECOVERY_CONFLICT",
+        "recovery attempt was replayed with different evidence",
+      );
+    return binding.reservation;
+  }
+
+  if (
+    operationState !== "DISPUTED" ||
+    binding.reservation.status !== "DISPUTED"
+  )
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "controlled no-send recovery requires disputed operation and reservation",
+    );
+
+  const signed = await client.query<{ signed_transaction_id: string }>(
+    `SELECT s.signed_transaction_id
+     FROM signed_transactions s
+     JOIN authorization_evidence ae
+       ON ae.authorization_id = s.authorization_id
+      AND ae.operation_id = s.operation_id
+      AND ae.reservation_id = s.reservation_id
+      AND ae.envelope_id = s.envelope_id
+      AND ae.envelope_revision = s.envelope_revision
+      AND ae.envelope_hash = s.envelope_hash
+     JOIN execution_envelopes e
+       ON e.operation_id = s.operation_id
+      AND e.envelope_id = s.envelope_id
+      AND e.revision = s.envelope_revision
+      AND e.envelope_hash = s.envelope_hash
+     WHERE s.operation_id = $1 AND s.reservation_id = $2
+       AND s.authorization_id = $3
+       AND (SELECT count(*) FROM signed_transactions all_signed
+            WHERE all_signed.operation_id = $1
+              AND all_signed.reservation_id = $2) = 1
+     FOR UPDATE OF s`,
+    [
+      input.operationId,
+      input.reservationId,
+      authorization.rows[0]!.authorization_id,
+    ],
+  );
+  const signedTransactionId = signed.rows[0]?.signed_transaction_id;
+  if (!signedTransactionId || signed.rows.length !== 1)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "controlled no-send recovery requires one exact signed transaction",
+    );
+
+  const invalidation = await client.query<{ invalidation_id: string }>(
+    `SELECT ai.invalidation_id
+     FROM authorization_invalidations ai
+     JOIN audit_events control_event ON control_event.event_id = ai.control_event_id
+     WHERE ai.authorization_id = $1 AND ai.operation_id = $2
+       AND control_event.event_type IN (
+         'agent.revoked', 'owner.revoked', 'policy.revoked', 'system.paused'
+       )`,
+    [authorization.rows[0]!.authorization_id, input.operationId],
+  );
+  if (invalidation.rows.length !== 1)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "controlled no-send recovery requires a matching control invalidation",
+    );
+
+  const attempts = await client.query<{ has_attempt: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM broadcast_attempts
+       WHERE operation_id = $1 OR reservation_id = $2 OR signed_transaction_id = $3
+     ) AS has_attempt`,
+    [input.operationId, input.reservationId, signedTransactionId],
+  );
+  if (attempts.rows[0]?.has_attempt)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "controlled no-send recovery requires zero broadcast attempts",
+    );
+
+  const effects = await client.query<{ has_effect: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM execution_economic_effects
+       WHERE operation_id = $1 OR reservation_id = $2
+     ) AS has_effect`,
+    [input.operationId, input.reservationId],
+  );
+  if (effects.rows[0]?.has_effect)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "controlled no-send recovery cannot release an economic effect",
+    );
+
+  const lease = await client.query<{
+    reservation_id: string;
+    credential_id: string;
+    lease_version: string;
+    lease_state: "ACTIVE" | "RESOLVED";
+    lease_is_live: boolean;
+  }>(
+    `SELECT reservation_id, credential_id, lease_version, lease_state,
+            lease_expires_at > clock_timestamp() AS lease_is_live
+     FROM operation_recovery_leases WHERE operation_id = $1 FOR UPDATE`,
+    [input.operationId],
+  );
+  const current = lease.rows[0];
+  if (
+    !current ||
+    current.reservation_id !== input.reservationId ||
+    current.credential_id !== authenticated.credentialId ||
+    current.lease_version !== input.leaseVersion ||
+    current.lease_state !== "ACTIVE" ||
+    !current.lease_is_live
+  )
+    throw new LedgerError(
+      "RECOVERY_LEASE_STALE",
+      "recovery lease is stale or not owned by this worker",
+    );
+
+  await client.query(
+    `INSERT INTO recovery_attempts
+       (attempt_id, operation_id, reservation_id, lease_version, credential_id,
+        outcome, resolution_hash, reason, actual_spend_atomic, proof_reference)
+     VALUES ($1, $2, $3, $4, $5, 'FAILED', $6, $7, NULL, NULL)`,
+    [
+      input.attemptId,
+      input.operationId,
+      input.reservationId,
+      input.leaseVersion,
+      authenticated.credentialId,
+      resolutionHash,
+      input.reason,
+    ],
+  );
+  const operation = await client.query(
+    `UPDATE operations
+     SET current_state = 'RECONCILED', version = version + 1,
+         updated_at = clock_timestamp()
+     WHERE operation_id = $1 AND current_state = 'DISPUTED'`,
+    [input.operationId],
+  );
+  if (operation.rowCount !== 1)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "controlled no-send operation changed before recovery",
+    );
+
+  const account = await client.query(
+    `UPDATE budget_accounts
+     SET available = available + $1::numeric,
+         reserved = reserved - $1::numeric,
+         version = version + 1, updated_at = clock_timestamp()
+     WHERE budget_id = $2`,
+    [binding.reservation.amountAtomic, binding.reservation.budgetId],
+  );
+  if (account.rowCount !== 1)
+    throw new LedgerError(
+      "RESERVATION_NOT_FOUND",
+      "controlled no-send budget account was not updated",
+    );
+
+  const reservation = await client.query(
+    `UPDATE budget_reservations
+     SET status = 'RELEASED', updated_at = clock_timestamp()
+     WHERE reservation_id = $1 AND status = 'DISPUTED'`,
+    [input.reservationId],
+  );
+  if (reservation.rowCount !== 1)
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "controlled no-send reservation changed before recovery",
+    );
+  const next = { ...binding.reservation, status: "RELEASED" as const };
+  const recoveryAuditData = {
+    attemptId: input.attemptId,
+    leaseVersion: Number(input.leaseVersion),
+    signedTransactionId,
+    authorizationInvalidationId: invalidation.rows[0]!.invalidation_id,
+    reason: input.reason,
+  };
+  await writeRecoveryAudit(
+    client,
+    input.audit,
+    "budget.reservation.released",
+    next,
+    binding.correlation,
+    authenticated,
+    recoveryAuditData,
+  );
+  await writeRecoveryAudit(
+    client,
+    input.audit,
+    "operation.state.changed",
+    next,
+    binding.correlation,
+    authenticated,
+    {
+      ...recoveryAuditData,
+      previousState: "DISPUTED",
+      state: "RECONCILED",
+    },
+  );
+
+  const resolvedLease = await client.query(
+    `UPDATE operation_recovery_leases
+     SET lease_state = 'RESOLVED', updated_at = clock_timestamp()
+     WHERE operation_id = $1 AND reservation_id = $2 AND credential_id = $3
+       AND lease_version = $4 AND lease_state = 'ACTIVE'
+       AND lease_expires_at > clock_timestamp()`,
+    [
+      input.operationId,
+      input.reservationId,
+      authenticated.credentialId,
+      input.leaseVersion,
+    ],
+  );
+  if (resolvedLease.rowCount !== 1)
+    throw new LedgerError(
+      "RECOVERY_LEASE_STALE",
+      "recovery lease expired or changed before final resolution",
+    );
+  await writeRecoveryAudit(
+    client,
+    input.audit,
+    "execution.recovery.resolved",
+    next,
+    binding.correlation,
+    authenticated,
+    { ...recoveryAuditData, recoveryOutcome: "FAILED" },
+  );
+  return next;
+};
+
 /**
  * Resolve an uncertain outcome under a live lease. AMBIGUOUS and CONFLICT
  * always retain the reservation. CONFIRMED finalizes only matching immutable
- * evidence; FAILED releases only pre-broadcast reservations.
+ * evidence; FAILED releases unsigned pre-broadcast reservations or the
+ * separately authenticated controlled signed-no-attempt case.
  */
 export const resolveRecovery = async (
   pool: Pool,
   input: RecoveryResolution & { audit: AuditContext },
 ): Promise<ReservationSnapshot> => {
+  const controlledNoSend =
+    input.reason === SIGNED_UNBROADCAST_CONTROLLED_NO_ATTEMPT_REASON;
   const actualSpend = input.actualSpendAtomic
     ? parseAtomic(input.actualSpendAtomic)
     : undefined;
+  if (
+    controlledNoSend &&
+    (input.outcome !== "FAILED" ||
+      input.verifiedRevert === true ||
+      input.actualSpendAtomic !== undefined ||
+      input.proofReference !== undefined)
+  )
+    throw new LedgerError(
+      "INVALID_RESERVATION_TRANSITION",
+      "controlled signed-unbroadcast recovery cannot include chain spend or proof",
+    );
   if (input.outcome === "CONFIRMED" && (!actualSpend || !input.proofReference))
     throw new LedgerError(
       "INVALID_BROADCAST_EVIDENCE",
       "confirmed recovery requires spend and proof",
     );
   return withSerializableTransaction(pool, async (client) => {
+    if (controlledNoSend) return resolveControlledNoSendRecovery(client, input);
+    await lockOperationForRecovery(client, input.operationId);
     const binding = await getReservationForUpdate(client, input.reservationId);
     if (binding.reservation.operationId !== input.operationId)
       throw new LedgerError(
@@ -1400,10 +1916,11 @@ export const resolveRecovery = async (
       reservation_id: string;
       credential_id: string;
       lease_version: string;
-      lease_expires_at: Date | string;
       lease_state: "ACTIVE" | "RESOLVED";
+      lease_is_live: boolean;
     }>(
-      `SELECT reservation_id, credential_id, lease_version, lease_expires_at, lease_state
+      `SELECT reservation_id, credential_id, lease_version, lease_state,
+              lease_expires_at > clock_timestamp() AS lease_is_live
        FROM operation_recovery_leases WHERE operation_id = $1 FOR UPDATE`,
       [input.operationId],
     );
@@ -1414,12 +1931,30 @@ export const resolveRecovery = async (
       current.credential_id !== authenticated.credentialId ||
       current.lease_version !== input.leaseVersion ||
       current.lease_state !== "ACTIVE" ||
-      new Date(current.lease_expires_at).getTime() <= Date.now()
+      !current.lease_is_live
     )
       throw new LedgerError(
         "RECOVERY_LEASE_STALE",
         "recovery lease is stale or not owned by this worker",
       );
+
+    if (input.outcome === "FAILED" && input.verifiedRevert !== true) {
+      const signedWithoutAttempt = await client.query(
+        `SELECT 1 FROM signed_transactions s
+         WHERE s.operation_id = $1 AND s.reservation_id = $2
+           AND NOT EXISTS (
+             SELECT 1 FROM broadcast_attempts a
+             WHERE a.signed_transaction_id = s.signed_transaction_id
+           )
+         LIMIT 1`,
+        [input.operationId, input.reservationId],
+      );
+      if (signedWithoutAttempt.rowCount !== 0)
+        throw new LedgerError(
+          "INVALID_RESERVATION_TRANSITION",
+          "signed work without a broadcast attempt requires exact proven-no-send recovery",
+        );
+    }
 
     let next = binding.reservation;
     if (input.outcome === "CONFIRMED") {
@@ -1639,10 +2174,24 @@ export const resolveRecovery = async (
         input.proofReference ?? null,
       ],
     );
-    await client.query(
-      "UPDATE operation_recovery_leases SET lease_state = 'RESOLVED', updated_at = now() WHERE operation_id = $1",
-      [input.operationId],
+    const resolvedLease = await client.query(
+      `UPDATE operation_recovery_leases
+       SET lease_state = 'RESOLVED', updated_at = clock_timestamp()
+       WHERE operation_id = $1 AND reservation_id = $2 AND credential_id = $3
+         AND lease_version = $4 AND lease_state = 'ACTIVE'
+         AND lease_expires_at > clock_timestamp()`,
+      [
+        input.operationId,
+        input.reservationId,
+        authenticated.credentialId,
+        input.leaseVersion,
+      ],
     );
+    if (resolvedLease.rowCount !== 1)
+      throw new LedgerError(
+        "RECOVERY_LEASE_STALE",
+        "recovery lease expired or changed before final resolution",
+      );
     await writeRecoveryAudit(
       client,
       input.audit,

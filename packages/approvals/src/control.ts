@@ -100,6 +100,16 @@ type ControlOperationRow = {
   reservation_status: string;
 };
 
+type SignedControlOperationRow = Omit<
+  ControlOperationRow,
+  "authorization_id"
+> & {
+  authorization_id: string;
+  signed_transaction_id: string;
+  attempt_id: string | null;
+  attempt_status: string | null;
+};
+
 const iso = (value: Date | string): string =>
   (value instanceof Date ? value : new Date(value))
     .toISOString()
@@ -137,6 +147,8 @@ const operationAudit = async (
   row: ControlOperationRow,
   eventType:
     | "budget.reservation.released"
+    | "budget.reservation.disputed"
+    | "authorization.invalidated"
     | "approval.revoked"
     | "operation.state.changed",
   suffix: string,
@@ -212,6 +224,33 @@ const releaseReservation = async (
       "CONTROL_TARGET_NOT_FOUND",
       `reservation changed before control invalidation: ${row.reservation_id}`,
     );
+};
+
+const insertAuthorizationInvalidation = async (
+  client: PoolClient,
+  request: ChangeControlFenceRequest,
+  row: ControlOperationRow,
+  controlEventId: string,
+): Promise<string> => {
+  if (!row.authorization_id)
+    throw new ControlFenceError(
+      "CONTROL_TARGET_NOT_FOUND",
+      "authorization binding is missing during fencing",
+    );
+  const invalidationId = `${request.audit.eventId}:invalidation:${row.authorization_id}`;
+  await client.query(
+    `INSERT INTO authorization_invalidations
+      (invalidation_id, authorization_id, operation_id, control_event_id, reason)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [
+      invalidationId,
+      row.authorization_id,
+      row.operation_id,
+      controlEventId,
+      `control fence ${request.scopeType}:${request.scopeId}`,
+    ],
+  );
+  return invalidationId;
 };
 
 const invalidatePending = async (
@@ -335,18 +374,11 @@ const invalidateAuthorized = async (
       "authorized operation changed during fencing",
     );
   await releaseReservation(client, row);
-  const invalidationId = `${request.audit.eventId}:invalidation:${row.authorization_id}`;
-  await client.query(
-    `INSERT INTO authorization_invalidations
-      (invalidation_id, authorization_id, operation_id, control_event_id, reason)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [
-      invalidationId,
-      row.authorization_id,
-      row.operation_id,
-      controlEventId,
-      `control fence ${request.scopeType}:${request.scopeId}`,
-    ],
+  const invalidationId = await insertAuthorizationInvalidation(
+    client,
+    request,
+    row,
+    controlEventId,
   );
   const reason = `control fence ${request.scopeType}:${request.scopeId}`;
   await operationAudit(
@@ -376,6 +408,138 @@ const invalidateAuthorized = async (
       authorizationInvalidationId: invalidationId,
       previousState: "AUTHORIZED",
       state: nextState,
+      reason,
+    },
+  );
+};
+
+const invalidateSigned = async (
+  client: PoolClient,
+  request: ChangeControlFenceRequest,
+  row: SignedControlOperationRow,
+  fenceVersion: number,
+  state: ControlState,
+  controlEventId: string,
+): Promise<void> => {
+  const reason = `control fence ${request.scopeType}:${request.scopeId}`;
+
+  if (row.attempt_id) {
+    if (!row.attempt_status)
+      throw new ControlFenceError(
+        "CONTROL_TARGET_NOT_FOUND",
+        "broadcast attempt status is missing during fencing",
+      );
+    const invalidationId = await insertAuthorizationInvalidation(
+      client,
+      request,
+      row,
+      controlEventId,
+    );
+    await operationAudit(
+      client,
+      request,
+      row,
+      "authorization.invalidated",
+      "attempt-preserved-invalidation",
+      fenceVersion,
+      state,
+      {
+        authorizationId: row.authorization_id,
+        authorizationInvalidationId: invalidationId,
+        signedTransactionId: row.signed_transaction_id,
+        attemptId: row.attempt_id,
+        attemptStatus: row.attempt_status,
+        reason,
+      },
+    );
+    return;
+  }
+
+  const previousState = row.current_state;
+  const operationChanged = previousState !== "DISPUTED";
+  const reservationChanged = row.reservation_status !== "DISPUTED";
+  if (operationChanged) {
+    const operation = await client.query(
+      `UPDATE operations
+       SET current_state = 'DISPUTED', version = version + 1, updated_at = now()
+       WHERE operation_id = $1 AND current_state = $2`,
+      [row.operation_id, previousState],
+    );
+    if (operation.rowCount !== 1)
+      throw new ControlFenceError(
+        "CONTROL_TARGET_NOT_FOUND",
+        "signed operation changed during fencing",
+      );
+  }
+
+  if (reservationChanged) {
+    const reservation = await client.query(
+      `UPDATE budget_reservations
+       SET status = 'DISPUTED', updated_at = now()
+       WHERE reservation_id = $1 AND status = $2`,
+      [row.reservation_id, row.reservation_status],
+    );
+    if (reservation.rowCount !== 1)
+      throw new ControlFenceError(
+        "CONTROL_TARGET_NOT_FOUND",
+        "signed reservation changed during fencing",
+      );
+  }
+
+  const invalidationId = await insertAuthorizationInvalidation(
+    client,
+    request,
+    row,
+    controlEventId,
+  );
+  if (reservationChanged)
+    await operationAudit(
+      client,
+      request,
+      row,
+      "budget.reservation.disputed",
+      "signed-reservation-disputed",
+      fenceVersion,
+      state,
+      {
+        authorizationId: row.authorization_id,
+        signedTransactionId: row.signed_transaction_id,
+        authorizationInvalidationId: invalidationId,
+        previousState: row.reservation_status,
+        state: "DISPUTED",
+        reason,
+      },
+    );
+  if (operationChanged)
+    await operationAudit(
+      client,
+      request,
+      row,
+      "operation.state.changed",
+      "signed-operation-disputed",
+      fenceVersion,
+      state,
+      {
+        authorizationId: row.authorization_id,
+        signedTransactionId: row.signed_transaction_id,
+        authorizationInvalidationId: invalidationId,
+        previousState,
+        state: "DISPUTED",
+        reason,
+      },
+    );
+  await operationAudit(
+    client,
+    request,
+    row,
+    "authorization.invalidated",
+    "signed-no-attempt-invalidation",
+    fenceVersion,
+    state,
+    {
+      authorizationId: row.authorization_id,
+      authorizationInvalidationId: invalidationId,
+      signedTransactionId: row.signed_transaction_id,
       reason,
     },
   );
@@ -429,14 +593,79 @@ const invalidateHeldBeforeApproval = async (
   );
 };
 
+const lockAffectedAuthorizations = async (
+  client: PoolClient,
+  request: ChangeControlFenceRequest,
+): Promise<void> => {
+  const predicate = targetPredicate(request.scopeType);
+  const args = request.scopeType === "SYSTEM" ? [] : [request.scopeId];
+  const candidates = await client.query<{
+    authorization_id: string;
+    operation_id: string;
+    reservation_id: string;
+    budget_id: string;
+  }>(
+    `SELECT e.authorization_id, e.operation_id, e.reservation_id, r.budget_id
+     FROM authorization_evidence e
+     JOIN operations o ON o.operation_id = e.operation_id
+     JOIN budget_reservations r ON r.operation_id = e.operation_id
+       AND r.reservation_id = e.reservation_id
+     JOIN agents ag ON ag.agent_id = o.agent_id
+     LEFT JOIN authorization_invalidations ai ON ai.authorization_id = e.authorization_id
+     WHERE ai.authorization_id IS NULL
+       AND r.status IN ('AUTHORIZED', 'BROADCAST', 'DISPUTED')
+       AND ${predicate}
+     ORDER BY e.authorization_id`,
+    args,
+  );
+  if (candidates.rowCount === 0) return;
+
+  const authorizationIds = [
+    ...new Set(candidates.rows.map((row) => row.authorization_id)),
+  ].sort();
+  await client.query(
+    `SELECT authorization_id FROM authorization_evidence
+     WHERE authorization_id = ANY($1::text[])
+     ORDER BY authorization_id FOR UPDATE`,
+    [authorizationIds],
+  );
+
+  const operationIds = [
+    ...new Set(candidates.rows.map((row) => row.operation_id)),
+  ].sort();
+  const reservationIds = [
+    ...new Set(candidates.rows.map((row) => row.reservation_id)),
+  ].sort();
+  const budgetIds = [
+    ...new Set(candidates.rows.map((row) => row.budget_id)),
+  ].sort();
+  await client.query(
+    `SELECT operation_id FROM operations
+     WHERE operation_id = ANY($1::text[]) ORDER BY operation_id FOR UPDATE`,
+    [operationIds],
+  );
+  await client.query(
+    `SELECT reservation_id FROM budget_reservations
+     WHERE reservation_id = ANY($1::text[]) ORDER BY reservation_id FOR UPDATE`,
+    [reservationIds],
+  );
+  await client.query(
+    `SELECT budget_id FROM budget_accounts
+     WHERE budget_id = ANY($1::text[]) ORDER BY budget_id FOR UPDATE`,
+    [budgetIds],
+  );
+};
+
 const invalidateAffectedAuthorizations = async (
   client: PoolClient,
   request: ChangeControlFenceRequest,
   fenceVersion: number,
   state: ControlState,
+  controlEventId: string,
 ): Promise<void> => {
   const predicate = targetPredicate(request.scopeType);
   const args = request.scopeType === "SYSTEM" ? [] : [request.scopeId];
+  await lockAffectedAuthorizations(client, request);
   const held = await client.query<ControlOperationRow>(
     `SELECT NULL::text AS approval_id, o.operation_id, r.reservation_id, r.budget_id,
             r.amount_atomic, e.envelope_id, e.revision AS envelope_revision, e.envelope_hash,
@@ -528,14 +757,58 @@ const invalidateAffectedAuthorizations = async (
      WHERE ai.authorization_id IS NULL
        AND o.current_state = 'AUTHORIZED'
        AND r.status = 'AUTHORIZED'
+       AND NOT EXISTS (
+         SELECT 1 FROM signed_transactions s
+         WHERE s.operation_id = e.operation_id
+           AND s.authorization_id = e.authorization_id
+       )
        AND ${predicate}
      ORDER BY e.authorization_id
-     FOR UPDATE OF e, o, r, b`,
+     `,
     args,
   );
-  const controlEventId = `${request.audit.eventId}:fence:${fenceVersion}`;
   for (const row of authorized.rows)
     await invalidateAuthorized(
+      client,
+      request,
+      row,
+      fenceVersion,
+      state,
+      controlEventId,
+    );
+
+  const signed = await client.query<SignedControlOperationRow>(
+    `SELECT a.approval_id, e.operation_id, r.reservation_id, r.budget_id,
+            r.amount_atomic, e.envelope_id, e.envelope_revision, e.envelope_hash,
+            e.policy_decision_id, e.policy_decision_hash, e.policy_version,
+            a.approver_id, COALESCE(a.nonce, e.consumption_nonce) AS nonce,
+            e.issued_at, e.expires_at,
+            e.authorization_id, s.signed_transaction_id,
+            attempt.attempt_id, attempt.status AS attempt_status,
+            ag.owner_id, o.agent_id, o.wallet_id, o.intent_id, o.policy_id,
+            o.current_state, r.status AS reservation_status
+     FROM authorization_evidence e
+     JOIN signed_transactions s
+       ON s.operation_id = e.operation_id
+      AND s.reservation_id = e.reservation_id
+      AND s.authorization_id = e.authorization_id
+     LEFT JOIN broadcast_attempts attempt
+       ON attempt.signed_transaction_id = s.signed_transaction_id
+     LEFT JOIN approval_requests a ON a.approval_id = e.approval_id
+     JOIN operations o ON o.operation_id = e.operation_id
+     JOIN budget_reservations r ON r.operation_id = e.operation_id
+       AND r.reservation_id = e.reservation_id
+     JOIN agents ag ON ag.agent_id = o.agent_id
+     LEFT JOIN authorization_invalidations ai ON ai.authorization_id = e.authorization_id
+     WHERE ai.authorization_id IS NULL
+       AND r.status IN ('AUTHORIZED', 'BROADCAST', 'DISPUTED')
+       AND ${predicate}
+     ORDER BY e.authorization_id
+     `,
+    args,
+  );
+  for (const row of signed.rows)
+    await invalidateSigned(
       client,
       request,
       row,
@@ -706,7 +979,7 @@ const appendControlAudit = async (
   previousState: ControlState,
 ): Promise<void> => {
   await appendAuditEvent(client, {
-    eventId: `${request.audit.eventId}:fence:${row.fence_version}`,
+    eventId: request.audit.eventId,
     eventType: eventType(request.scopeType, request.command),
     actorType: request.audit.actorType,
     actorId: request.audit.actorId,
@@ -760,12 +1033,79 @@ export const changeControlFence = async (
       request.scopeType,
       request.scopeId,
     );
+    const requestedState: ControlState =
+      request.scopeType === "SYSTEM"
+        ? request.command === "PAUSE"
+          ? "PAUSED"
+          : "ACTIVE"
+        : "REVOKED";
+    const existing = await client.query<{
+      event_type: string;
+      actor_type: string;
+      actor_id: string;
+      trace_id: string;
+      data: Record<string, unknown>;
+    }>(
+      `SELECT event_type, actor_type, actor_id, trace_id, data
+       FROM audit_events WHERE event_id = $1`,
+      [request.audit.eventId],
+    );
+    if (existing.rows[0]) {
+      const event = existing.rows[0];
+      const fenceVersion = Number(event.data.fenceVersion);
+      if (
+        event.event_type !== eventType(request.scopeType, request.command) ||
+        event.actor_type !== request.audit.actorType ||
+        event.actor_id !== request.audit.actorId ||
+        event.trace_id !== request.audit.traceId ||
+        event.data.scopeType !== request.scopeType ||
+        event.data.scopeId !== request.scopeId ||
+        !Number.isSafeInteger(fenceVersion) ||
+        fenceVersion < 1 ||
+        event.data.controlState !== requestedState
+      )
+        throw new ControlFenceError(
+          "INVALID_COMMAND",
+          "audit event ID is already bound to another control event",
+        );
+      return {
+        scopeType: request.scopeType,
+        scopeId: request.scopeId,
+        fenceVersion,
+        state: requestedState,
+        changed: false,
+      };
+    }
+
     const currentVersion = Number(current.fence_version);
     const alreadyApplied =
       (request.command === "PAUSE" && current.state === "PAUSED") ||
       (request.command === "RESUME" && current.state === "ACTIVE") ||
       (request.command === "REVOKE" && current.state === "REVOKED");
     if (alreadyApplied) {
+      const updated = await client.query(
+        `UPDATE control_fences SET last_control_event_id = $3
+         WHERE scope_type = $1 AND scope_id = $2
+           AND fence_version = $4 AND state = $5`,
+        [
+          request.scopeType,
+          request.scopeId,
+          request.audit.eventId,
+          currentVersion,
+          current.state,
+        ],
+      );
+      if (updated.rowCount !== 1)
+        throw new ControlFenceError(
+          "CONTROL_TARGET_NOT_FOUND",
+          "control fence changed while auditing duplicate control",
+        );
+      await appendControlAudit(
+        client,
+        request,
+        { ...current, last_control_event_id: request.audit.eventId },
+        current.state,
+      );
       return {
         scopeType: current.scope_type,
         scopeId: current.scope_id,
@@ -774,12 +1114,6 @@ export const changeControlFence = async (
         changed: false,
       };
     }
-    const nextState: ControlState =
-      request.scopeType === "SYSTEM"
-        ? request.command === "PAUSE"
-          ? "PAUSED"
-          : "ACTIVE"
-        : "REVOKED";
     const updated = await client.query<ControlRow>(
       `UPDATE control_fences
        SET fence_version = fence_version + 1,
@@ -791,8 +1125,8 @@ export const changeControlFence = async (
       [
         request.scopeType,
         request.scopeId,
-        nextState,
-        `${request.audit.eventId}:fence:${currentVersion + 1}`,
+        requestedState,
+        request.audit.eventId,
       ],
     );
     const next = updated.rows[0];
@@ -813,6 +1147,7 @@ export const changeControlFence = async (
       request,
       Number(next.fence_version),
       next.state,
+      request.audit.eventId,
     );
     return {
       scopeType: next.scope_type,

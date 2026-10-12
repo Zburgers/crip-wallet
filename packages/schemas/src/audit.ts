@@ -24,6 +24,7 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "budget.reservation.finalized",
   "budget.reservation.disputed",
   "operation.state.changed",
+  "authorization.invalidated",
   "approval.requested",
   "approval.approved",
   "approval.consumed",
@@ -34,6 +35,12 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "signing.failed",
   "transaction.signed",
   "transaction.broadcast",
+  "transaction.broadcast.attempted",
+  "transaction.broadcast.accepted",
+  "transaction.broadcast.rejected",
+  "transaction.broadcast.unknown",
+  "transaction.confirmation.mismatch",
+  "transaction.reconciliation.effect",
   "transaction.confirmed",
   "transaction.reconciled",
   "transaction.reverted",
@@ -44,6 +51,7 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "system.paused",
   "system.resumed",
   "execution.recovery.claimed",
+  "execution.recovery.lease_renewed",
   "execution.recovery.ambiguous",
   "execution.recovery.resolved",
   "execution.recovery.conflict",
@@ -53,6 +61,8 @@ export const AUDIT_EVENT_TYPES = Object.freeze([
   "transaction.verified",
   "transaction.simulated",
 ] as const);
+
+const utcMillisecondSchema = z.iso.datetime({ offset: false, precision: 3 });
 
 export const auditDataSchema = z.strictObject({
   reservationId: canonicalIdentifierSchema.optional(),
@@ -120,7 +130,12 @@ export const auditDataSchema = z.strictObject({
     .optional(),
   authenticationMethod: z.literal("ed25519").optional(),
   attemptId: canonicalIdentifierSchema.optional(),
+  signedTransactionId: canonicalIdentifierSchema.optional(),
+  attemptStatus: z
+    .enum(["STARTED", "ACCEPTED", "REJECTED", "UNKNOWN", "CONFLICT"])
+    .optional(),
   leaseVersion: z.number().int().positive().safe().optional(),
+  leaseExpiresAt: utcMillisecondSchema.optional(),
   recoveryOutcome: z
     .enum(["CONFIRMED", "FAILED", "AMBIGUOUS", "CONFLICT"])
     .optional(),
@@ -137,6 +152,14 @@ export const auditDataSchema = z.strictObject({
   simulationEvidenceHash: evmHashSchema.optional(),
   simulationBlockNumber: atomicUnitSchema.optional(),
   simulationBlockHash: evmHashSchema.optional(),
+  freshnessSampledAt: utcMillisecondSchema.optional(),
+  freshnessDeadlineAt: utcMillisecondSchema.optional(),
+  freshnessHeadNumber: atomicUnitSchema.optional(),
+  freshnessSenderNonce: atomicUnitSchema.optional(),
+  freshnessTokenBalanceAtomic: atomicUnitSchema.optional(),
+  freshnessNativeBalanceWei: atomicUnitSchema.optional(),
+  freshnessBaseFeePerGas: atomicUnitSchema.optional(),
+  freshnessMaxPriorityFeePerGas: atomicUnitSchema.optional(),
   result: z
     .enum([
       "ALLOW_READ",
@@ -245,6 +268,15 @@ export const auditEventSchema = z
         "candidateHash",
       ],
       "policy.evaluated": ["policyDecisionId", "policyDecisionHash", "result"],
+      "authorization.invalidated": [
+        "authorizationId",
+        "authorizationInvalidationId",
+        "scopeType",
+        "scopeId",
+        "fenceVersion",
+        "controlState",
+        "reason",
+      ],
     };
     for (const field of requiredData[event.eventType] ?? []) {
       if ((event.data as Record<string, unknown>)[field] === undefined) {

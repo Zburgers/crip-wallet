@@ -27,10 +27,16 @@ source "$SCRIPT_DIR/local-context.sh"
   exit 1
 }
 
+acquire_anvil_mutation_lease
+readonly temporary="$RUNTIME_ENV.tmp.$$"
+awk 'BEGIN { FS = "=" } $1 == "CRIP_RUNTIME_STATE" { print "CRIP_RUNTIME_STATE=stopping"; next } { print }' \
+  "$RUNTIME_ENV" >"$temporary"
+chmod 600 "$temporary"
+mv -f "$temporary" "$RUNTIME_ENV"
+
 docker compose --project-name "$CRIP_COMPOSE_PROJECT" \
   --project-directory "$REPO_ROOT" --env-file "$RUNTIME_ENV" down --remove-orphans
 
-readonly temporary="$RUNTIME_ENV.tmp.$$"
 awk 'BEGIN { FS = "=" } $1 == "CRIP_RUNTIME_STATE" { print "CRIP_RUNTIME_STATE=stopped"; next } { print }' \
   "$RUNTIME_ENV" >"$temporary"
 chmod 600 "$temporary"

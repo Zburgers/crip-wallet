@@ -6,13 +6,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   broadcastSignedTransaction,
-  createFaultProxy,
   ProvenPreAcceptanceRejection,
   type BroadcastAttempt,
   type BroadcastStore,
   type DurableSignedTransaction,
-  type FaultProxy,
-} from "../src/index.js";
+} from "../src/broadcast-core.js";
+import { createFaultProxy, type FaultProxy } from "../src/fault-proxy.js";
 
 const rawTransaction = await privateKeyToAccount(
   `0x${"1".repeat(64)}`,
@@ -51,7 +50,7 @@ const memoryStore = (existing?: BroadcastAttempt): BroadcastStore => {
   return {
     findSignedTransaction: async () => signed,
     startBroadcastAttempt: async (value, attemptId) => {
-      if (attempt) return attempt;
+      if (attempt) return { attempt, created: false };
       attempt = {
         attemptId,
         ...value,
@@ -59,11 +58,16 @@ const memoryStore = (existing?: BroadcastAttempt): BroadcastStore => {
         responseTransactionHash: null,
         classificationReason: null,
       };
-      return attempt;
+      return { attempt, created: true };
     },
     finishBroadcastAttempt: async (input) => {
       if (!attempt) throw new Error("missing attempt");
-      attempt = { ...attempt, ...input };
+      attempt = {
+        ...attempt,
+        status: input.status,
+        responseTransactionHash: input.responseTransactionHash,
+        classificationReason: input.classificationReason,
+      };
       return attempt;
     },
   };

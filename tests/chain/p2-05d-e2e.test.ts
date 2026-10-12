@@ -25,11 +25,13 @@ import {
 } from "@crip/transaction-pipeline";
 import { evaluatePolicy } from "@crip/policy-engine";
 import { reserveBudget } from "@crip/budget-ledger";
-import { authorizeAutonomous } from "@crip/approvals";
+import { authorizeAutonomous, changeControlFence } from "@crip/approvals";
 import {
+  createLocalAnvilReferenceAdapter,
+  createLocalAnvilSignerHandler,
   reconcileLocalChainEvidence,
-  spawnExecutionProcess,
 } from "@crip/local-anvil-adapter";
+import { spawnExecutionProcess } from "../../adapters/local-anvil/src/execution-client.js";
 import {
   canonicalizeIdempotencyPayload,
   hashExecutionEnvelope,
@@ -631,6 +633,36 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
   await assertOperationState("SIGNED");
   lifecycleStates.push("SIGNING", "SIGNED");
 
+  await changeControlFence(pool, {
+    scopeType: "SYSTEM",
+    scopeId: "system",
+    command: "PAUSE",
+    audit: audit("control-after-started"),
+  });
+  const adapter = createLocalAnvilReferenceAdapter(
+    createLocalAnvilSignerHandler({ root, pool }),
+  );
+  await assert.doesNotReject(async () => {
+    assert.deepEqual(
+      await adapter.getStatus({ operationId, adapterRequestId }),
+      {
+        operationId,
+        adapterRequestId,
+        state: "CONFIRMED",
+        evidence: "AUTHENTICATED",
+      },
+    );
+    assert.deepEqual(
+      await adapter.recoverTransaction({ operationId, adapterRequestId }),
+      {
+        operationId,
+        adapterRequestId,
+        outcome: "CONFIRMED",
+        evidence: "AUTHENTICATED",
+      },
+    );
+  });
+
   const tx = await publicClient.getTransaction({
     hash: execution.expectedTransactionHash as `0x${string}`,
   });
@@ -851,6 +883,8 @@ test("P2-05D clean autonomous journey uses production writers end to end", async
     "budget.reservation.authorized",
     "signing.started",
     "transaction.signed",
+    "transaction.broadcast.attempted",
+    "transaction.broadcast.accepted",
     "budget.reservation.broadcast",
     "budget.reservation.evidence.verified",
     "execution.recovery.claimed",

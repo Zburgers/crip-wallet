@@ -124,8 +124,12 @@ ADR-0015 is **ACCEPTED** and closes the architecture-level exact-signing gap:
 The owning Phase-2 packets provide executable local evidence; protected
 implementation/provenance checks and external review `5126373971` accepted the
 governing local boundary. S2 requirement evidence is PASS and Gate S2 is
-**PASS / ACCEPTED**. Phase 3 is now OPENED / PLANNED / NOT IMPLEMENTED; the
-Phase-2 evidence does not satisfy its integrated-control requirements.
+**PASS / ACCEPTED**. Phase 3 is now IN PROGRESS; P3-01 passed MAX review and
+exact-SHA CI/Secret Scan. P3-02 locally quarantines signed/no-attempt work,
+continues exact ACCEPTED/UNKNOWN reconciliation after control, blocks REJECTED
+no-send attempts from re-entering broadcast, and passes static, DB 145/145,
+and concurrency 18/18; its exact-SHA review/CI and the
+remaining Phase-3 evidence are still open.
 
 P2-03 provides local executable evidence for the canonical-block, loopback-only,
 RPC-disagreement, fee-ceiling, token/native separation, exact-field mutation,
@@ -141,11 +145,26 @@ ADR-0017 addresses raw-byte leakage and the signed-evidence/pre-send crash gap b
 
 The implementation retains a narrow dependency on deterministic behavior of the locked transaction serializer/signature stack and a restricted child with loopback send capability. Golden signed vectors, dependency review, strict output scans, loopback/fixture checks and reuse of the accepted broadcaster are evidenced locally; the external S2 review accepts only this local boundary. Public-network Byzantine independence, production finality, and production telemetry remain unclaimed.
 
-## Phase-3 planned threat treatment
+## Phase-3 integrated threat treatment
 
-Phase 3 / WS-005 is OPENED / PLANNED and not implemented. P3-00 identified the
-signed/no-attempt control race, signer/control lock inversion, and post-send
-current-fence recovery conflict. Accepted ADR-0018 and
-`docs/plans/PHASE-3.md` define the planned controls for T-036 through T-039.
-Those threats remain open until P3-01 through P3-06 pass on a protected exact
-SHA. Planning evidence must not be reported as mitigation or acceptance.
+Phase 3 / WS-005 is IN PROGRESS. P3-01 and P3-02 passed their exact-SHA
+reviews and protected checks. P3-03 candidate
+`510763b3c9c217f9058b1c9d388ce02d84e6ae9e` adds fence-first `STARTED`
+authority and canonical recovery for a mined transaction after process death;
+its fresh MAX review passed 9/10 with no findings; protected CI `35498889238`
+and Secret Scan `35498889228` pass. P3-00 identified the signed/no-attempt control race, signer/control
+lock inversion, and post-send current-fence recovery conflict. Accepted
+ADR-0018 and `docs/plans/PHASE-3.md` define the controls for T-036 through
+T-039. P3-04 local gates now prove DB-time lease renewal/fencing, exact signed-
+no-attempt recovery, and the tested authorization/operation and policy/recovery
+lock order, including autonomous authorization, approval replay, signer, and
+broadcaster paths against reservation transition; the P3-04 database suite
+passes 162/162 and the Phase-3 gate passes 254/254. Follow-up MAX review passed
+after control lock-order remediation and removal of obsolete sign-only child
+artifacts. Exact-head CI `35787705165` and Secret Scan `35787705289` pass.
+P3-05 local matrix is green after adding missing/forged invalidation coverage
+(DB 163/163, Phase-3 255/255, adversarial 213/213); the exact F01–F19 test
+crosswalk is in `docs/TEST_MATRIX.md`. Exact-head checks for that test-only
+candidate and P3-06 F18 clean-room/independent closeout remain. The
+Phase-3 threats remain open until all required packets pass; local packet
+evidence is not full Phase-3 acceptance.

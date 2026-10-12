@@ -53,7 +53,28 @@ test("defines local-only PostgreSQL and Anvil services with immutable images", (
     /ghcr\.io\/foundry-rs\/foundry:stable@sha256:[a-f0-9]{64}/,
   );
   assert.match(compose, /127\.0\.0\.1:\$\{CRIP_POSTGRES_PORT:-0\}:5432/);
-  assert.match(compose, /127\.0\.0\.1:\$\{CRIP_ANVIL_PORT:-0\}:8545/);
+  const postgresService = compose.match(
+    /^ {2}postgres:\n([\s\S]*?)(?=^ {2}anvil:)/m,
+  )?.[1];
+  assert.ok(postgresService);
+  assert.match(postgresService, /networks:\n {6}- local-only/);
+  assert.doesNotMatch(postgresService, /anvil-private|gateway-host/);
+  const anvilService = compose.match(
+    /^ {2}anvil:\n([\s\S]*?)(?=^ {2}anvil-gateway:)/m,
+  )?.[1];
+  assert.ok(anvilService);
+  assert.doesNotMatch(anvilService, /^\s+ports:/m);
+  assert.match(anvilService, /--state[\s\S]*\/var\/lib\/anvil\/state\.json/);
+  assert.match(compose, /anvil-private:[\s\S]*internal: true/);
+  const gatewayService = compose.match(
+    /^ {2}anvil-gateway:\n([\s\S]*?)(?=^networks:)/m,
+  )?.[1];
+  assert.ok(gatewayService);
+  assert.match(gatewayService, /127\.0\.0\.1:\$\{CRIP_ANVIL_PORT:-0\}:8545/);
+  assert.match(
+    gatewayService,
+    /networks:\n {6}- anvil-private\n {6}- gateway-host/,
+  );
   assert.match(compose, /--chain-id[\s\S]*31337/);
   assert.match(compose, /--mnemonic-seed-unsafe[\s\S]*31337/);
   assert.match(compose, /--quiet/);

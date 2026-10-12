@@ -23,6 +23,7 @@ import {
   claimRecoveryLease,
   getBudget,
   markReservationBroadcast,
+  renewRecoveryLease,
   resolveRecovery,
   reserveBudget,
   verifyBroadcastEvidence,
@@ -572,6 +573,93 @@ describe.sequential("WP-05 authenticated reconciliation and recovery", () => {
           "attempt_claim_unbounded",
           301,
         ),
+      }),
+    ).rejects.toMatchObject({ code: "RECOVERY_LEASE_STALE" });
+  });
+
+  test("renews only the current live recovery lease generation", async () => {
+    await insertOperation("op_lease_renewal");
+    await reserveForRecoveryClaim("op_lease_renewal", "res_lease_renewal");
+    const lease = await claim(
+      "op_lease_renewal",
+      "res_lease_renewal",
+      "attempt_lease_renewal",
+      30,
+    );
+    const renewal = {
+      operationId: "op_lease_renewal",
+      reservationId: "res_lease_renewal",
+      leaseVersion: lease.leaseVersion,
+      leaseDurationSeconds: 120,
+    };
+    const renewalAudit = (suffix: string): AuditContext => ({
+      ...audit("op_lease_renewal", suffix),
+      actorType: "worker",
+      actorId: "reconciler:forged-label",
+      componentAuth: signComponentAction(reconciler, "recovery.renew", renewal),
+    });
+    const renewed = await renewRecoveryLease(pool, {
+      ...renewal,
+      audit: renewalAudit("renew-lease"),
+    });
+    expect(renewed).toMatchObject({
+      operationId: lease.operationId,
+      reservationId: lease.reservationId,
+      credentialId: lease.credentialId,
+      componentId: lease.componentId,
+      leaseVersion: lease.leaseVersion,
+    });
+    expect(Date.parse(renewed.leaseExpiresAt)).toBeGreaterThan(
+      Date.parse(lease.leaseExpiresAt),
+    );
+    const renewedAudit = await pool.query<{
+      event_type: string;
+      data: Record<string, unknown>;
+    }>(
+      `SELECT event_type, data FROM audit_events
+       WHERE operation_id = $1 AND event_type = 'execution.recovery.lease_renewed'`,
+      [renewal.operationId],
+    );
+    expect(renewedAudit.rows).toHaveLength(1);
+    expect(renewedAudit.rows[0]).toMatchObject({
+      event_type: "execution.recovery.lease_renewed",
+      data: {
+        leaseVersion: Number(lease.leaseVersion),
+        leaseExpiresAt: renewed.leaseExpiresAt,
+      },
+    });
+    await expect(
+      claim(
+        "op_lease_renewal",
+        "res_lease_renewal",
+        "attempt_lease_renewal_duplicate",
+      ),
+    ).rejects.toMatchObject({ code: "RECOVERY_LEASE_HELD" });
+
+    await pool.query(
+      `UPDATE operation_recovery_leases
+       SET lease_expires_at = clock_timestamp() - interval '1 second'
+       WHERE operation_id = $1`,
+      [renewal.operationId],
+    );
+    await expect(
+      renewRecoveryLease(pool, {
+        ...renewal,
+        audit: renewalAudit("renew-expired-lease"),
+      }),
+    ).rejects.toMatchObject({ code: "RECOVERY_LEASE_STALE" });
+    const successor = await claim(
+      "op_lease_renewal",
+      "res_lease_renewal",
+      "attempt_lease_takeover",
+    );
+    expect(BigInt(successor.leaseVersion)).toBe(
+      BigInt(lease.leaseVersion) + 1n,
+    );
+    await expect(
+      renewRecoveryLease(pool, {
+        ...renewal,
+        audit: renewalAudit("renew-old-generation"),
       }),
     ).rejects.toMatchObject({ code: "RECOVERY_LEASE_STALE" });
   });

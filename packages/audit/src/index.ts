@@ -10,39 +10,7 @@ import type { PoolClient } from "pg";
 
 export type AuditActorType =
   "owner" | "agent" | "service" | "system" | "worker" | "adapter";
-export type AuditEventType =
-  | "policy.evaluated"
-  | "budget.reservation.created"
-  | "budget.reservation.authorized"
-  | "budget.reservation.broadcast"
-  | "budget.reservation.evidence.verified"
-  | "budget.reservation.released"
-  | "budget.reservation.expired"
-  | "budget.reservation.finalized"
-  | "budget.reservation.disputed"
-  | "approval.requested"
-  | "approval.approved"
-  | "approval.consumed"
-  | "approval.rejected"
-  | "approval.expired"
-  | "approval.revoked"
-  | "operation.state.changed"
-  | "agent.revoked"
-  | "owner.revoked"
-  | "policy.revoked"
-  | "system.paused"
-  | "system.resumed"
-  | "execution.recovery.claimed"
-  | "execution.recovery.ambiguous"
-  | "execution.recovery.resolved"
-  | "execution.recovery.conflict"
-  | "signing.started"
-  | "signing.failed"
-  | "transaction.signed"
-  | "transaction.constructed"
-  | "transaction.decoded"
-  | "transaction.verified"
-  | "transaction.simulated";
+export type AuditEventType = AuditEvent["eventType"];
 
 export interface ComponentAuthorization {
   credentialId: string;
@@ -141,6 +109,7 @@ export const verifyAuditEvent = (value: unknown): AuditEvent => {
 export const appendAuditEvent = async (
   client: PoolClient,
   input: AuditEventInput,
+  beforeInsert?: () => Promise<unknown>,
 ): Promise<void> => {
   const data = auditDataSchema.parse(input.data);
   const isControlEvent = [
@@ -190,6 +159,7 @@ export const appendAuditEvent = async (
   });
   const canonicalPayload = canonicalizeAuditEvent(unverifiedEvent);
   const eventHash = computeAuditEventHash(unverifiedEvent);
+  await beforeInsert?.();
   await client.query(
     `INSERT INTO audit_events
       (event_id, event_type, sequence_no, actor_type, actor_id, owner_id, agent_id, wallet_id,
